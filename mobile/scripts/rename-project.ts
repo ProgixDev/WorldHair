@@ -32,20 +32,20 @@ if (appJson.expo.android?.package) {
 }
 fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
 
-// Update README.md if it contains expo-template
+// Update README.md if it contains mobile
 console.log('Checking README.md...');
 const readmePath = 'README.md';
 if (fs.existsSync(readmePath)) {
   let readme = fs.readFileSync(readmePath, 'utf8');
-  if (readme.includes('expo-template')) {
-    readme = readme.replace(/expo-template/g, projectName);
+  if (readme.includes('mobile')) {
+    readme = readme.replace(/mobile/g, projectName);
     fs.writeFileSync(readmePath, readme);
     console.log('Updated README.md');
   }
 }
 
-// Update any other files that might contain expo-template
-console.log('Searching for other files containing "expo-template"...');
+// Update any other files that might contain mobile
+console.log('Searching for other files containing "mobile"...');
 function updateFiles(dir: string) {
   const items = fs.readdirSync(dir);
   for (const item of items) {
@@ -56,8 +56,8 @@ function updateFiles(dir: string) {
     } else if (stat.isFile() && ['.json', '.md', '.ts', '.tsx', '.js', '.jsx'].includes(path.extname(item))) {
       try {
         let content = fs.readFileSync(fullPath, 'utf8');
-        if (content.includes('expo-template')) {
-          content = content.replace(/expo-template/g, projectName);
+        if (content.includes('mobile')) {
+          content = content.replace(/mobile/g, projectName);
           fs.writeFileSync(fullPath, content);
           console.log(`Updated: ${fullPath}`);
         }

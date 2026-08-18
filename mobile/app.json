@@ -1,20 +1,23 @@
 {
   "expo": {
-    "name": "expo-template",
-    "slug": "expo-template",
+    "name": "mobile",
+    "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/Logo.png",
-    "scheme": "expotemplate",
+    "scheme": "mobile",
     "userInterfaceStyle": "automatic",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.expotemplate",
+      "bundleIdentifier": "com.anonymous.mobile",
       "infoPlist": {
         "UIStatusBarHidden": true,
         "UIViewControllerBasedStatusBarAppearance": false
@@ -31,7 +34,7 @@
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
         }
       },
-      "package": "com.anonymous.expotemplate"
+      "package": "com.anonymous.mobile"
     },
     "web": {
       "output": "static",
@@ -40,7 +43,9 @@
     "plugins": [
       [
         "expo-router",
-        { "root": "./src/app" }
+        {
+          "root": "./src/app"
+        }
       ],
       [
         "expo-splash-screen",
