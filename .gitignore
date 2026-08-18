@@ -1,0 +1,71 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+bun.lockb
+
+# env
+.env
+
+# coverage
+coverage/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+app-example
+
+# generated native folders
+/mobile/ios
+/mobile/android
+
+# release signing key — outside android/ so `expo prebuild --clean` can never
+# touch it; ignored wholesale (not just *.jks) so nothing dropped in here
+# later (a .properties file, notes) leaks by accident
+/mobile/keystores
+
+# ...except the debug keystore: standard androiddebugkey/android creds, not a
+# secret. Committed on purpose so its SHA-1 (registered with Google OAuth as
+# the debug client) stays stable across clones and `prebuild --clean`, instead
+# of AGP silently minting a new random key every time android/ is wiped.
+!/mobile/keystores/debug.keystore
+
+# VS Code
+.vscode/
+
+# mongodb-memory-server binaries
+server/.cache/
+
+# git worktrees (superpowers:using-git-worktrees)
+.worktrees/
+worktrees/

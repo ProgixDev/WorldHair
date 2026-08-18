@@ -1,0 +1,12 @@
+{
+  "name": "worldhair",
+  "private": true,
+  "scripts": {
+    "install:all": "cd mobile && bun install",
+    "expo": "cd mobile && bun expo start",
+    "mobile": "cd mobile && npx expo run:android",
+    "rebuild": "cd mobile && npx expo prebuild --platform android --clean",
+    "apk": "cd mobile && npx expo prebuild --platform android && cd android && .\\gradlew.bat assembleRelease",
+    "aab": "cd mobile && npx expo prebuild --platform android && cd android && .\\gradlew.bat bundleRelease"
+  }
+}
