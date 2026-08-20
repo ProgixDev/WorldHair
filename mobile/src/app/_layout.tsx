@@ -10,6 +10,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { AuthProvider } from "../contexts/AuthContext";
+import { LocationProvider } from "../contexts/LocationContext";
 import { ThemeProvider, useTheme } from "../contexts/ThemeContext";
 
 NativeSplash.preventAutoHideAsync();
@@ -20,18 +21,38 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
         <AuthProvider>
-          <SafeAreaProvider>
-            <RootLayoutWithTheme />
-          </SafeAreaProvider>
+          <LocationProvider>
+            <SafeAreaProvider>
+              <RootLayoutWithTheme />
+            </SafeAreaProvider>
+          </LocationProvider>
         </AuthProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
 
-/** Routes that paint their own art edge to edge and own their insets. */
+/**
+ * Routes that paint edge to edge and own their insets: the splash, the
+ * onboarding art, and the whole particulier area (floating tab bar, full-bleed
+ * map, parallax salon page, docked booking bar).
+ */
+const IMMERSIVE_PREFIXES = [
+  "/onboarding",
+  "/discover",
+  "/search",
+  "/appointments",
+  "/profile",
+  "/salon",
+  "/booking",
+  "/review",
+];
+
 function isImmersiveRoute(pathname: string): boolean {
-  return pathname === "/" || pathname.startsWith("/onboarding");
+  return (
+    pathname === "/" ||
+    IMMERSIVE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  );
 }
 
 function RootLayoutWithTheme() {
@@ -82,7 +103,19 @@ function RootLayoutWithTheme() {
             name="onboarding/index"
             options={{ animation: "fade" }}
           />
-          <Stack.Screen name="home/index" options={{ animation: "fade" }} />
+          <Stack.Screen name="(particulier)" options={{ animation: "fade" }} />
+          <Stack.Screen
+            name="salon/[id]"
+            options={{ animation: "slide_from_right" }}
+          />
+          <Stack.Screen
+            name="booking/[salonId]"
+            options={{ animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen
+            name="review/[appointmentId]"
+            options={{ animation: "slide_from_bottom" }}
+          />
         </Stack>
       </SafeAreaView>
     </View>

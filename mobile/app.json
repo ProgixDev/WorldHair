@@ -66,6 +66,15 @@
           "cameraPermission": "WorldHair utilise l'appareil photo pour photographier vos justificatifs."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "WorldHair utilise votre position pour afficher les coiffeurs à proximité.",
+          "locationAlwaysAndWhenInUsePermission": "WorldHair utilise votre position pour afficher les coiffeurs à proximité.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ],
       "./plugins/withTransparentNavigationBar",
       "./plugins/withTransparentStatusBar"
     ]

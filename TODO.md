@@ -76,13 +76,14 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Écran "compte en attente de validation"
 
 ### Particulier
-- [ ] Écran accueil: carte/liste coiffeurs à proximité
-- [ ] Activation géolocalisation
-- [ ] Recherche + filtres (localisation, prestation)
-- [ ] Fiche coiffeur (présentation, avis étoiapprolés, prestations, bouton réservation)
-- [ ] Flow prise de RDV (prestation → créneau → confirmation)
-- [ ] Gestion RDV (modifier / annuler)
-- [ ] Écran laisser avis + note après prestation
+- [x] Écran accueil: carte/liste coiffeurs à proximité (carte plein écran + carrousel)
+- [x] Activation géolocalisation (expo-location + repli « choisir une ville »)
+- [x] Recherche + filtres (localisation, prestation, distance, tri)
+- [x] Fiche coiffeur (présentation, avis étoilés, prestations, bouton réservation)
+- [x] Flow prise de RDV (prestation → créneau → confirmation)
+- [x] Gestion RDV (modifier / annuler)
+- [x] Écran laisser avis + note après prestation
+
 
 ### Coiffeur
 - [ ] Config page présentation (photo, description, adresse, horaires)

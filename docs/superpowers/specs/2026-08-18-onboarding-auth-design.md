@@ -8,8 +8,9 @@ Scope: TODO.md → Frontend → "Onboarding & auth", all seven items.
 - Frontend only — no backend exists (stack undecided in TODO.md). Every auth
   call is mocked behind `services/auth.ts`, the single file the real API
   replaces later.
-- `expo-location`, `expo-auth-session`, `expo-apple-authentication` are NOT
-  installed. Geolocation and OAuth are stubbed and flagged in code.
+- `expo-auth-session` / `expo-apple-authentication` are NOT installed, so the
+  social buttons run a mocked provider. (`expo-location` arrived later with the
+  particulier section — see the 2026-08-20 spec.)
 - `expo-image-picker` and `expo-document-picker` ARE installed (justificatifs).
   Both are native modules: `android/` is prebuilt, so a rebuild is required
   before the pickers work on device.
@@ -26,7 +27,7 @@ Scope: TODO.md → Frontend → "Onboarding & auth", all seven items.
           coiffeur, dossier en revue ..... /auth/pending
           coiffeur, dossier à remplir .... /auth/pro/identity
           particulier sans profil ........ /auth/profile-setup
-          sinon .......................... /home
+          sinon .......................... /discover
 
 `nextRouteForSession` is pure, so the gate is decided in one place and can be
 reasoned about without a navigator.
@@ -70,7 +71,7 @@ The CTA pill is identical on all three slides — accent `#38b6ff` on brand ink
 | `auth/sign-in` | wordmark, serif H1, email + password, `ou` divider, Google (Apple on iOS), link to sign-up |
 | `auth/sign-up` | Particulier/Coiffeur segmented control, email, password + strength meter, CGU checkbox |
 | `auth/verify-email` | 6-box OTP, resend with 30 s cooldown, "utiliser une autre adresse", demo-code notice |
-| `auth/profile-setup` | avatar picker (optional photo), prénom, nom → `/home` |
+| `auth/profile-setup` | avatar picker (optional photo), prénom, nom → `/discover` |
 | `auth/pro/identity` | wizard 1/3 — prénom, nom, téléphone (FR) |
 | `auth/pro/salon` | wizard 2/3 — nom du salon, présentation, adresse, CP, ville |
 | `auth/pro/documents` | wizard 3/3 — pièce d'identité + diplôme, attestation, envoi |
@@ -81,8 +82,9 @@ The coiffeur wizard keeps its answers in `ProApplicationProvider`
 (`app/auth/pro/_layout.tsx`), so a back-navigation never loses input.
 
 `auth/pending` carries a dashed "Mode démo" card that simulates the admin
-decision, since no back-office exists yet. `home` gained an "ONBOARDING & AUTH"
-section linking every screen plus a demo reset.
+decision, since no back-office exists yet. `auth/sign-in` carries a demo login
+bar: one chip per account state (particulier, coiffeur validé / en attente /
+refusé), each signing straight in through `signInAsDemo`.
 
 ## Modules
 
@@ -104,10 +106,10 @@ section linking every screen plus a demo reset.
 
 ## Screen contract
 
-- Safe areas are owned by `app/_layout.tsx`. Immersive routes (`/`,
-  `/onboarding`) get no insets from it and handle their own; every other route
-  gets the top inset there and the bottom inset from the root view. No screen
-  re-applies `SafeAreaView`.
+- Safe areas are owned by `app/_layout.tsx`. Immersive routes (the splash, the
+  onboarding art, and every particulier route) get no insets from it and handle
+  their own; the auth routes get the top inset there and the bottom inset from
+  the root view. No screen re-applies `SafeAreaView`.
 - Sizes come from `useResponsive()`; `fontSize` is never scaled; text
   containers use `minHeight`. Spacing comes from the fixed `spacing` scale.
 

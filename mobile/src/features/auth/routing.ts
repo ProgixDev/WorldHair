@@ -11,7 +11,11 @@ export const ROUTES = {
   proSalon: "/auth/pro/salon",
   proDocuments: "/auth/pro/documents",
   pending: "/auth/pending",
-  home: "/home",
+  /** Particulier shell (map tab). */
+  discover: "/discover",
+  search: "/search",
+  appointments: "/appointments",
+  profile: "/profile",
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];
@@ -31,10 +35,12 @@ export function nextRouteForSession(
   if (session.role === "coiffeur") {
     if (session.status === "pending_review" || session.status === "rejected")
       return ROUTES.pending;
-    if (session.status === "active") return ROUTES.home;
+    // TODO: the coiffeur space is the next TODO.md section. Until it exists, a
+    // validated coiffeur lands in the particulier area rather than nowhere.
+    if (session.status === "active") return ROUTES.discover;
     return ROUTES.proIdentity;
   }
 
   if (!session.profile) return ROUTES.profileSetup;
-  return ROUTES.home;
+  return ROUTES.discover;
 }

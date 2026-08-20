@@ -45,7 +45,7 @@ export default function ProfileSetup() {
         lastName: lastName.trim(),
         photoUri,
       });
-      router.replace(ROUTES.home as never);
+      router.replace(ROUTES.discover as never);
     } catch {
       setFormError("Enregistrement impossible. Réessayez.");
     } finally {
