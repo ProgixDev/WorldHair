@@ -150,3 +150,12 @@ export function formatDuration(minutes: number): string {
 export function formatPrice(euros: number): string {
   return euros + " €";
 }
+
+/** "1 240 €" — thin-space thousands, for totals. */
+export function formatAmount(euros: number): string {
+  return (
+    Math.round(euros)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " €"
+  );
+}

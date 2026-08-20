@@ -86,13 +86,15 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 
 
 ### Coiffeur
-- [ ] Config page présentation (photo, description, adresse, horaires)
-- [ ] Gestion prestations (liste, tarifs, durées)
-- [ ] Agenda: disponibilités + créneaux
-- [ ] Gestion RDV entrants (accepter/refuser/annuler)
-- [ ] Écran statistiques réservations
-- [ ] Gestion avis (consulter + répondre)
-- [ ] Écran abonnement (choix mensuel/annuel, statut essai gratuit)
+- [x] Config page présentation (photo, description, adresse, horaires)
+- [x] Gestion prestations (liste, tarifs, durées)
+- [x] Agenda: disponibilités + créneaux
+- [x] Gestion RDV entrants (accepter/refuser/annuler)
+- [x] Écran statistiques réservations
+- [x] Gestion avis (consulter + répondre)
+- [x] Écran abonnement (choix mensuel/annuel, statut essai gratuit)
+
+
 
 ### Notifications (in-app)
 - [x] Réglages notifications (désactiver rappels J-1 / H-1) — switches dans

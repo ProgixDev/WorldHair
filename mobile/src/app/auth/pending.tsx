@@ -34,7 +34,8 @@ export default function PendingReview() {
 
   // An approved dossier has no business sitting on this screen.
   useEffect(() => {
-    if (session?.status === "active") router.replace(ROUTES.discover as never);
+    if (session?.status === "active")
+      router.replace(ROUTES.proDashboard as never);
   }, [session?.status, router]);
 
   const handleSignOut = async () => {
@@ -51,7 +52,7 @@ export default function PendingReview() {
           ? "Le diplôme envoyé est illisible. Merci de renvoyer une photo nette."
           : undefined,
       );
-      if (outcome === "approved") router.replace(ROUTES.discover as never);
+      if (outcome === "approved") router.replace(ROUTES.proDashboard as never);
     } finally {
       setBusy(false);
     }

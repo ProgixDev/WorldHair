@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { seedDemoBookings } from "./booking";
+import { seedProWorkspace } from "./pro";
 
 /**
  * Mock auth service. No backend exists yet (stack undecided — see TODO.md), so
@@ -293,6 +294,8 @@ export async function simulateReviewOutcome(
 ): Promise<Session> {
   await delay(400);
   const user = await requireUser();
+  // An approved coiffeur walks straight into a workspace with data in it.
+  if (outcome === "approved") await seedProWorkspace();
   return commit({
     ...user,
     status: outcome === "approved" ? "active" : "rejected",
@@ -430,8 +433,9 @@ export async function signInAsDemo(persona: DemoPersona): Promise<Session> {
   const user = buildDemoUser(persona);
   const users = await readUsers();
   await writeUsers([...users.filter((u) => u.userId !== user.userId), user]);
-  // A demo particulier should land on a lived-in agenda, not three empty tabs.
+  // Demo accounts land on a populated space rather than empty states.
   if (persona === "particulier") await seedDemoBookings();
+  if (persona === "coiffeur_active") await seedProWorkspace();
   return persistSession(user);
 }
 

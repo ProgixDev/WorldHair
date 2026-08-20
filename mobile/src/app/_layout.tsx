@@ -46,6 +46,7 @@ const IMMERSIVE_PREFIXES = [
   "/salon",
   "/booking",
   "/review",
+  "/pro",
 ];
 
 function isImmersiveRoute(pathname: string): boolean {
@@ -116,6 +117,7 @@ function RootLayoutWithTheme() {
             name="review/[appointmentId]"
             options={{ animation: "slide_from_bottom" }}
           />
+          <Stack.Screen name="pro" options={{ animation: "fade" }} />
         </Stack>
       </SafeAreaView>
     </View>
