@@ -8,6 +8,7 @@
     "ios": "bun expo start --ios",
     "web": "bun expo start --web",
     "lint": "bun expo lint",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
