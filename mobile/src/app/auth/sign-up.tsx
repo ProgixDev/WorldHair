@@ -259,7 +259,7 @@ function PasswordMeter({ score }: { score: number }) {
               backgroundColor:
                 score > segment
                   ? colors[Math.min(score, 4) - 1]
-                  : theme.background.accent,
+                  : theme.surface.base,
             }}
           />
         ))}

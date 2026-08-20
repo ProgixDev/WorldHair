@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../contexts/ThemeContext";
+import { elevation } from "../../constants/elevation";
 import { MIN_TOUCH_SIZE, radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 
@@ -41,10 +42,10 @@ export function SegmentedControl<T extends string>({
           flexDirection: "row",
           gap: spacing.xs,
           padding: spacing.xs,
-          borderRadius: radius.lg,
-          backgroundColor: theme.background.darker,
+          borderRadius: radius.xl,
+          backgroundColor: theme.surface.sunken,
           borderWidth: 1,
-          borderColor: theme.border,
+          borderColor: theme.divider,
         }}
       >
         {options.map((option) => {
@@ -55,17 +56,22 @@ export function SegmentedControl<T extends string>({
               onPress={() => onChange(option.value)}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
-              style={{
-                flex: 1,
-                minHeight: MIN_TOUCH_SIZE,
-                borderRadius: radius.md,
-                paddingVertical: spacing.sm,
-                paddingHorizontal: spacing.sm,
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                backgroundColor: selected ? theme.primary.main : "transparent",
-              }}
+              style={[
+                {
+                  flex: 1,
+                  minHeight: MIN_TOUCH_SIZE + 4,
+                  borderRadius: radius.lg,
+                  paddingVertical: spacing.md,
+                  paddingHorizontal: spacing.sm,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 2,
+                  backgroundColor: selected
+                    ? theme.primary.main
+                    : "transparent",
+                },
+                selected ? elevation(1, theme.shadow) : null,
+              ]}
             >
               <Text
                 style={[

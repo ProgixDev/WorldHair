@@ -95,7 +95,8 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [ ] Écran abonnement (choix mensuel/annuel, statut essai gratuit)
 
 ### Notifications (in-app)
-- [ ] Réglages notifications (désactiver rappels J-1 / H-1)
+- [x] Réglages notifications (désactiver rappels J-1 / H-1) — switches dans
+      l'onglet Profil, préférences stockées en local (pas encore d'infra push)
 - [ ] Réception push (RDV, annulation, validation compte)
 
 ### Design system

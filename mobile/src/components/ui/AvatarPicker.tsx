@@ -66,7 +66,7 @@ export function AvatarPicker({
           width: size,
           height: size,
           borderRadius: radius.full,
-          backgroundColor: theme.background.accent,
+          backgroundColor: theme.surface.base,
           borderWidth: uri ? 0 : 2,
           borderColor: theme.border,
           borderStyle: uri ? "solid" : "dashed",

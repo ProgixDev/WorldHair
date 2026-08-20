@@ -4,7 +4,11 @@ import { Pressable, Text, View } from "react-native";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { accentFor, coverFor } from "../../features/salons/covers";
+import {
+  accentFor,
+  coverFor,
+  coverPlaceholder,
+} from "../../features/salons/images";
 import { formatDistance } from "../../features/salons/geo";
 import type { SalonWithDistance } from "../../features/salons/types";
 import { formatPrice } from "../../utils/date";
@@ -55,15 +59,18 @@ export function SalonRow({ salon, onPress }: SalonRowProps) {
       </View>
 
       <Image
-        source={coverFor(salon)}
+        source={coverFor(salon, 400)}
+        placeholder={coverPlaceholder(salon.id)}
+        placeholderContentFit="cover"
+        cachePolicy="memory-disk"
         style={{
-          width: 64,
-          height: 84,
-          borderRadius: radius.md,
-          backgroundColor: theme.background.accent,
+          width: 76,
+          height: 96,
+          borderRadius: radius.lg,
+          backgroundColor: theme.surface.sunken,
         }}
         contentFit="cover"
-        transition={150}
+        transition={200}
       />
 
       <View style={{ flex: 1, gap: spacing.xs, paddingRight: spacing.xs }}>
@@ -93,7 +100,7 @@ export function SalonRow({ salon, onPress }: SalonRowProps) {
             {"(" + salon.reviewCount + ")"}
           </Text>
           <View style={{ flex: 1 }} />
-          <Text style={[typography.label, { color: theme.primary.main }]}>
+          <Text style={[typography.label, { color: theme.accent.warm }]}>
             {"dès " + formatPrice(salon.priceFrom)}
           </Text>
         </View>

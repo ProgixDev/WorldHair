@@ -74,12 +74,12 @@ export function TextField({
         style={{
           flexDirection: "row",
           alignItems: multiline ? "flex-start" : "center",
-          gap: spacing.sm,
-          minHeight: MIN_TOUCH_SIZE + 4,
-          borderRadius: radius.md,
-          borderWidth: focused || error ? 2 : 1,
+          gap: spacing.md,
+          minHeight: MIN_TOUCH_SIZE + 8,
+          borderRadius: radius.lg,
+          borderWidth: focused || error ? 1.5 : 1,
           borderColor,
-          backgroundColor: theme.background.accent,
+          backgroundColor: focused ? theme.surface.raised : theme.surface.base,
           paddingHorizontal: spacing.lg,
           paddingVertical: multiline ? spacing.md : spacing.sm,
         }}

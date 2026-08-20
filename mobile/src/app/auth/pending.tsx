@@ -81,7 +81,7 @@ export default function PendingReview() {
               borderRadius: radius.full,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: theme.background.accent,
+              backgroundColor: theme.surface.base,
               borderWidth: 1,
               borderColor: rejected ? theme.danger : theme.primary.main,
             }}
@@ -147,7 +147,7 @@ export default function PendingReview() {
             style={{
               padding: spacing.lg,
               borderRadius: radius.lg,
-              backgroundColor: theme.background.accent,
+              backgroundColor: theme.surface.base,
               borderWidth: 1,
               borderColor: theme.border,
               gap: spacing.sm,
@@ -255,7 +255,7 @@ function TimelineStep({
           borderRadius: radius.full,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: theme.background.accent,
+          backgroundColor: theme.surface.base,
           borderWidth: state === "todo" ? 1 : 0,
           borderColor: theme.border,
         }}

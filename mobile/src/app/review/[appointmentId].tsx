@@ -225,7 +225,7 @@ export default function LeaveReview() {
                 minHeight: 120,
                 textAlignVertical: "top",
                 color: theme.foreground.white,
-                backgroundColor: theme.background.accent,
+                backgroundColor: theme.surface.base,
                 borderRadius: radius.lg,
                 borderWidth: 1,
                 borderColor: theme.border,

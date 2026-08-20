@@ -68,7 +68,7 @@ export function OtpInput({
                 : isCursor
                   ? theme.primary.main
                   : theme.border,
-              backgroundColor: theme.background.accent,
+              backgroundColor: theme.surface.base,
               alignItems: "center",
               justifyContent: "center",
             }}

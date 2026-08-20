@@ -9,6 +9,7 @@ import {
   ViewStyle,
 } from "react-native";
 import { useTheme } from "../../contexts/ThemeContext";
+import { elevation } from "../../constants/elevation";
 import { MIN_TOUCH_SIZE, radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 
@@ -67,19 +68,23 @@ export function Button({
       accessibilityLabel={label}
       style={({ pressed }) => [
         {
-          minHeight: MIN_TOUCH_SIZE + 4,
+          minHeight: MIN_TOUCH_SIZE + 8,
           borderRadius: radius.full,
           backgroundColor: fill,
-          borderWidth: variant === "outline" ? 1 : 0,
+          borderWidth: variant === "outline" ? 1.5 : 0,
           borderColor,
           paddingHorizontal: spacing.xl,
           paddingVertical: spacing.md,
           alignItems: "center",
           justifyContent: "center",
-          opacity: isDisabled ? 0.45 : 1,
+          opacity: isDisabled ? 0.4 : 1,
           overflow: "hidden",
-          transform: [{ scale: pressed && !isDisabled ? 0.99 : 1 }],
+          transform: [{ scale: pressed && !isDisabled ? 0.985 : 1 }],
         },
+        // A filled CTA lifts off the page; ghost and outline stay flat.
+        variant === "primary" && !isDisabled
+          ? elevation(2, background ?? theme.primary.main)
+          : null,
         style,
       ]}
     >

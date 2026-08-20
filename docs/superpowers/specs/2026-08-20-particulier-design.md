@@ -11,8 +11,11 @@ Scope: TODO.md → Frontend → "Particulier", all seven items.
 - `react-native-maps` and `expo-location` are installed. Both ship inside Expo
   Go; a dev build needs a rebuild, and Android needs a real Google Maps key —
   `app.json` still carries `YOUR_GOOGLE_MAPS_API_KEY`.
-- Salon cover art is placeholder: the three onboarding photographs, mapped in
-  `features/salons/covers.ts`.
+- Imagery is placeholder but remote: covers from a curated Unsplash pool,
+  work galleries from Picsum seeds, reviewer faces from Pravatar — all derived
+  from ids in `features/salons/images.ts`, with the bundled onboarding art as
+  the offline placeholder. Needs network; swap the module when the API serves
+  real media.
 
 ## Navigation
 
@@ -56,7 +59,8 @@ label, so it never competes with the map.
 | File | Responsibility |
 |------|----------------|
 | `features/salons/types.ts` | Salon, Service, Review, OpeningDay, specialties |
-| `features/salons/data.ts` | eight demo salons at real Paris coordinates |
+| `features/salons/data.ts` | 26 demo salons across 8 cities, expanded from seeds by a service catalogue + review bank |
+| `features/salons/images.ts` | covers, galleries, avatars, accent colours |
 | `features/salons/geo.ts` | haversine, distance formatting, map region framing |
 | `features/salons/filters.ts` | pure query/specialty/distance/sort pipeline |
 | `features/salons/slots.ts` | opening-hours slot generation, deterministic busy mask |
@@ -91,6 +95,23 @@ re-trigger the prompt. Distances and sorting work in every state.
 
 User reviews are merged into the salon page above the fixture ones, credited to
 "Vous".
+
+## Visual system (2026-08-20 polish pass)
+
+The first build read as flat: one grey card style, hairline outlines
+everywhere, blue used for both decoration and actions, a 44 px tab bar with
+hidden labels. Fixes, all token-level so screens inherited them:
+
+- `themes.ts` gained a surface ramp (`sunken`/`base`/`raised`/`glass`),
+  `primary.soft`, `accent.warmSoft`, `divider` and `shadow`; DESIGN.md records
+  the same values.
+- `constants/elevation.ts` provides the shadow presets and `TAB_BAR_HEIGHT`.
+- Colour rule: blue = actions only, warm gold = editorial signals (ratings,
+  prices from, overlines, badges).
+- Tab bar: 74 px, four equal columns, 26 px icons, permanent labels, filled
+  active column plus a top indicator.
+- Controls grew: buttons 56 px with a lift, fields 56 px, chips 42 px, slots
+  52 px.
 
 ## Verification
 

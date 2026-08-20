@@ -103,9 +103,7 @@ function PhoneStatusBar({ theme }: { theme: Theme }) {
 
 function PhoneCard({ theme }: { theme: Theme }) {
   return (
-    <View
-      style={[styles.phoneCard, { backgroundColor: theme.background.accent }]}
-    >
+    <View style={[styles.phoneCard, { backgroundColor: theme.surface.base }]}>
       <View
         style={[
           styles.phoneCardLine,

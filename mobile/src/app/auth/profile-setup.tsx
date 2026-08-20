@@ -18,11 +18,18 @@ export default function ProfileSetup() {
   const router = useRouter();
   const { theme } = useTheme();
   const { space } = useResponsive();
-  const { saveParticulierProfile } = useAuth();
+  const { session, saveParticulierProfile } = useAuth();
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  // The same screen creates the profile and edits it later, so it starts from
+  // whatever the session already holds.
+  const existing = session?.profile ?? null;
+  const isEditing = existing !== null;
+
+  const [firstName, setFirstName] = useState(existing?.firstName ?? "");
+  const [lastName, setLastName] = useState(existing?.lastName ?? "");
+  const [photoUri, setPhotoUri] = useState<string | null>(
+    existing?.photoUri ?? null,
+  );
   const [errors, setErrors] = useState<{
     firstName?: string;
     lastName?: string;
@@ -45,7 +52,8 @@ export default function ProfileSetup() {
         lastName: lastName.trim(),
         photoUri,
       });
-      router.replace(ROUTES.discover as never);
+      if (isEditing && router.canGoBack()) router.back();
+      else router.replace(ROUTES.discover as never);
     } catch {
       setFormError("Enregistrement impossible. Réessayez.");
     } finally {
@@ -65,9 +73,13 @@ export default function ProfileSetup() {
         style={{ gap: space(spacing.xl), paddingBottom: space(spacing.lg) }}
       >
         <AuthHeader
-          title="Votre profil"
-          subtitle="Pour que les coiffeurs sachent qui ils accueillent."
-          showBack={false}
+          title={isEditing ? "Modifier mon profil" : "Votre profil"}
+          subtitle={
+            isEditing
+              ? "Ces informations sont visibles par les salons que vous réservez."
+              : "Pour que les coiffeurs sachent qui ils accueillent."
+          }
+          showBack={isEditing}
         />
 
         <AvatarPicker uri={photoUri} onChange={setPhotoUri} />

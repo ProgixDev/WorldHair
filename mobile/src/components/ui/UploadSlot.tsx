@@ -131,7 +131,7 @@ export function UploadSlot({
           borderWidth: document ? 1 : 2,
           borderStyle: document ? "solid" : "dashed",
           borderColor,
-          backgroundColor: theme.background.accent,
+          backgroundColor: theme.surface.base,
           padding: spacing.lg,
           gap: spacing.md,
         }}

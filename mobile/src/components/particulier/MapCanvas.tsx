@@ -113,7 +113,7 @@ export function MapCanvas({
                   borderRadius: radius.full,
                   backgroundColor: selected
                     ? theme.primary.main
-                    : theme.background.accent,
+                    : theme.surface.base,
                   borderWidth: 1,
                   borderColor: selected ? theme.primary.main : theme.border,
                 }}

@@ -81,7 +81,7 @@ export function DemoLoginBar({
                 borderColor: busy ? theme.primary.main : theme.border,
                 backgroundColor: pressed
                   ? theme.background.darker
-                  : theme.background.accent,
+                  : theme.surface.base,
                 paddingHorizontal: spacing.md,
                 paddingVertical: spacing.md,
                 justifyContent: "center",

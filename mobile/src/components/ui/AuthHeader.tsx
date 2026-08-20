@@ -69,7 +69,7 @@ export function AuthHeader({
                   backgroundColor:
                     index < step.current
                       ? theme.primary.main
-                      : theme.background.accent,
+                      : theme.surface.base,
                 }}
               />
             ))}

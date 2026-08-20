@@ -32,23 +32,21 @@ export function Chip({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: spacing.xs,
-        minHeight: 36,
-        paddingHorizontal: spacing.md,
+        gap: spacing.sm,
+        minHeight: 42,
+        paddingHorizontal: spacing.lg,
         paddingVertical: spacing.sm,
         borderRadius: radius.full,
         borderWidth: 1,
         borderColor: selected ? theme.primary.main : theme.border,
-        backgroundColor: selected
-          ? theme.primary.main
-          : theme.background.accent,
+        backgroundColor: selected ? theme.primary.main : theme.surface.base,
       }}
     >
       {icon ? (
         <MaterialCommunityIcons
           name={icon}
-          size={15}
-          color={selected ? theme.primary.on : theme.foreground.gray}
+          size={17}
+          color={selected ? theme.primary.on : theme.accent.warm}
         />
       ) : null}
       <Text

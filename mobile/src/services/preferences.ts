@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const KEYS = {
   onboardingSeen: "@worldhair/onboarding_seen",
   locationIntent: "@worldhair/location_intent",
+  notifications: "@worldhair/notifications",
 } as const;
 
 /** How the user chose to find salons on the last onboarding slide. */
@@ -41,10 +42,48 @@ export async function setLocationIntent(intent: LocationIntent): Promise<void> {
   }
 }
 
+/**
+ * Reminder switches. The cahier des charges makes the J-1 and H-1 reminders
+ * optional and everything else mandatory, so only these two are stored.
+ */
+export interface NotificationPrefs {
+  reminderDayBefore: boolean;
+  reminderHourBefore: boolean;
+}
+
+export const DEFAULT_NOTIFICATIONS: NotificationPrefs = {
+  reminderDayBefore: true,
+  reminderHourBefore: true,
+};
+
+export async function getNotificationPrefs(): Promise<NotificationPrefs> {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.notifications);
+    if (!raw) return DEFAULT_NOTIFICATIONS;
+    return { ...DEFAULT_NOTIFICATIONS, ...(JSON.parse(raw) as object) };
+  } catch {
+    return DEFAULT_NOTIFICATIONS;
+  }
+}
+
+export async function setNotificationPrefs(
+  prefs: NotificationPrefs,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.notifications, JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
+}
+
 /** Wipes onboarding state — used by the dev reset action. */
 export async function clearPreferences(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([KEYS.onboardingSeen, KEYS.locationIntent]);
+    await AsyncStorage.multiRemove([
+      KEYS.onboardingSeen,
+      KEYS.locationIntent,
+      KEYS.notifications,
+    ]);
   } catch {
     // ignore
   }

@@ -16,6 +16,7 @@ import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { SalonCard } from "../../components/particulier/SalonCard";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
+import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
@@ -151,7 +152,10 @@ export default function Discover() {
               <Text
                 style={[typography.caption, { color: theme.foreground.gray }]}
               >
-                {positionLabel}
+                {positionLabel +
+                  " · " +
+                  salons.length +
+                  (salons.length > 1 ? " salons" : " salon")}
               </Text>
               <MaterialCommunityIcons
                 name="chevron-down"
@@ -165,21 +169,24 @@ export default function Discover() {
             onPress={() => router.push("/search" as never)}
             accessibilityRole="button"
             accessibilityLabel="Rechercher un salon"
-            style={({ pressed }) => ({
-              width: 48,
-              height: 48,
-              borderRadius: radius.full,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: theme.background.accent,
-              borderWidth: 1,
-              borderColor: theme.border,
-              opacity: pressed ? 0.7 : 1,
-            })}
+            style={({ pressed }) => [
+              {
+                width: 56,
+                height: 56,
+                borderRadius: radius.full,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: theme.surface.glass,
+                borderWidth: 1,
+                borderColor: theme.border,
+                opacity: pressed ? 0.7 : 1,
+              },
+              elevation(2, theme.shadow),
+            ]}
           >
             <MaterialCommunityIcons
               name="magnify"
-              size={22}
+              size={24}
               color={theme.foreground.white}
             />
           </Pressable>
@@ -220,22 +227,26 @@ export default function Discover() {
           left: 0,
           right: 0,
           bottom: 0,
-          paddingBottom: Math.max(insets.bottom, spacing.md) + 64,
+          paddingBottom:
+            Math.max(insets.bottom, spacing.md) + TAB_BAR_CLEARANCE,
           gap: spacing.md,
         }}
         pointerEvents="box-none"
       >
         {isFallback ? (
           <View
-            style={{
-              marginHorizontal: gutter,
-              padding: spacing.lg,
-              borderRadius: radius.xl,
-              backgroundColor: theme.background.accent,
-              borderWidth: 1,
-              borderColor: theme.border,
-              gap: spacing.md,
-            }}
+            style={[
+              {
+                marginHorizontal: gutter,
+                padding: spacing.lg,
+                borderRadius: radius.xl,
+                backgroundColor: theme.surface.glass,
+                borderWidth: 1,
+                borderColor: theme.border,
+                gap: spacing.md,
+              },
+              elevation(3, theme.shadow),
+            ]}
           >
             <View
               style={{
@@ -314,7 +325,7 @@ export default function Discover() {
                 width: cardWidth,
                 padding: spacing.lg,
                 borderRadius: radius.xl,
-                backgroundColor: theme.background.accent,
+                backgroundColor: theme.surface.base,
                 borderWidth: 1,
                 borderColor: theme.border,
               }}

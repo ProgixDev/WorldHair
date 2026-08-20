@@ -32,7 +32,7 @@ export function EmptyState({ icon, title, message, action }: EmptyStateProps) {
           borderRadius: radius.full,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: theme.background.accent,
+          backgroundColor: theme.surface.base,
           borderWidth: 1,
           borderColor: theme.border,
         }}

@@ -64,7 +64,7 @@ export function FilterSheet({
 
       <View
         style={{
-          backgroundColor: theme.background.darker,
+          backgroundColor: theme.surface.raised,
           borderTopLeftRadius: radius.xl,
           borderTopRightRadius: radius.xl,
           borderTopWidth: 1,
@@ -158,12 +158,16 @@ export function FilterSheet({
                       flexDirection: "row",
                       alignItems: "center",
                       gap: spacing.md,
-                      minHeight: 48,
+                      minHeight: 56,
                       paddingHorizontal: spacing.lg,
-                      borderRadius: radius.md,
-                      borderWidth: 1,
-                      borderColor: selected ? theme.primary.main : theme.border,
-                      backgroundColor: theme.background.accent,
+                      borderRadius: radius.lg,
+                      borderWidth: 1.5,
+                      borderColor: selected
+                        ? theme.primary.main
+                        : theme.divider,
+                      backgroundColor: selected
+                        ? theme.primary.soft
+                        : theme.surface.base,
                     }}
                   >
                     <View

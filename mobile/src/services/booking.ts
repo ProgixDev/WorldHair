@@ -238,6 +238,174 @@ export function serviceNameFor(appointment: Appointment): string {
   );
 }
 
+// ─── Demo seeding ────────────────────────────────────────────────────────────
+
+interface SeedSpec {
+  salonId: string;
+  /** Days from today; negative is in the past. */
+  dayOffset: number;
+  hour: number;
+  minute: number;
+  status: AppointmentStatus;
+  /** Seeds a matching review so the history is not uniformly unrated. */
+  review?: { rating: number; tags: string[]; comment: string };
+}
+
+const DEMO_SEEDS: SeedSpec[] = [
+  // Upcoming
+  {
+    salonId: "studio-w",
+    dayOffset: 1,
+    hour: 10,
+    minute: 30,
+    status: "confirmed",
+  },
+  {
+    salonId: "le-comptoir-barbier",
+    dayOffset: 4,
+    hour: 18,
+    minute: 0,
+    status: "confirmed",
+  },
+  {
+    salonId: "maison-tresse",
+    dayOffset: 11,
+    hour: 11,
+    minute: 0,
+    status: "confirmed",
+  },
+  // Recent past, still waiting for a rating
+  {
+    salonId: "eclat-marais",
+    dayOffset: -3,
+    hour: 15,
+    minute: 30,
+    status: "confirmed",
+  },
+  {
+    salonId: "barbe-noire",
+    dayOffset: -19,
+    hour: 19,
+    minute: 0,
+    status: "confirmed",
+  },
+  // Cancelled, kept in the history
+  {
+    salonId: "coupe-carre",
+    dayOffset: -8,
+    hour: 9,
+    minute: 30,
+    status: "cancelled",
+  },
+  // Past and already rated
+  {
+    salonId: "racines",
+    dayOffset: -12,
+    hour: 16,
+    minute: 30,
+    status: "confirmed",
+    review: {
+      rating: 5,
+      tags: ["Écoute", "Résultat"],
+      comment:
+        "Diagnostic hyper précis, mes boucles n'ont jamais été aussi définies.",
+    },
+  },
+  {
+    salonId: "atelier-nuance",
+    dayOffset: -27,
+    hour: 14,
+    minute: 0,
+    status: "confirmed",
+    review: {
+      rating: 4,
+      tags: ["Ponctualité", "Conseils"],
+      comment: "Couleur très réussie, prévoir large sur la durée.",
+    },
+  },
+  {
+    salonId: "boucles-libres",
+    dayOffset: -41,
+    hour: 12,
+    minute: 0,
+    status: "confirmed",
+    review: {
+      rating: 5,
+      tags: ["Ambiance", "Résultat", "Conseils"],
+      comment: "Routine expliquée pas à pas, je tiens enfin mes boucles.",
+    },
+  },
+  {
+    salonId: "onde",
+    dayOffset: -63,
+    hour: 11,
+    minute: 30,
+    status: "confirmed",
+    review: {
+      rating: 3,
+      tags: ["Propreté"],
+      comment: "Brushing joli mais tenu deux jours seulement.",
+    },
+  },
+];
+
+/**
+ * Fills the local store so a demo account lands on a lived-in agenda instead
+ * of three empty states. Idempotent: it never touches an account that already
+ * has bookings.
+ */
+export async function seedDemoBookings(): Promise<void> {
+  const existing = await listAppointments();
+  if (existing.length > 0) return;
+
+  const appointments: Appointment[] = [];
+  const reviews: UserReview[] = [];
+
+  DEMO_SEEDS.forEach((seed, index) => {
+    const salon = getSalonById(seed.salonId);
+    const service = salon?.services[index % (salon.services.length || 1)];
+    if (!salon || !service) return;
+
+    const startsAt = new Date();
+    startsAt.setDate(startsAt.getDate() + seed.dayOffset);
+    startsAt.setHours(seed.hour, seed.minute, 0, 0);
+
+    const id = "apt_demo_" + index;
+    const review = seed.review
+      ? {
+          id: "rev_demo_" + index,
+          appointmentId: id,
+          salonId: salon.id,
+          rating: seed.review.rating,
+          tags: seed.review.tags,
+          comment: seed.review.comment,
+          createdAt: new Date(
+            startsAt.getTime() + service.durationMin * 60000,
+          ).toISOString(),
+        }
+      : null;
+
+    if (review) reviews.push(review);
+
+    appointments.push({
+      id,
+      salonId: salon.id,
+      serviceId: service.id,
+      startsAt: startsAt.toISOString(),
+      durationMin: service.durationMin,
+      price: service.price,
+      status: seed.status,
+      createdAt: new Date(startsAt.getTime() - 5 * 86400000).toISOString(),
+      reviewId: review?.id ?? null,
+    });
+  });
+
+  await Promise.all([
+    writeList(APPOINTMENTS_KEY, appointments),
+    writeList(REVIEWS_KEY, reviews),
+  ]);
+}
+
 /** Dev reset — wipes bookings and reviews. */
 export async function resetBookingData(): Promise<void> {
   await AsyncStorage.multiRemove([APPOINTMENTS_KEY, REVIEWS_KEY]);

@@ -3,18 +3,24 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, Text, View } from "react-native";
+import { Animated, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { RatingStars } from "../../components/ui/RatingStars";
+import { elevation } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { coverFor } from "../../features/salons/covers";
+import {
+  avatarFor,
+  coverFor,
+  coverPlaceholder,
+  galleryFor,
+} from "../../features/salons/images";
 import { getSalonById } from "../../features/salons/data";
 import { formatDistance, haversineKm } from "../../features/salons/geo";
 import { specialtyLabel } from "../../features/salons/types";
@@ -139,10 +145,13 @@ export default function SalonDetail() {
         }}
       >
         <Image
-          source={coverFor(salon)}
+          source={coverFor(salon, 1000)}
+          placeholder={coverPlaceholder(salon.id)}
+          placeholderContentFit="cover"
+          cachePolicy="memory-disk"
           style={{ flex: 1 }}
           contentFit="cover"
-          transition={200}
+          transition={250}
         />
         <LinearGradient
           colors={[
@@ -227,6 +236,31 @@ export default function SalonDetail() {
                 flexWrap: "wrap",
               }}
             >
+              {salon.badges.map((badge) => (
+                <View
+                  key={badge}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.xs,
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                    borderRadius: radius.full,
+                    backgroundColor: theme.accent.warmSoft,
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name="seal-variant"
+                    size={14}
+                    color={theme.accent.warm}
+                  />
+                  <Text
+                    style={[typography.label, { color: theme.accent.warm }]}
+                  >
+                    {badge}
+                  </Text>
+                </View>
+              ))}
               {salon.specialties.map((specialty) => (
                 <Chip
                   key={specialty}
@@ -239,6 +273,42 @@ export default function SalonDetail() {
             <Text style={[typography.body, { color: theme.foreground.gray }]}>
               {salon.description}
             </Text>
+          </View>
+
+          {/* Galerie */}
+          <View style={{ gap: spacing.md }}>
+            <Text
+              style={[typography.overline, { color: theme.foreground.gray }]}
+            >
+              RÉALISATIONS
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: spacing.sm }}
+              style={{ marginHorizontal: -gutter }}
+              contentInset={{ left: gutter, right: gutter }}
+            >
+              <View style={{ width: gutter }} />
+              {galleryFor(salon.id, 8).map((image, index) => (
+                <Image
+                  key={image.uri}
+                  source={image}
+                  placeholder={coverPlaceholder(salon.id + index)}
+                  placeholderContentFit="cover"
+                  cachePolicy="memory-disk"
+                  style={{
+                    width: 132,
+                    height: 168,
+                    borderRadius: radius.lg,
+                    backgroundColor: theme.surface.sunken,
+                  }}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ))}
+              <View style={{ width: gutter }} />
+            </ScrollView>
           </View>
 
           {/* Prestations */}
@@ -259,17 +329,20 @@ export default function SalonDetail() {
                   accessibilityLabel={
                     service.name + ", " + formatPrice(service.price)
                   }
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: spacing.md,
-                    padding: spacing.lg,
-                    borderRadius: radius.lg,
-                    backgroundColor: theme.background.accent,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    opacity: pressed ? 0.75 : 1,
-                  })}
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.md,
+                      padding: spacing.lg,
+                      borderRadius: radius.xl,
+                      backgroundColor: theme.surface.raised,
+                      borderWidth: 1,
+                      borderColor: theme.divider,
+                      opacity: pressed ? 0.75 : 1,
+                    },
+                    elevation(1, theme.shadow),
+                  ]}
                 >
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text
@@ -303,15 +376,18 @@ export default function SalonDetail() {
           {/* Avis */}
           <Section title={"Avis (" + reviews.length + ")"}>
             <View
-              style={{
-                flexDirection: "row",
-                gap: spacing.xl,
-                padding: spacing.lg,
-                borderRadius: radius.lg,
-                backgroundColor: theme.background.accent,
-                borderWidth: 1,
-                borderColor: theme.border,
-              }}
+              style={[
+                {
+                  flexDirection: "row",
+                  gap: spacing.xl,
+                  padding: spacing.lg,
+                  borderRadius: radius.xl,
+                  backgroundColor: theme.surface.raised,
+                  borderWidth: 1,
+                  borderColor: theme.divider,
+                },
+                elevation(1, theme.shadow),
+              ]}
             >
               <View style={{ alignItems: "center", gap: spacing.xs }}>
                 <Text
@@ -377,9 +453,10 @@ export default function SalonDetail() {
                   style={{
                     gap: spacing.sm,
                     padding: spacing.lg,
-                    borderRadius: radius.lg,
+                    borderRadius: radius.xl,
                     borderWidth: 1,
-                    borderColor: theme.border,
+                    borderColor: theme.divider,
+                    backgroundColor: theme.surface.base,
                   }}
                 >
                   <View
@@ -389,6 +466,18 @@ export default function SalonDetail() {
                       gap: spacing.sm,
                     }}
                   >
+                    <Image
+                      source={avatarFor(review.author, salon.id)}
+                      cachePolicy="memory-disk"
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: radius.full,
+                        backgroundColor: theme.surface.sunken,
+                      }}
+                      contentFit="cover"
+                      transition={200}
+                    />
                     <Text
                       style={[
                         typography.label,
@@ -455,9 +544,10 @@ export default function SalonDetail() {
           <Section title="Horaires">
             <View
               style={{
-                borderRadius: radius.lg,
+                borderRadius: radius.xl,
                 borderWidth: 1,
-                borderColor: theme.border,
+                borderColor: theme.divider,
+                backgroundColor: theme.surface.base,
                 overflow: "hidden",
               }}
             >
@@ -473,7 +563,7 @@ export default function SalonDetail() {
                       paddingHorizontal: spacing.lg,
                       paddingVertical: spacing.md,
                       backgroundColor: isToday
-                        ? theme.background.accent
+                        ? theme.surface.base
                         : "transparent",
                     }}
                   >
@@ -516,10 +606,10 @@ export default function SalonDetail() {
           <Section title="Adresse">
             <View
               style={{
-                borderRadius: radius.lg,
+                borderRadius: radius.xl,
                 overflow: "hidden",
                 borderWidth: 1,
-                borderColor: theme.border,
+                borderColor: theme.divider,
               }}
             >
               <View style={{ height: 160 }}>
@@ -539,7 +629,7 @@ export default function SalonDetail() {
                   alignItems: "center",
                   gap: spacing.md,
                   padding: spacing.lg,
-                  backgroundColor: theme.background.accent,
+                  backgroundColor: theme.surface.base,
                 }}
               >
                 <MaterialCommunityIcons
@@ -579,7 +669,7 @@ export default function SalonDetail() {
           borderRadius: radius.full,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: theme.background.dark + "cc",
+          backgroundColor: theme.surface.glass,
           borderWidth: 1,
           borderColor: theme.border,
           opacity: pressed ? 0.7 : 1,
@@ -605,9 +695,10 @@ export default function SalonDetail() {
           paddingHorizontal: gutter,
           paddingTop: spacing.md,
           paddingBottom: Math.max(insets.bottom, spacing.md),
-          backgroundColor: theme.background.darker,
+          backgroundColor: theme.surface.raised,
           borderTopWidth: 1,
-          borderColor: theme.border,
+          borderColor: theme.divider,
+          ...elevation(3, theme.shadow),
         }}
       >
         <View style={{ gap: 2 }}>

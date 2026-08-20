@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../../components/ui/Button";
+import { elevation } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
@@ -190,9 +191,9 @@ export default function BookingFlow() {
           paddingTop: insets.top + spacing.sm,
           paddingHorizontal: gutter,
           paddingBottom: spacing.lg,
-          backgroundColor: theme.background.darker,
+          backgroundColor: theme.surface.base,
           borderBottomWidth: 1,
-          borderColor: theme.border,
+          borderColor: theme.divider,
           gap: spacing.lg,
         }}
       >
@@ -331,16 +332,23 @@ export default function BookingFlow() {
                   onPress={() => setSelectedService(service)}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: spacing.md,
-                    padding: spacing.lg,
-                    borderRadius: radius.lg,
-                    borderWidth: selected ? 2 : 1,
-                    borderColor: selected ? theme.primary.main : theme.border,
-                    backgroundColor: theme.background.accent,
-                  }}
+                  style={[
+                    {
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.md,
+                      padding: spacing.lg,
+                      borderRadius: radius.xl,
+                      borderWidth: selected ? 2 : 1,
+                      borderColor: selected
+                        ? theme.primary.main
+                        : theme.divider,
+                      backgroundColor: selected
+                        ? theme.primary.soft
+                        : theme.surface.raised,
+                    },
+                    elevation(1, theme.shadow),
+                  ]}
                 >
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text
@@ -395,16 +403,18 @@ export default function BookingFlow() {
                     accessibilityState={{ selected }}
                     accessibilityLabel={fullDate(candidate)}
                     style={{
-                      width: 62,
-                      paddingVertical: spacing.md,
+                      width: 68,
+                      paddingVertical: spacing.lg,
                       borderRadius: radius.lg,
                       alignItems: "center",
                       gap: 2,
                       backgroundColor: selected
                         ? theme.primary.main
-                        : theme.background.accent,
-                      borderWidth: 1,
-                      borderColor: selected ? theme.primary.main : theme.border,
+                        : theme.surface.raised,
+                      borderWidth: 1.5,
+                      borderColor: selected
+                        ? theme.primary.main
+                        : theme.divider,
                     }}
                   >
                     <Text
@@ -489,18 +499,18 @@ export default function BookingFlow() {
                         }}
                         style={{
                           width: (width - gutter * 2 - spacing.sm * 3) / 4,
-                          minHeight: 44,
+                          minHeight: 52,
                           alignItems: "center",
                           justifyContent: "center",
-                          borderRadius: radius.md,
-                          borderWidth: 1,
+                          borderRadius: radius.lg,
+                          borderWidth: 1.5,
                           borderColor: selected
                             ? theme.primary.main
-                            : theme.border,
+                            : theme.divider,
                           backgroundColor: selected
                             ? theme.primary.main
-                            : theme.background.accent,
-                          opacity: slot.available ? 1 : 0.35,
+                            : theme.surface.raised,
+                          opacity: slot.available ? 1 : 0.3,
                         }}
                       >
                         <Text
@@ -567,10 +577,11 @@ export default function BookingFlow() {
           paddingHorizontal: gutter,
           paddingTop: spacing.md,
           paddingBottom: Math.max(insets.bottom, spacing.md),
-          backgroundColor: theme.background.darker,
+          backgroundColor: theme.surface.raised,
           borderTopWidth: 1,
-          borderColor: theme.border,
+          borderColor: theme.divider,
           gap: spacing.sm,
+          ...elevation(3, theme.shadow),
         }}
       >
         {selectedService ? (
@@ -630,13 +641,16 @@ function TicketCard({
 
   return (
     <View
-      style={{
-        borderRadius: radius.xl,
-        backgroundColor: theme.background.accent,
-        borderWidth: 1,
-        borderColor: theme.border,
-        overflow: "hidden",
-      }}
+      style={[
+        {
+          borderRadius: radius.xl,
+          backgroundColor: theme.surface.raised,
+          borderWidth: 1,
+          borderColor: theme.divider,
+          overflow: "hidden",
+        },
+        elevation(2, theme.shadow),
+      ]}
     >
       <View style={{ padding: spacing.xl, gap: spacing.xs }}>
         <Text style={[typography.overline, { color: theme.accent.warm }]}>

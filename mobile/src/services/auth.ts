@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { seedDemoBookings } from "./booking";
 
 /**
  * Mock auth service. No backend exists yet (stack undecided — see TODO.md), so
@@ -61,11 +62,12 @@ export interface Session {
   application?: ProApplication | null;
   /** Reason shown on the refused-account state. */
   reviewMessage?: string | null;
+  /** ISO creation date — drives the "membre depuis" line. */
+  createdAt: string;
 }
 
 interface StoredUser extends Session {
   password: string;
-  createdAt: string;
 }
 
 export type AuthErrorCode =
@@ -115,7 +117,7 @@ async function writeUsers(users: StoredUser[]): Promise<void> {
 }
 
 function toSession(user: StoredUser): Session {
-  const { password: _password, createdAt: _createdAt, ...session } = user;
+  const { password: _password, ...session } = user;
   return session;
 }
 
@@ -263,6 +265,9 @@ export async function saveParticulierProfile(
 ): Promise<Session> {
   await delay();
   const user = await requireUser();
+  // Demo build: a brand-new particulier gets a populated agenda rather than
+  // three empty tabs. No-op once the account has any booking of its own.
+  await seedDemoBookings();
   return commit({ ...user, profile, status: "active" });
 }
 
@@ -425,6 +430,8 @@ export async function signInAsDemo(persona: DemoPersona): Promise<Session> {
   const user = buildDemoUser(persona);
   const users = await readUsers();
   await writeUsers([...users.filter((u) => u.userId !== user.userId), user]);
+  // A demo particulier should land on a lived-in agenda, not three empty tabs.
+  if (persona === "particulier") await seedDemoBookings();
   return persistSession(user);
 }
 

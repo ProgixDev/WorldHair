@@ -64,7 +64,7 @@ function makeStyles(theme: Theme) {
     container: {},
     segmentedControl: {
       flexDirection: "row",
-      backgroundColor: theme.background.accent,
+      backgroundColor: theme.surface.base,
       borderRadius: 14,
       padding: 4,
       gap: 4,

@@ -57,7 +57,8 @@ export interface Salon {
   stylist: string;
   tagline: string;
   description: string;
-  cover: "portrait" | "styles" | "storefront";
+  /** Short marketing labels shown as tags ("Nouveau", "Coup de coeur"). */
+  badges: string[];
   addressLine: string;
   postalCode: string;
   city: string;

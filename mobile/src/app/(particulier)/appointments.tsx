@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
@@ -97,7 +98,8 @@ export default function Appointments() {
         contentContainerStyle={{
           paddingHorizontal: gutter,
           paddingTop: insets.top + spacing.md,
-          paddingBottom: Math.max(insets.bottom, spacing.md) + 96,
+          paddingBottom:
+            Math.max(insets.bottom, spacing.md) + TAB_BAR_CLEARANCE,
           gap: spacing.xl,
         }}
         showsVerticalScrollIndicator={false}
@@ -218,12 +220,12 @@ function TimelineItem({
       <View style={{ width: 52, alignItems: "center", gap: spacing.xs }}>
         <View
           style={{
-            width: 52,
-            paddingVertical: spacing.sm,
-            borderRadius: radius.md,
+            width: 56,
+            paddingVertical: spacing.md,
+            borderRadius: radius.lg,
             alignItems: "center",
-            backgroundColor: theme.background.accent,
-            borderWidth: 1,
+            backgroundColor: upcoming ? theme.primary.soft : theme.surface.base,
+            borderWidth: 1.5,
             borderColor: accent,
           }}
         >
@@ -247,16 +249,19 @@ function TimelineItem({
       </View>
 
       <View
-        style={{
-          flex: 1,
-          padding: spacing.lg,
-          borderRadius: radius.lg,
-          backgroundColor: theme.background.accent,
-          borderWidth: 1,
-          borderColor: theme.border,
-          gap: spacing.md,
-          opacity: cancelled ? 0.6 : 1,
-        }}
+        style={[
+          {
+            flex: 1,
+            padding: spacing.lg,
+            borderRadius: radius.xl,
+            backgroundColor: theme.surface.raised,
+            borderWidth: 1,
+            borderColor: theme.divider,
+            gap: spacing.md,
+            opacity: cancelled ? 0.6 : 1,
+          },
+          cancelled ? null : elevation(1, theme.shadow),
+        ]}
       >
         <View style={{ gap: spacing.xs }}>
           <View

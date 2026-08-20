@@ -14,6 +14,7 @@ import { FilterSheet } from "../../components/particulier/FilterSheet";
 import { SalonRow } from "../../components/particulier/SalonRow";
 import { Chip } from "../../components/ui/Chip";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
@@ -62,7 +63,8 @@ export default function Search() {
         contentContainerStyle={{
           paddingHorizontal: gutter,
           paddingTop: insets.top + spacing.md,
-          paddingBottom: Math.max(insets.bottom, spacing.md) + 96,
+          paddingBottom:
+            Math.max(insets.bottom, spacing.md) + TAB_BAR_CLEARANCE,
         }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -86,7 +88,7 @@ export default function Search() {
                 minHeight: 52,
                 paddingHorizontal: spacing.lg,
                 borderRadius: radius.full,
-                backgroundColor: theme.background.accent,
+                backgroundColor: theme.surface.base,
                 borderWidth: 1,
                 borderColor: theme.border,
               }}

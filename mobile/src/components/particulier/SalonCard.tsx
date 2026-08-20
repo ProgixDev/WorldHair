@@ -2,10 +2,11 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
+import { elevation } from "../../constants/elevation";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { coverFor } from "../../features/salons/covers";
+import { coverFor, coverPlaceholder } from "../../features/salons/images";
 import { formatDistance } from "../../features/salons/geo";
 import { specialtyLabel } from "../../features/salons/types";
 import type { SalonWithDistance } from "../../features/salons/types";
@@ -32,28 +33,34 @@ export function SalonCard({ salon, width, onPress, active }: SalonCardProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={salon.name + ", " + formatDistance(salon.distanceKm)}
-      style={({ pressed }) => ({
-        width,
-        flexDirection: "row",
-        gap: spacing.md,
-        padding: spacing.md,
-        borderRadius: radius.xl,
-        backgroundColor: theme.background.accent,
-        borderWidth: 1,
-        borderColor: active ? theme.primary.main : theme.border,
-        opacity: pressed ? 0.85 : 1,
-      })}
+      style={({ pressed }) => [
+        {
+          width,
+          flexDirection: "row",
+          gap: spacing.lg,
+          padding: spacing.md,
+          borderRadius: radius.xl,
+          backgroundColor: theme.surface.raised,
+          borderWidth: 1.5,
+          borderColor: active ? theme.primary.main : theme.divider,
+          opacity: pressed ? 0.9 : 1,
+        },
+        elevation(active ? 3 : 2, theme.shadow),
+      ]}
     >
       <Image
-        source={coverFor(salon)}
+        source={coverFor(salon, 400)}
+        placeholder={coverPlaceholder(salon.id)}
+        placeholderContentFit="cover"
+        cachePolicy="memory-disk"
         style={{
-          width: 92,
-          height: 92,
+          width: 104,
+          height: 104,
           borderRadius: radius.lg,
-          backgroundColor: theme.background.darker,
+          backgroundColor: theme.surface.sunken,
         }}
         contentFit="cover"
-        transition={150}
+        transition={200}
       />
 
       <View
@@ -70,7 +77,9 @@ export function SalonCard({ salon, width, onPress, active }: SalonCardProps) {
             style={[typography.caption, { color: theme.foreground.gray }]}
             numberOfLines={1}
           >
-            {salon.specialties.map(specialtyLabel).slice(0, 2).join(" · ")}
+            {salon.badges.length > 0
+              ? salon.badges[0]
+              : salon.specialties.map(specialtyLabel).slice(0, 2).join(" · ")}
           </Text>
         </View>
 
@@ -103,9 +112,19 @@ export function SalonCard({ salon, width, onPress, active }: SalonCardProps) {
           </View>
         </View>
 
-        <Text style={[typography.caption, { color: theme.primary.main }]}>
-          {"dès " + formatPrice(salon.priceFrom)}
-        </Text>
+        <View
+          style={{
+            alignSelf: "flex-start",
+            paddingHorizontal: spacing.md,
+            paddingVertical: 3,
+            borderRadius: radius.full,
+            backgroundColor: theme.accent.warmSoft,
+          }}
+        >
+          <Text style={[typography.label, { color: theme.accent.warm }]}>
+            {"dès " + formatPrice(salon.priceFrom)}
+          </Text>
+        </View>
       </View>
     </Pressable>
   );

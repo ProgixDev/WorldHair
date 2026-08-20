@@ -1,23 +1,38 @@
 ---
 name: Google (Material 3)
 colors:
-  background: "#f5f8fb"
-  foreground: "#0c2340"
+  background: "#f7f9fc"
+  foreground: "#0c1b2e"
   brand: "#0c2340"      # Primary
   muted: "#5b7186"      # Outline/Muted
-  border: "#8ba3b8"     # Outline
+  border: "#dbe3ee"     # Outline — hairline, never a mid-grey stroke
   card: "#ffffff"       # Surface Variant
-  accent: "#38b6ff"     # Secondary
-  success: "#24a148"
+  accent: "#38b6ff"     # Secondary — actions only
+  warm: "#a8703c"       # Editorial accent (ratings, rules, overlines)
+  success: "#1f9d55"
   danger: "#b3261e"     # Error
-  
+
+  surface:              # Elevation ramp, light
+    sunken: "#eef2f8"
+    base: "#ffffff"
+    raised: "#ffffff"
+    glass: "#ffffffe6"
+
   dark:
-    background: "#0a1626"
-    foreground: "#eaf2fa"
-    muted: "#8ba3b8"
-    border: "#1c3350"
-    card: "#122036"
+    background: "#080f1a"
+    foreground: "#f2f6fb"
+    muted: "#93a6bc"
+    border: "#1e2e45"
+    card: "#111c2e"
     accent: "#38b6ff"
+    warm: "#e4b980"
+    success: "#4ac97e"
+    danger: "#ff7a70"
+    surface:            # Elevation ramp, dark — lighter = closer to the user
+      sunken: "#050a12"
+      base: "#111c2e"
+      raised: "#17243a"
+      glass: "#0c1524e6"
 
 typography:
   fontFamily:
@@ -34,9 +49,19 @@ typography:
 rounded:
   default: "12px" # M3 uses 12px for cards/buttons by default
   md: "12px"
-  lg: "16px"
+  lg: "18px"
+  xl: "26px"
   full: "9999px"
 ---
+
+<!--
+WorldHair applied rules (mobile):
+- Blue accent = actions only (buttons, active states, links). Never decoration.
+- Warm gold = editorial signals (ratings, overlines, rules, prices from).
+- Depth comes from the surface ramp + soft shadows, not from outlines. A border
+  is a hairline separator, never a container's main definition.
+-->
+
 
 # Design System: Google (Material 3)
 

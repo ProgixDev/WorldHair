@@ -92,6 +92,11 @@ export function fullDate(date: Date): string {
   );
 }
 
+/** "août 2026" */
+export function monthAndYear(date: Date): string {
+  return MONTHS_LONG[date.getMonth()] + " " + date.getFullYear();
+}
+
 /** "14:30" */
 export function timeOfDay(date: Date): string {
   return (

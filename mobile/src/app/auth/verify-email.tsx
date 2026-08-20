@@ -117,7 +117,7 @@ export default function VerifyEmail() {
             gap: spacing.md,
             padding: spacing.lg,
             borderRadius: radius.lg,
-            backgroundColor: theme.background.accent,
+            backgroundColor: theme.surface.base,
             borderWidth: 1,
             borderColor: theme.border,
           }}
