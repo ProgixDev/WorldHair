@@ -1,3 +1,4 @@
+import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
 import * as NativeSplash from "expo-splash-screen";
 import { useEffect } from "react";
@@ -8,6 +9,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { AuthProvider } from "../contexts/AuthContext";
 import { ThemeProvider, useTheme } from "../contexts/ThemeContext";
 
 NativeSplash.preventAutoHideAsync();
@@ -17,12 +19,19 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
-        <SafeAreaProvider>
-          <RootLayoutWithTheme />
-        </SafeAreaProvider>
+        <AuthProvider>
+          <SafeAreaProvider>
+            <RootLayoutWithTheme />
+          </SafeAreaProvider>
+        </AuthProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** Routes that paint their own art edge to edge and own their insets. */
+function isImmersiveRoute(pathname: string): boolean {
+  return pathname === "/" || pathname.startsWith("/onboarding");
 }
 
 function RootLayoutWithTheme() {
@@ -30,23 +39,35 @@ function RootLayoutWithTheme() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
 
-  useEffect(() => {
-    NativeSplash.hideAsync();
-  }, []);
+  const [fontsLoaded] = useFonts({
+    "PlayfairDisplay-Regular": require("../../assets/fonts/PlayfairDisplay/PlayfairDisplay-Regular.ttf"),
+    "PlayfairDisplay-Medium": require("../../assets/fonts/PlayfairDisplay/PlayfairDisplay-Medium.ttf"),
+    "PlayfairDisplay-Bold": require("../../assets/fonts/PlayfairDisplay/PlayfairDisplay-Bold.ttf"),
+    "Roboto-Regular": require("../../assets/fonts/Roboto/Roboto-Regular.ttf"),
+    "Roboto-Medium": require("../../assets/fonts/Roboto/Roboto-Medium.ttf"),
+    "Roboto-Bold": require("../../assets/fonts/Roboto/Roboto-Bold.ttf"),
+  });
 
-  // Splash screen lives at the root index — exclude it from safe area
-  const isSplash = pathname === "/";
+  // Hold the native splash until the faces resolve, so no heading swaps
+  // typeface mid-view.
+  useEffect(() => {
+    if (fontsLoaded) NativeSplash.hideAsync();
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) return null;
+
+  const immersive = isImmersiveRoute(pathname);
 
   return (
     <View
       style={{
         flex: 1,
         backgroundColor: theme.background.darker,
-        paddingBottom: isSplash ? 0 : insets.bottom,
+        paddingBottom: immersive ? 0 : insets.bottom,
       }}
     >
       <SafeAreaView
-        edges={isSplash ? [] : ["top"]}
+        edges={immersive ? [] : ["top"]}
         style={{ flex: 1, backgroundColor: theme.background.dark }}
       >
         <Stack
@@ -57,6 +78,10 @@ function RootLayoutWithTheme() {
           }}
         >
           <Stack.Screen name="index" options={{ animation: "fade" }} />
+          <Stack.Screen
+            name="onboarding/index"
+            options={{ animation: "fade" }}
+          />
           <Stack.Screen name="home/index" options={{ animation: "fade" }} />
         </Stack>
       </SafeAreaView>

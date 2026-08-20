@@ -1,30 +1,39 @@
-# Onboarding & auth entry — design
+# Onboarding & auth — design
 
-Date: 2026-08-18
-Scope: TODO.md → Frontend → "Onboarding & auth", items 1 and 2 only
-(écran d'accueil / onboarding carousel + inscription-connexion).
-Out of scope this pass: email verification, particulier profile setup,
-coiffeur signup, ID/diploma upload, pending-validation screen.
+Date: 2026-08-18 · Updated 2026-08-20 (built, full section)
+Scope: TODO.md → Frontend → "Onboarding & auth", all seven items.
 
 ## Constraints
 
-- No backend exists (stack undecided in TODO.md). All auth calls are mocked
-  behind one service module so the real API replaces one file later.
+- Frontend only — no backend exists (stack undecided in TODO.md). Every auth
+  call is mocked behind `services/auth.ts`, the single file the real API
+  replaces later.
 - `expo-location`, `expo-auth-session`, `expo-apple-authentication` are NOT
-  installed. Geolocation and real OAuth are therefore stubbed and flagged.
-- `.agents/AGENTS.md` governs screen structure, safe areas, sizing, spacing.
-- `DESIGN.md` governs color and type tokens.
+  installed. Geolocation and OAuth are stubbed and flagged in code.
+- `expo-image-picker` and `expo-document-picker` ARE installed (justificatifs).
+  Both are native modules: `android/` is prebuilt, so a rebuild is required
+  before the pickers work on device.
+- `.agents/AGENTS.md` governs sizing and screen structure, `DESIGN.md` colors
+  and type.
 
 ## Flow
 
-    src/app/index.tsx (splash)  → hydrate AsyncStorage
-        !onboardingSeen         → /onboarding
-        seen && !session        → /auth/sign-in
-        session                 → /home
+    app/index.tsx (splash) → hydrate session + onboarding flag
+        nextRouteForSession(session, onboardingSeen)   [features/auth/routing.ts]
+          !onboardingSeen ................ /onboarding
+          no session ..................... /auth/sign-in
+          !emailVerified ................. /auth/verify-email
+          coiffeur, dossier en revue ..... /auth/pending
+          coiffeur, dossier à remplir .... /auth/pro/identity
+          particulier sans profil ........ /auth/profile-setup
+          sinon .......................... /home
+
+`nextRouteForSession` is pure, so the gate is decided in one place and can be
+reasoned about without a navigator.
 
 ## Onboarding
 
-Three slides, art already vendored in `assets/images/OnBoarding`:
+Three slides over the art in `assets/images/OnBoarding`:
 
 | # | Art | Heading | CTA |
 |---|-----|---------|-----|
@@ -32,70 +41,75 @@ Three slides, art already vendored in `assets/images/OnBoarding`:
 | 2 | OnBoarding2 (cream collage, top panel) | Une coiffure qui vous ressemble. | Trouver mon style |
 | 3 | OnBoarding3 (salon, top panel) | Le bon salon, au bon moment. | Activer ma position + ghost "Choisir une ville" |
 
-Slide 1 additionally carries the wordmark (`WorldHair` / `LA BEAUTÉ, PARTOUT.`)
-over the art. Slide 3 carries a warm-accent rule under its heading.
-
-Paged horizontal list; swipe and CTA both advance. Dots + `n/3` counter at the
-bottom, per mockup. No skip control (absent from the mockups).
+Slide 1 carries the wordmark (`WorldHair` / `LA BEAUTÉ, PARTOUT.`) over the art.
+Every slide opens its copy block with a warm editorial rule. Paged horizontal
+list; swipe and CTA both advance. Dots + `n/3` at the bottom. No skip control
+(absent from the mockups).
 
 Slide 3's two CTAs both complete onboarding and route to `/auth/sign-in`; they
 differ only in the `locationIntent` (`"gps"` | `"manual"`) they persist for the
-later particulier home screen to consume.
+later particulier home screen. The real permission prompt belongs where the
+`TODO` marker sits in `app/onboarding/index.tsx`.
 
-## Theme adaptation
+### Palette decision (reversed 2026-08-20)
 
-Decision: onboarding adapts to the app theme (user's call, against the
-recommendation of fixed per-slide surfaces).
+Earlier decision: onboarding adapts to the app theme. **Now: each slide wears a
+fixed palette sampled from its own artwork** (navy `#000f20`, cream `#f2e6d9`,
+warm white `#f7f4f1`), matching the mockups exactly. Onboarding is a pre-auth
+brand moment; the app theme takes over from the auth screens onward. The art
+still dissolves into its surface through a `LinearGradient`, so no hard seam.
+Reverting is a change to `palette` in `features/onboarding/slides.ts` alone.
 
-Each slide's surface is `theme.background.dark`. Art is full-bleed at the top
-with a `LinearGradient` from transparent to that surface over its lower band,
-so the photo dissolves into the page rather than ending on a hard seam.
+The CTA pill is identical on all three slides — accent `#38b6ff` on brand ink
+`#0c2340` (DESIGN.md tokens, and legible on every surface).
 
-Known risk: the two cream slides in dark mode still read as a bright panel over
-a dark page. Mitigation is the gradient plus a dark-mode veil over the art. If
-it looks wrong on device, the fallback is fixed per-slide surface colors — a
-one-constant change in `slides.ts`.
+## Auth screens
 
-## Auth entry
+| Route | Content |
+|-------|---------|
+| `auth/sign-in` | wordmark, serif H1, email + password, `ou` divider, Google (Apple on iOS), link to sign-up |
+| `auth/sign-up` | Particulier/Coiffeur segmented control, email, password + strength meter, CGU checkbox |
+| `auth/verify-email` | 6-box OTP, resend with 30 s cooldown, "utiliser une autre adresse", demo-code notice |
+| `auth/profile-setup` | avatar picker (optional photo), prénom, nom → `/home` |
+| `auth/pro/identity` | wizard 1/3 — prénom, nom, téléphone (FR) |
+| `auth/pro/salon` | wizard 2/3 — nom du salon, présentation, adresse, CP, ville |
+| `auth/pro/documents` | wizard 3/3 — pièce d'identité + diplôme, attestation, envoi |
+| `auth/pending` | dossier en revue (timeline + récap) or refusé (motif + reprise) |
 
-`/auth/sign-in`: wordmark, serif H1, email + password fields, `ou` divider,
-Google button (Apple additionally on iOS), footer link to sign-up.
+"Mot de passe oublié" is deliberately absent — not part of this TODO section.
+The coiffeur wizard keeps its answers in `ProApplicationProvider`
+(`app/auth/pro/_layout.tsx`), so a back-navigation never loses input.
 
-`/auth/sign-up`: Particulier/Coiffeur segmented control (the later coiffeur flow
-needs the role), email, password, CGU checkbox, footer link to sign-in.
-
-Both call the mock service and route to `/home` on success. "Mot de passe
-oublié" is deliberately omitted — it is not part of this TODO section.
+`auth/pending` carries a dashed "Mode démo" card that simulates the admin
+decision, since no back-office exists yet. `home` gained an "ONBOARDING & AUTH"
+section linking every screen plus a demo reset.
 
 ## Modules
 
 | File | Responsibility |
 |------|----------------|
-| `constants/typography.ts` | Playfair display + Roboto body presets |
-| `constants/themes.ts` | adds `accent.warm` token (TODO: "tons chauds accent") |
-| `constants/responsive.ts` | adds pure `onboardingArtHeightForSize(w,h)` |
-| `utils/validation.ts` | pure email/password/name validators |
-| `services/preferences.ts` | AsyncStorage keys: onboarding seen, location intent, session |
+| `constants/typography.ts` | Playfair display + Roboto presets (fontSize never scaled) |
+| `constants/spacing.ts` | 4pt scale, radii, touch-target minimum |
+| `constants/responsive.ts` | pure size helpers + `useResponsive()` on live dimensions |
+| `constants/themes.ts` | adds `primary.on`, `accent.warm`, `border`, `danger`, `success` |
+| `utils/validation.ts` | pure email / password / name / FR phone / CP validators |
+| `services/preferences.ts` | AsyncStorage: onboarding seen, location intent |
 | `services/auth.ts` | mock auth with latency + typed `AuthError`; the API seam |
-| `contexts/AuthContext.tsx` | session state, hydration flag, sign in/up/out |
-| `components/ui/Button.tsx` | primary pill / ghost, M3 state layer |
-| `components/ui/TextField.tsx` | label, error, password visibility toggle |
-| `components/ui/SocialButton.tsx` | Google / Apple outlined buttons |
-| `components/onboarding/OnboardingSlide.tsx` | art + gradient + copy block |
-| `components/onboarding/Pagination.tsx` | dots + `n/3` counter |
-| `features/onboarding/slides.ts` | slide copy and art data |
-| `app/onboarding/index.tsx` | carousel |
-| `app/auth/sign-in.tsx`, `app/auth/sign-up.tsx` | auth entry screens |
+| `contexts/AuthContext.tsx` | session state, hydration flag, every auth action |
+| `features/auth/routing.ts` | route table + pure `nextRouteForSession` |
+| `features/onboarding/slides.ts` | slide copy, art and palettes |
+| `features/pro/ProApplicationContext.tsx` | coiffeur wizard draft |
+| `components/ui/*` | Screen, Button, TextField, SocialButton, SegmentedControl, Checkbox, AuthHeader, OtpInput, AvatarPicker, UploadSlot |
+| `components/onboarding/*` | OnboardingSlide, Pagination |
 
-## Screen contract (per AGENTS.md)
+## Screen contract
 
-- Onboarding: `Screen` with `FULL_BLEED_BOTTOM_SAFE_EDGES`, `padded={false}`,
-  non-scroll; bottom clearance from the screen's own `contentStyle`.
-- Auth: `Screen scroll` with `STANDALONE_EDGES` and `CENTERED_COLUMN`;
-  `KeyboardAvoidingView` with no `keyboardVerticalOffset`.
-- No `SafeAreaView` / `useSafeAreaInsets` in any route.
-- Sizes from `useResponsive()`; `fontSize` never scaled; text containers use
-  `minHeight`. Spacing from the fixed `spacing` scale.
+- Safe areas are owned by `app/_layout.tsx`. Immersive routes (`/`,
+  `/onboarding`) get no insets from it and handle their own; every other route
+  gets the top inset there and the bottom inset from the root view. No screen
+  re-applies `SafeAreaView`.
+- Sizes come from `useResponsive()`; `fontSize` is never scaled; text
+  containers use `minHeight`. Spacing comes from the fixed `spacing` scale.
 
 ## Typography
 
@@ -106,6 +120,8 @@ the fonts resolve so headings never swap typeface mid-view.
 
 ## Verification
 
-`npm run typecheck` and `npm run lint` (never `npx tsc` — it resolves a decoy
-package in this repo). No test runner is configured, so pure logic is extracted
-into testable functions but no tests are written this pass.
+`npm run typecheck` and `bun expo lint` both clean (never `npx tsc` — it
+resolves a decoy package in this repo), plus `bun expo export --platform
+android` as a bundle smoke test. No test runner is configured, so pure logic
+lives in `utils/validation.ts` and `features/auth/routing.ts` ready to be
+tested once one is.

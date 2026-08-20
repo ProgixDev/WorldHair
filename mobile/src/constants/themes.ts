@@ -3,6 +3,8 @@ export interface Theme {
     main: string;
     light: string;
     dark: string;
+    /** Readable text/icon color to place on top of `primary.main`. */
+    on: string;
   };
   background: {
     dark: string;
@@ -13,6 +15,13 @@ export interface Theme {
     white: string;
     gray: string;
   };
+  /** Editorial warm tone borrowed from the onboarding art (rules, tags). */
+  accent: {
+    warm: string;
+  };
+  border: string;
+  danger: string;
+  success: string;
   logo: any; // Image require() source
 }
 
@@ -23,254 +32,64 @@ export interface ThemeVariant {
   dark: Theme;
 }
 
-// Default Theme Variant
+// Default Theme Variant — maps DESIGN.md's brand (deep blue) / accent
+// (bright blue) tokens onto primary. Deep blue leads in light mode (best
+// contrast on the light bg); bright blue leads in dark mode (deep blue is
+// nearly invisible against the dark bg, so the two swap which one is "main").
 const defaultVariant: ThemeVariant = {
   id: "default",
-  name: "Default",
+  name: "WorldHair",
   dark: {
     primary: {
-      main: "#C8F14A",
-      light: "#D6F45F",
-      dark: "#A4E600",
+      main: "#38b6ff",
+      light: "#7dd3ff",
+      dark: "#0c2340",
+      on: "#062033",
     },
     background: {
-      dark: "#0B0D0E",
-      darker: "#121417",
-      accent: "#1B1F24",
+      dark: "#0a1626",
+      darker: "#0f1d30",
+      accent: "#122036",
     },
     foreground: {
-      white: "#FFFFFF",
-      gray: "#BFC3C7",
+      white: "#eaf2fa",
+      gray: "#8ba3b8",
     },
+    accent: {
+      warm: "#d8b48a",
+    },
+    border: "#1c3350",
+    danger: "#ff8a80",
+    success: "#4ac97e",
     logo: require("../../assets/images/Logo.png"),
   },
   light: {
     primary: {
-      main: "#A4E600",
-      light: "#C8F14A",
-      dark: "#8ACC00",
+      main: "#0c2340",
+      light: "#38b6ff",
+      dark: "#081a30",
+      on: "#ffffff",
     },
     background: {
-      dark: "#FFFFFF",
-      darker: "#F5F5F5",
-      accent: "#E8E8E8",
+      dark: "#f5f8fb",
+      darker: "#eaf0f6",
+      accent: "#ffffff",
     },
     foreground: {
-      white: "#0B0D0E",
-      gray: "#5A5F66",
+      white: "#0c2340",
+      gray: "#5b7186",
     },
+    accent: {
+      warm: "#b9855a",
+    },
+    border: "#8ba3b8",
+    danger: "#b3261e",
+    success: "#24a148",
     logo: require("../../assets/images/Logo.png"),
   },
 };
 
-// Nord Theme Variant
-const nordVariant: ThemeVariant = {
-  id: "nord",
-  name: "Nord",
-  dark: {
-    primary: {
-      main: "#88C0D0",
-      light: "#8FBCBB",
-      dark: "#5E81AC",
-    },
-    background: {
-      dark: "#2E3440",
-      darker: "#3B4252",
-      accent: "#434C5E",
-    },
-    foreground: {
-      white: "#ECEFF4",
-      gray: "#D8DEE9",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-  light: {
-    primary: {
-      main: "#5E81AC",
-      light: "#81A1C1",
-      dark: "#4C6A94",
-    },
-    background: {
-      dark: "#ECEFF4",
-      darker: "#E5E9F0",
-      accent: "#D8DEE9",
-    },
-    foreground: {
-      white: "#2E3440",
-      gray: "#4C566A",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-};
-
-// Sapphire Theme Variant
-const sapphireVariant: ThemeVariant = {
-  id: "sapphire",
-  name: "Sapphire",
-  dark: {
-    primary: {
-      main: "#7AA2F7",
-      light: "#9EBBFF",
-      dark: "#5A8AE5",
-    },
-    background: {
-      dark: "#1A1B26",
-      darker: "#16161E",
-      accent: "#24283B",
-    },
-    foreground: {
-      white: "#C0CAF5",
-      gray: "#A9B1D6",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-  light: {
-    primary: {
-      main: "#2E7DE9",
-      light: "#5A9BF7",
-      dark: "#2563D1",
-    },
-    background: {
-      dark: "#D5D6DB",
-      darker: "#E1E2E7",
-      accent: "#C4C8DA",
-    },
-    foreground: {
-      white: "#3760BF",
-      gray: "#565A6E",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-};
-
-// Strawberry Daiquiri Theme Variant
-const strawberryVariant: ThemeVariant = {
-  id: "strawberry",
-  name: "Strawberry Daiquiri",
-  dark: {
-    primary: {
-      main: "#FF6B9D",
-      light: "#FF8FB8",
-      dark: "#E05482",
-    },
-    background: {
-      dark: "#1C1825",
-      darker: "#231D2F",
-      accent: "#2D2639",
-    },
-    foreground: {
-      white: "#E0DEF4",
-      gray: "#C4B5FD",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-  light: {
-    primary: {
-      main: "#E05482",
-      light: "#FF6B9D",
-      dark: "#C93F6B",
-    },
-    background: {
-      dark: "#FAF4ED",
-      darker: "#FFFAF3",
-      accent: "#F2E9DE",
-    },
-    foreground: {
-      white: "#575279",
-      gray: "#797593",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-};
-
-// Ocean Theme Variant
-const oceanVariant: ThemeVariant = {
-  id: "ocean",
-  name: "Ocean",
-  dark: {
-    primary: {
-      main: "#56C6E8",
-      light: "#7DD6F3",
-      dark: "#3BA5C7",
-    },
-    background: {
-      dark: "#0A1F2E",
-      darker: "#0D1B2A",
-      accent: "#1B2B3A",
-    },
-    foreground: {
-      white: "#E8F4F8",
-      gray: "#B8D4E0",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-  light: {
-    primary: {
-      main: "#0891B2",
-      light: "#22D3EE",
-      dark: "#0E7490",
-    },
-    background: {
-      dark: "#F0F9FF",
-      darker: "#E0F2FE",
-      accent: "#BAE6FD",
-    },
-    foreground: {
-      white: "#164E63",
-      gray: "#0E7490",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-};
-
-// Amber Theme Variant
-const amberVariant: ThemeVariant = {
-  id: "amber",
-  name: "Amber",
-  dark: {
-    primary: {
-      main: "#FDB813",
-      light: "#FDCB3D",
-      dark: "#E59F00",
-    },
-    background: {
-      dark: "#1C1917",
-      darker: "#292524",
-      accent: "#44403C",
-    },
-    foreground: {
-      white: "#FAFAF9",
-      gray: "#D6D3D1",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-  light: {
-    primary: {
-      main: "#F59E0B",
-      light: "#FDB813",
-      dark: "#D97706",
-    },
-    background: {
-      dark: "#FFFBEB",
-      darker: "#FEF3C7",
-      accent: "#FDE68A",
-    },
-    foreground: {
-      white: "#78350F",
-      gray: "#92400E",
-    },
-    logo: require("../../assets/images/Logo.png"),
-  },
-};
-
-export const themeVariants: ThemeVariant[] = [
-  defaultVariant,
-  nordVariant,
-  sapphireVariant,
-  strawberryVariant,
-  oceanVariant,
-  amberVariant,
-];
+export const themeVariants: ThemeVariant[] = [defaultVariant];
 
 export type ThemeMode = "system" | "light" | "dark";
 

@@ -72,10 +72,7 @@ function PhoneStatusBar({ theme }: { theme: Theme }) {
     <View style={styles.phoneStatusBar}>
       <View style={styles.phoneStatusBarLeft}>
         <Text
-          style={[
-            styles.phoneStatusBarTime,
-            { color: theme.foreground.white },
-          ]}
+          style={[styles.phoneStatusBarTime, { color: theme.foreground.white }]}
         >
           9:41
         </Text>
@@ -107,10 +104,7 @@ function PhoneStatusBar({ theme }: { theme: Theme }) {
 function PhoneCard({ theme }: { theme: Theme }) {
   return (
     <View
-      style={[
-        styles.phoneCard,
-        { backgroundColor: theme.background.accent },
-      ]}
+      style={[styles.phoneCard, { backgroundColor: theme.background.accent }]}
     >
       <View
         style={[

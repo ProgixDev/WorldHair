@@ -1,0 +1,108 @@
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import { Text, View } from "react-native";
+import { AuthHeader } from "../../components/ui/AuthHeader";
+import { AvatarPicker } from "../../components/ui/AvatarPicker";
+import { Button } from "../../components/ui/Button";
+import { Screen } from "../../components/ui/Screen";
+import { TextField } from "../../components/ui/TextField";
+import { useResponsive } from "../../constants/responsive";
+import { spacing } from "../../constants/spacing";
+import { typography } from "../../constants/typography";
+import { useAuth } from "../../contexts/AuthContext";
+import { useTheme } from "../../contexts/ThemeContext";
+import { ROUTES } from "../../features/auth/routing";
+import { isValidName } from "../../utils/validation";
+
+export default function ProfileSetup() {
+  const router = useRouter();
+  const { theme } = useTheme();
+  const { space } = useResponsive();
+  const { saveParticulierProfile } = useAuth();
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{
+    firstName?: string;
+    lastName?: string;
+  }>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    const next: typeof errors = {};
+    if (!isValidName(firstName)) next.firstName = "Prénom requis.";
+    if (!isValidName(lastName)) next.lastName = "Nom requis.";
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+
+    setFormError(null);
+    setSaving(true);
+    try {
+      await saveParticulierProfile({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        photoUri,
+      });
+      router.replace(ROUTES.home as never);
+    } catch {
+      setFormError("Enregistrement impossible. Réessayez.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Screen
+      scroll
+      centered
+      footer={
+        <Button label="Terminer" onPress={handleSubmit} loading={saving} />
+      }
+    >
+      <View
+        style={{ gap: space(spacing.xl), paddingBottom: space(spacing.lg) }}
+      >
+        <AuthHeader
+          title="Votre profil"
+          subtitle="Pour que les coiffeurs sachent qui ils accueillent."
+          showBack={false}
+        />
+
+        <AvatarPicker uri={photoUri} onChange={setPhotoUri} />
+
+        <View style={{ gap: spacing.lg }}>
+          <TextField
+            label="Prénom"
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder="Camille"
+            autoCapitalize="words"
+            autoComplete="given-name"
+            textContentType="givenName"
+            icon="account-outline"
+            error={errors.firstName}
+          />
+          <TextField
+            label="Nom"
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder="Durand"
+            autoCapitalize="words"
+            autoComplete="family-name"
+            textContentType="familyName"
+            icon="account-outline"
+            error={errors.lastName}
+          />
+        </View>
+
+        {formError ? (
+          <Text style={[typography.bodySmall, { color: theme.danger }]}>
+            {formError}
+          </Text>
+        ) : null}
+      </View>
+    </Screen>
+  );
+}

@@ -7,10 +7,7 @@
     "icon": "./assets/images/Logo.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
@@ -60,6 +57,13 @@
             "backgroundColor": "#0B0D0E",
             "image": "./assets/images/Logo.png"
           }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "WorldHair accède à vos photos pour votre photo de profil et vos justificatifs.",
+          "cameraPermission": "WorldHair utilise l'appareil photo pour photographier vos justificatifs."
         }
       ],
       "./plugins/withTransparentNavigationBar",

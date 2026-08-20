@@ -2,10 +2,65 @@ import React, { useMemo } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { themeVariants, Theme } from "../../constants/themes";
+import { ROUTES } from "../../features/auth/routing";
+import { resetMockAuth } from "../../services/auth";
+import { clearPreferences } from "../../services/preferences";
 
 type AppTheme = Theme;
+
+/** Direct entries into the onboarding/auth flow, for design review. */
+const AUTH_SCREENS: {
+  name: string;
+  description: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  path: string;
+}[] = [
+  {
+    name: "Onboarding",
+    description: "Carrousel 3 slides",
+    icon: "gesture-swipe-horizontal",
+    path: ROUTES.onboarding,
+  },
+  {
+    name: "Connexion",
+    description: "Email + mot de passe, social login",
+    icon: "login",
+    path: ROUTES.signIn,
+  },
+  {
+    name: "Inscription",
+    description: "Particulier ou coiffeur",
+    icon: "account-plus-outline",
+    path: ROUTES.signUp,
+  },
+  {
+    name: "Vérification email",
+    description: "Code à 6 chiffres",
+    icon: "email-check-outline",
+    path: ROUTES.verifyEmail,
+  },
+  {
+    name: "Profil particulier",
+    description: "Prénom, nom, photo",
+    icon: "account-circle-outline",
+    path: ROUTES.profileSetup,
+  },
+  {
+    name: "Inscription coiffeur",
+    description: "Infos, salon, justificatifs",
+    icon: "content-cut",
+    path: ROUTES.proIdentity,
+  },
+  {
+    name: "Compte en attente",
+    description: "Validation du dossier",
+    icon: "clock-outline",
+    path: ROUTES.pending,
+  },
+];
 
 interface ScreenCategory {
   id: string;
@@ -133,6 +188,7 @@ function SectionCard({ label, children, theme }: SectionCardProps) {
 export default function HomeScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { signOut } = useAuth();
   const s = makeStyles(theme);
 
   const screenCategories: ScreenCategory[] = useMemo(
@@ -213,6 +269,13 @@ export default function HomeScreen() {
     [theme],
   );
 
+  /** Wipes the mock accounts and the onboarding flag, then replays the flow. */
+  const handleResetDemo = async () => {
+    await signOut();
+    await Promise.all([resetMockAuth(), clearPreferences()]);
+    router.replace(ROUTES.onboarding as never);
+  };
+
   const getStatusColor = (status: Screen["status"]) => {
     switch (status) {
       case "ready":
@@ -284,6 +347,32 @@ export default function HomeScreen() {
             showChevron={true}
             theme={theme}
             isLast={false}
+          />
+        </SectionCard>
+
+        {/* ── ONBOARDING & AUTH ────────────────────── */}
+        <SectionCard label="ONBOARDING & AUTH" theme={theme}>
+          {AUTH_SCREENS.map((screen) => (
+            <SettingRow
+              key={screen.path}
+              icon={screen.icon}
+              iconColor={theme.primary.main}
+              label={screen.name}
+              description={screen.description}
+              onPress={() => router.push(screen.path as never)}
+              theme={theme}
+              isLast={false}
+            />
+          ))}
+          <SettingRow
+            icon="restore"
+            iconColor={theme.danger}
+            label="Réinitialiser la démo"
+            description="Efface les comptes de test et rejoue l'onboarding"
+            onPress={handleResetDemo}
+            showChevron={false}
+            isLast
+            theme={theme}
           />
         </SectionCard>
 

@@ -67,13 +67,13 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 ## Frontend (mobile — iOS & Android)
 
 ### Onboarding & auth
-- [ ] Écran d'accueil
-- [ ] Inscription / connexion (email+mdp, social login)
-- [ ] Écran vérification email
-- [ ] Setup profil particulier (prénom, nom, photo optionnelle)
-- [ ] Inscription coiffeur (infos perso, salon, adresse)
-- [ ] Upload pièce d'identité + diplôme
-- [ ] Écran "compte en attente de validation"
+- [x] Écran d'accueil (carrousel 3 slides)
+- [x] Inscription / connexion (email+mdp, social login — provider mocké)
+- [x] Écran vérification email (code 6 chiffres)
+- [x] Setup profil particulier (prénom, nom, photo optionnelle)
+- [x] Inscription coiffeur (infos perso, salon, adresse)
+- [x] Upload pièce d'identité + diplôme
+- [x] Écran "compte en attente de validation"
 
 ### Particulier
 - [ ] Écran accueil: carte/liste coiffeurs à proximité
