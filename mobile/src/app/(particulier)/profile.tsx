@@ -14,7 +14,10 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
-import { mapEngineLabel } from "../../features/salons/mapProvider";
+import {
+  mapEngineDetail,
+  mapEngineLabel,
+} from "../../features/salons/mapProvider";
 import { getSalonById } from "../../features/salons/data";
 import {
   coverFor,
@@ -521,18 +524,6 @@ export default function Profile() {
             label="Apparence"
             value="Clair, sombre ou système"
             onPress={() => router.push("/screens/Themes" as never)}
-          />
-          <Row
-            icon="map-outline"
-            label="Moteur de carte"
-            value={mapEngineLabel()}
-            onPress={() =>
-              Alert.alert(
-                "Moteur de carte",
-                mapEngineLabel() +
-                  ". Sans clé Google Maps, l'application affiche des tuiles OpenStreetMap sur Android. Renseignez GOOGLE_MAPS_API_KEY puis relancez le build natif pour passer sur Google Maps.",
-              )
-            }
             isLast
           />
         </Group>
@@ -556,6 +547,17 @@ export default function Profile() {
 
         {/* ── Dev ──────────────────────────────────────────────────────── */}
         <Group title="Développement">
+          <Row
+            icon="map-outline"
+            label="Moteur de carte"
+            value={mapEngineLabel()}
+            onPress={() =>
+              Alert.alert(
+                "Moteur de carte : " + mapEngineLabel(),
+                mapEngineDetail(),
+              )
+            }
+          />
           <Row
             icon="gesture-swipe-horizontal"
             label="Rejouer l'onboarding"
@@ -689,7 +691,7 @@ function RowShell({
           alignItems: "center",
           justifyContent: "center",
           backgroundColor:
-            tone === "danger" ? theme.surface.sunken : theme.primary.soft,
+            tone === "danger" ? theme.danger + "1f" : theme.primary.soft,
         }}
       >
         <MaterialCommunityIcons name={icon} size={19} color={color} />

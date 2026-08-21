@@ -40,7 +40,7 @@ export function ThemeModeSelector({
               size={18}
               color={
                 selectedMode === option.mode
-                  ? theme.background.dark
+                  ? theme.primary.on
                   : theme.foreground.gray
               }
             />
@@ -93,7 +93,7 @@ function makeStyles(theme: Theme) {
       color: theme.foreground.gray,
     },
     segmentTextActive: {
-      color: theme.background.dark,
+      color: theme.primary.on,
       fontWeight: "700",
     },
     pressed: {

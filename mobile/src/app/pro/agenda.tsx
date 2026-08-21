@@ -95,7 +95,7 @@ export default function ProAgenda() {
     Alert.alert(
       "Annuler ce rendez-vous ?",
       appointment.clientName +
-        " sera notifié de l'annulation, sans possibilité d'annuler ce geste.",
+        " sera notifié de l'annulation. Cette action est irréversible.",
       [
         { text: "Garder", style: "cancel" },
         {
@@ -107,8 +107,17 @@ export default function ProAgenda() {
     );
   };
 
-  const openHours = () => {
-    setDraft(availability.map((day) => ({ ...day })));
+  /**
+   * Opens the availability sheet. `forceOpenWeekday` pre-toggles that one day
+   * on in the draft, so the "Ouvrir ce jour" shortcut actually opens the day
+   * it names rather than just landing on the generic settings list.
+   */
+  const openHours = (forceOpenWeekday?: number) => {
+    setDraft(
+      availability.map((day) =>
+        day.weekday === forceOpenWeekday ? { ...day, open: true } : { ...day },
+      ),
+    );
     setHoursOpen(true);
   };
 
@@ -139,7 +148,7 @@ export default function ProAgenda() {
             Agenda
           </Text>
           <Pressable
-            onPress={openHours}
+            onPress={() => openHours()}
             accessibilityRole="button"
             accessibilityLabel="Modifier mes disponibilités"
             style={({ pressed }) => ({
@@ -306,7 +315,7 @@ export default function ProAgenda() {
                     onPress={() => void decide(appointment, "confirmed")}
                     loading={busyId === appointment.id}
                     background={theme.accent.warm}
-                    color="#1b1206"
+                    color={theme.accent.warmOn}
                     style={{ flex: 1.3 }}
                   />
                 </View>
@@ -357,7 +366,9 @@ export default function ProAgenda() {
                     style={[
                       typography.caption,
                       {
-                        color: selected ? "#1b1206" : theme.foreground.gray,
+                        color: selected
+                          ? theme.accent.warmOn
+                          : theme.foreground.gray,
                       },
                     ]}
                   >
@@ -367,7 +378,9 @@ export default function ProAgenda() {
                     style={[
                       typography.bodyMedium,
                       {
-                        color: selected ? "#1b1206" : theme.foreground.white,
+                        color: selected
+                          ? theme.accent.warmOn
+                          : theme.foreground.white,
                       },
                     ]}
                   >
@@ -389,7 +402,7 @@ export default function ProAgenda() {
                           height: 4,
                           borderRadius: 2,
                           backgroundColor: selected
-                            ? "#1b1206"
+                            ? theme.accent.warmOn
                             : theme.primary.main,
                         }}
                       />
@@ -457,7 +470,7 @@ export default function ProAgenda() {
               <Button
                 label="Ouvrir ce jour"
                 variant="outline"
-                onPress={openHours}
+                onPress={() => openHours(selectedDay.getDay())}
               />
             </View>
           ) : (
@@ -491,7 +504,7 @@ export default function ProAgenda() {
                 setHoursOpen(false);
               }}
               background={theme.accent.warm}
-              color="#1b1206"
+              color={theme.accent.warmOn}
               style={{ flex: 1.3 }}
             />
           </>
@@ -630,7 +643,7 @@ function DayColumn({
                 timeOfDay(start) +
                 ". Appui long pour annuler."
               }
-              style={{
+              style={({ pressed }) => ({
                 position: "absolute",
                 left: spacing.sm,
                 right: spacing.sm,
@@ -647,7 +660,11 @@ function DayColumn({
                 borderWidth: 1.5,
                 borderStyle: isPending ? "dashed" : "solid",
                 borderColor: isPending ? theme.danger : theme.accent.warm,
-              }}
+                // A tap alone does nothing here (only long-press cancels), so
+                // it still needs to visibly react — otherwise the block reads
+                // as unresponsive rather than "hold to cancel".
+                opacity: pressed ? 0.6 : 1,
+              })}
             >
               <Text
                 style={[typography.label, { color: theme.foreground.white }]}
@@ -711,7 +728,7 @@ function AvailabilityRow({
           onValueChange={(open) => onChange({ ...day, open })}
           accessibilityLabel={"Ouvrir le " + weekdayLong(reference)}
           trackColor={{ false: theme.surface.sunken, true: theme.accent.warm }}
-          thumbColor={day.open ? "#1b1206" : theme.foreground.gray}
+          thumbColor={day.open ? theme.accent.warmOn : theme.foreground.gray}
         />
       </View>
 

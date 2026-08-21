@@ -44,7 +44,7 @@ export function SocialButton({
         borderRadius: radius.full,
         borderWidth: 1,
         borderColor: theme.border,
-        backgroundColor: pressed ? theme.surface.base : theme.background.darker,
+        backgroundColor: pressed ? theme.surface.raised : theme.surface.base,
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.md,
         opacity: isDisabled ? 0.5 : 1,

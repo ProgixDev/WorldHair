@@ -287,7 +287,6 @@ export default function SalonDetail() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: spacing.sm }}
               style={{ marginHorizontal: -gutter }}
-              contentInset={{ left: gutter, right: gutter }}
             >
               <View style={{ width: gutter }} />
               {galleryFor(salon.id, 8).map((image, index) => (
@@ -374,7 +373,7 @@ export default function SalonDetail() {
           </Section>
 
           {/* Avis */}
-          <Section title={"Avis (" + reviews.length + ")"}>
+          <Section title="Avis récents">
             <View
               style={[
                 {
@@ -427,7 +426,7 @@ export default function SalonDetail() {
                           flex: 1,
                           height: 5,
                           borderRadius: radius.full,
-                          backgroundColor: theme.background.darker,
+                          backgroundColor: theme.surface.sunken,
                           overflow: "hidden",
                         }}
                       >

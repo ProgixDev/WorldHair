@@ -9,19 +9,23 @@ import {
   Text,
   View,
 } from "react-native";
-import {
-  Theme,
-  themeVariants,
-  getThemeByVariantAndMode,
-} from "../../../constants/themes";
-import { useTheme } from "../../../contexts/ThemeContext";
 import { ThemeModeSelector } from "../../../components/ui/ThemeModeSelector";
 import { ThemeVariantPreview } from "../../../components/ui/ThemeVariantPreview";
+import { useResponsive } from "../../../constants/responsive";
+import { MIN_TOUCH_SIZE, radius, spacing } from "../../../constants/spacing";
+import {
+  Theme,
+  getThemeByVariantAndMode,
+  themeVariants,
+} from "../../../constants/themes";
+import { typography } from "../../../constants/typography";
+import { useTheme } from "../../../contexts/ThemeContext";
 
 export default function ThemeSettingsScreen() {
   const { theme, themeMode, variantId, setThemeMode, setVariantId } =
     useTheme();
   const router = useRouter();
+  const { gutter } = useResponsive();
   const styles = makeStyles(theme);
 
   const getEffectiveMode = (): "light" | "dark" => {
@@ -37,13 +41,16 @@ export default function ThemeSettingsScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: gutter }]}>
         <Pressable
           style={({ pressed }) => [
             styles.headerBtn,
             pressed && { opacity: 0.6 },
           ]}
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Retour"
+          hitSlop={8}
         >
           <MaterialCommunityIcons
             name="arrow-left"
@@ -52,19 +59,22 @@ export default function ThemeSettingsScreen() {
           />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          Theme
+          Apparence
         </Text>
         <View style={styles.headerBtn} />
       </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingHorizontal: gutter },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Theme Mode Selector */}
+        {/* Mode selector */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>APPEARANCE MODE</Text>
+          <Text style={styles.sectionHeader}>MODE D&apos;AFFICHAGE</Text>
           <ThemeModeSelector
             theme={theme}
             selectedMode={themeMode}
@@ -72,9 +82,9 @@ export default function ThemeSettingsScreen() {
           />
         </View>
 
-        {/* Theme Variant Previews */}
+        {/* Palette previews */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>COLOR SCHEME</Text>
+          <Text style={styles.sectionHeader}>PALETTE DE COULEURS</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -114,63 +124,44 @@ function makeStyles(theme: Theme) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 14,
+      paddingVertical: spacing.md,
     },
     headerBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 10,
+      width: MIN_TOUCH_SIZE,
+      height: MIN_TOUCH_SIZE,
+      borderRadius: radius.md,
       backgroundColor: "transparent",
       alignItems: "center",
       justifyContent: "center",
     },
     headerTitle: {
-      fontSize: 16,
-      fontWeight: "700",
+      ...typography.bodyMedium,
       color: theme.foreground.white,
       flex: 1,
       textAlign: "center",
-      marginHorizontal: 8,
-    },
-    title: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: theme.foreground.white,
-    },
-    subtitle: {
-      fontSize: 15,
-      color: theme.foreground.gray,
+      marginHorizontal: spacing.sm,
     },
     scrollView: {
       flex: 1,
     },
     scrollContent: {
-      paddingHorizontal: 16,
-      paddingTop: 8,
-      paddingBottom: 24,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xl,
     },
     section: {
-      marginBottom: 24,
+      marginBottom: spacing.xxl,
     },
     sectionHeader: {
-      fontSize: 10,
-      fontWeight: "700",
+      ...typography.overline,
       color: theme.foreground.gray,
-      letterSpacing: 1.2,
-      marginBottom: 12,
-      paddingHorizontal: 4,
-      opacity: 0.7,
-      textTransform: "uppercase",
+      marginBottom: spacing.md,
+      paddingHorizontal: spacing.xs,
     },
     previewScrollContent: {
-      paddingVertical: 8,
-      paddingLeft: 4,
-      paddingRight: 24,
-      gap: 16,
-    },
-    pressed: {
-      opacity: 0.7,
+      paddingVertical: spacing.sm,
+      paddingLeft: spacing.xs,
+      paddingRight: spacing.xl,
+      gap: spacing.lg,
     },
   });
 }

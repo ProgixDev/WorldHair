@@ -66,7 +66,11 @@ export default function ProfileSetup() {
       scroll
       centered
       footer={
-        <Button label="Terminer" onPress={handleSubmit} loading={saving} />
+        <Button
+          label={isEditing ? "Enregistrer" : "Terminer"}
+          onPress={handleSubmit}
+          loading={saving}
+        />
       }
     >
       <View

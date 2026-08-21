@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { OnboardingSlide } from "../../components/onboarding/OnboardingSlide";
 import { useResponsive } from "../../constants/responsive";
+import { useLocation } from "../../contexts/LocationContext";
 import { ROUTES } from "../../features/auth/routing";
 import {
   ONBOARDING_SLIDES,
@@ -23,6 +24,7 @@ import {
 export default function Onboarding() {
   const router = useRouter();
   const { width } = useResponsive();
+  const { enable } = useLocation();
   const listRef = useRef<FlatList<OnboardingSlideData>>(null);
   const [index, setIndex] = useState(0);
 
@@ -51,14 +53,16 @@ export default function Onboarding() {
     (slideIndex: number) => {
       const slide = ONBOARDING_SLIDES[slideIndex];
       if (slide.cta.locationIntent) {
-        // TODO: expo-location is not installed — the real permission prompt
-        // belongs here. For now the intent is persisted for the home screen.
+        // "Activer ma position" should actually prompt for it, not just
+        // record the intent — the permission dialog runs alongside the
+        // navigation rather than blocking it.
+        if (slide.cta.locationIntent === "gps") void enable();
         void finish(slide.cta.locationIntent);
         return;
       }
       goTo(Math.min(slideIndex + 1, ONBOARDING_SLIDES.length - 1));
     },
-    [finish, goTo],
+    [enable, finish, goTo],
   );
 
   const handleMomentumEnd = (

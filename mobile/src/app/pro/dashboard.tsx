@@ -46,7 +46,11 @@ export default function ProDashboard() {
   const router = useRouter();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { gutter, width } = useResponsive();
+  const { gutter, width, isExpanded } = useResponsive();
+  // On a tablet, one row of four beats two stretched-out rows of two.
+  const kpiColumns = isExpanded ? 4 : 2;
+  const kpiWidth =
+    (width - gutter * 2 - spacing.md * (kpiColumns - 1)) / kpiColumns;
   const { profile, services, appointments, subscription, isLoading } = usePro();
 
   const stats = useMemo(() => computeStats(appointments), [appointments]);
@@ -215,25 +219,25 @@ export default function ProDashboard() {
             value={String(stats.bookingsThisWeek)}
             trend={stats.weekTrend}
             icon="calendar-week"
-            width={(width - gutter * 2 - spacing.md) / 2}
+            width={kpiWidth}
           />
           <Kpi
             label="CA du mois"
             value={formatAmount(stats.revenueThisMonth)}
             icon="cash-multiple"
-            width={(width - gutter * 2 - spacing.md) / 2}
+            width={kpiWidth}
           />
           <Kpi
             label="Panier moyen"
             value={formatPrice(stats.averageBasket)}
             icon="tag-outline"
-            width={(width - gutter * 2 - spacing.md) / 2}
+            width={kpiWidth}
           />
           <Kpi
             label="Taux d'acceptation"
             value={stats.acceptanceRate + " %"}
             icon="check-decagram-outline"
-            width={(width - gutter * 2 - spacing.md) / 2}
+            width={kpiWidth}
           />
         </View>
 

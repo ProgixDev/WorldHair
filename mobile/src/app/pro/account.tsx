@@ -400,7 +400,7 @@ export default function ProAccount() {
           label="Réactiver mon abonnement"
           onPress={() => void reactivateSubscription()}
           background={theme.accent.warm}
-          color="#1b1206"
+          color={theme.accent.warmOn}
         />
       ) : (
         <Button

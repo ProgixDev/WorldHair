@@ -155,7 +155,7 @@ export function UploadSlot({
                 width: 48,
                 height: 48,
                 borderRadius: radius.sm,
-                backgroundColor: theme.background.darker,
+                backgroundColor: theme.surface.sunken,
                 alignItems: "center",
                 justifyContent: "center",
               }}

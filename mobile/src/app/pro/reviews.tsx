@@ -181,12 +181,16 @@ export default function ProReviews() {
             label={"Tous (" + reviews.length + ")"}
             selected={filter === "all"}
             onPress={() => setFilter("all")}
+            accentColor={theme.accent.warm}
+            accentOnColor={theme.accent.warmOn}
           />
           <Chip
             label={"Sans réponse (" + unanswered.length + ")"}
             icon="message-alert-outline"
             selected={filter === "unanswered"}
             onPress={() => setFilter("unanswered")}
+            accentColor={theme.accent.warm}
+            accentOnColor={theme.accent.warmOn}
           />
         </View>
 
@@ -391,7 +395,7 @@ export default function ProReviews() {
               disabled={draft.trim().length < 5}
               loading={saving}
               background={theme.accent.warm}
-              color="#1b1206"
+              color={theme.accent.warmOn}
               style={{ flex: 1.3 }}
             />
           </>

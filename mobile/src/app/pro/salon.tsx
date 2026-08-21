@@ -295,6 +295,8 @@ export default function ProSalonPage() {
                     label={specialty.label}
                     selected={draft.specialties.includes(specialty.id)}
                     onPress={() => toggleSpecialty(specialty.id)}
+                    accentColor={theme.accent.warm}
+                    accentOnColor={theme.accent.warmOn}
                   />
                 ))}
               </View>
@@ -526,7 +528,7 @@ export default function ProSalonPage() {
             onPress={save}
             loading={saving}
             background={theme.accent.warm}
-            color="#1b1206"
+            color={theme.accent.warmOn}
           />
         </View>
       ) : null}
@@ -589,7 +591,7 @@ function ServiceEditor({
             disabled={!valid}
             loading={saving}
             background={theme.accent.warm}
-            color="#1b1206"
+            color={theme.accent.warmOn}
             style={{ flex: 1.3 }}
           />
         </>
@@ -643,6 +645,8 @@ function ServiceEditor({
               label={specialty.label}
               selected={draft.specialty === specialty.id}
               onPress={() => setDraft({ ...draft, specialty: specialty.id })}
+              accentColor={theme.accent.warm}
+              accentOnColor={theme.accent.warmOn}
             />
           ))}
         </View>

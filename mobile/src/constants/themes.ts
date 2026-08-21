@@ -33,6 +33,8 @@ export interface Theme {
     warm: string;
     /** Warm wash behind gold badges. */
     warmSoft: string;
+    /** Readable text/icon color to place on top of `accent.warm`. */
+    warmOn: string;
   };
   border: string;
   /** Even lighter stroke for separators inside a card. */
@@ -84,6 +86,7 @@ const defaultVariant: ThemeVariant = {
     accent: {
       warm: "#e4b980",
       warmSoft: "#e4b9801f",
+      warmOn: "#120a03",
     },
     border: "#1e2e45",
     divider: "#16233a",
@@ -118,6 +121,7 @@ const defaultVariant: ThemeVariant = {
     accent: {
       warm: "#a8703c",
       warmSoft: "#a8703c14",
+      warmOn: "#120a03",
     },
     border: "#dbe3ee",
     divider: "#e8edf4",

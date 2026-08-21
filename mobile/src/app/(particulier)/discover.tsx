@@ -5,7 +5,6 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -14,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { SalonCard } from "../../components/particulier/SalonCard";
+import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -374,65 +374,32 @@ function CityPicker({
   onPick: (city: (typeof CITIES)[number]) => void;
 }) {
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <Pressable
-        onPress={onClose}
-        accessibilityLabel="Fermer"
-        style={{ flex: 1, backgroundColor: "#00000099" }}
-      />
-      <View
-        style={{
-          backgroundColor: theme.background.darker,
-          borderTopLeftRadius: radius.xl,
-          borderTopRightRadius: radius.xl,
-          borderTopWidth: 1,
-          borderColor: theme.border,
-          paddingBottom: Math.max(insets.bottom, spacing.lg),
-          paddingHorizontal: spacing.xl,
-          paddingTop: spacing.lg,
-          gap: spacing.md,
-          maxHeight: "70%",
-        }}
-      >
-        <Text style={[typography.h2, { color: theme.foreground.white }]}>
-          Choisir une ville
-        </Text>
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {CITIES.map((city) => (
-            <Pressable
-              key={city.id}
-              onPress={() => onPick(city)}
-              accessibilityRole="button"
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                minHeight: 52,
-                opacity: pressed ? 0.6 : 1,
-              })}
-            >
-              <MaterialCommunityIcons
-                name="city-variant-outline"
-                size={20}
-                color={theme.foreground.gray}
-              />
-              <Text
-                style={[typography.body, { color: theme.foreground.white }]}
-              >
-                {city.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} title="Choisir une ville" onClose={onClose}>
+      {CITIES.map((city) => (
+        <Pressable
+          key={city.id}
+          onPress={() => onPick(city)}
+          accessibilityRole="button"
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.md,
+            minHeight: 52,
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <MaterialCommunityIcons
+            name="city-variant-outline"
+            size={20}
+            color={theme.foreground.gray}
+          />
+          <Text style={[typography.body, { color: theme.foreground.white }]}>
+            {city.label}
+          </Text>
+        </Pressable>
+      ))}
+    </BottomSheet>
   );
 }

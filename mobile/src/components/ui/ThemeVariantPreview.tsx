@@ -54,7 +54,7 @@ export function ThemeVariantPreview({
             <Ionicons
               name="checkmark"
               size={16}
-              color={variantTheme.background.dark}
+              color={variantTheme.primary.on}
             />
           </View>
         )}

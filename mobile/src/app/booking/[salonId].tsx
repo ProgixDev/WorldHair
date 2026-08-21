@@ -49,7 +49,10 @@ export default function BookingFlow() {
   const router = useRouter();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { gutter, width } = useResponsive();
+  const { gutter, width, isExpanded } = useResponsive();
+  // A tablet should show more columns of slots, not four giant stretched
+  // pills — per AGENTS.md, bigger screens earn more content.
+  const slotColumns = isExpanded ? 6 : 4;
 
   const salon = getSalonById(String(salonId));
   const isReschedule = Boolean(appointmentId);
@@ -498,7 +501,11 @@ export default function BookingFlow() {
                           disabled: !slot.available,
                         }}
                         style={{
-                          width: (width - gutter * 2 - spacing.sm * 3) / 4,
+                          width:
+                            (width -
+                              gutter * 2 -
+                              spacing.sm * (slotColumns - 1)) /
+                            slotColumns,
                           minHeight: 52,
                           alignItems: "center",
                           justifyContent: "center",

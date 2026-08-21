@@ -68,3 +68,15 @@ export function mapEngineLabel(): string {
   if (USE_OSM_TILES) return "OpenStreetMap (sans clé)";
   return IS_EXPO_GO ? "Google Maps (clé Expo Go)" : "Google Maps";
 }
+
+/** Longer, engine-aware explanation for the diagnostics row's detail sheet. */
+export function mapEngineDetail(): string {
+  if (MAPBOX_ENABLED)
+    return "Rendu vectoriel Mapbox, activé via EXPO_PUBLIC_MAPBOX_PK.";
+  if (Platform.OS === "ios") return "Plans natifs d'Apple, sans clé requise.";
+  if (USE_OSM_TILES)
+    return "Aucune clé Google Maps configurée : tuiles OpenStreetMap affichées à la place. Renseignez GOOGLE_MAPS_API_KEY (ou EXPO_PUBLIC_MAPBOX_PK pour Mapbox) puis relancez le build natif.";
+  return IS_EXPO_GO
+    ? "Google Maps via la clé intégrée à Expo Go."
+    : "Google Maps avec la clé GOOGLE_MAPS_API_KEY du projet.";
+}

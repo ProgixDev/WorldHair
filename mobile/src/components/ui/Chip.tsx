@@ -14,6 +14,13 @@ interface ChipProps {
   badge?: number;
   /** Reads as a static tag rather than a control. */
   readOnly?: boolean;
+  /**
+   * Selected fill + border color — defaults to the app's blue. Pro screens
+   * pass `theme.accent.warm` so chips match their gold accent instead.
+   */
+  accentColor?: string;
+  /** Label/icon color on top of `accentColor` when selected. */
+  accentOnColor?: string;
 }
 
 /** Compact pill used for specialties, filters and tags. */
@@ -24,8 +31,12 @@ export function Chip({
   icon,
   badge,
   readOnly = false,
+  accentColor,
+  accentOnColor,
 }: ChipProps) {
   const { theme } = useTheme();
+  const accent = accentColor ?? theme.primary.main;
+  const accentOn = accentOnColor ?? theme.primary.on;
 
   const content = (
     <View
@@ -38,21 +49,21 @@ export function Chip({
         paddingVertical: spacing.sm,
         borderRadius: radius.full,
         borderWidth: 1,
-        borderColor: selected ? theme.primary.main : theme.border,
-        backgroundColor: selected ? theme.primary.main : theme.surface.base,
+        borderColor: selected ? accent : theme.border,
+        backgroundColor: selected ? accent : theme.surface.base,
       }}
     >
       {icon ? (
         <MaterialCommunityIcons
           name={icon}
           size={17}
-          color={selected ? theme.primary.on : theme.accent.warm}
+          color={selected ? accentOn : theme.accent.warm}
         />
       ) : null}
       <Text
         style={[
           typography.label,
-          { color: selected ? theme.primary.on : theme.foreground.white },
+          { color: selected ? accentOn : theme.foreground.white },
         ]}
         numberOfLines={1}
       >
@@ -67,14 +78,14 @@ export function Chip({
             borderRadius: radius.full,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: selected ? theme.primary.on : theme.primary.main,
+            backgroundColor: selected ? accentOn : accent,
           }}
         >
           <Text
             style={[
               typography.caption,
               {
-                color: selected ? theme.primary.main : theme.primary.on,
+                color: selected ? accent : accentOn,
                 fontSize: 11,
               },
             ]}

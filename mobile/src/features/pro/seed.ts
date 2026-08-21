@@ -381,7 +381,7 @@ export function seedAppointments(services: ProService[]): ProAppointment[] {
 
 export function seedSubscription(): Subscription {
   const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + 12);
+  trialEndsAt.setDate(trialEndsAt.getDate() + 30);
   const renewsAt = new Date(trialEndsAt);
 
   return {

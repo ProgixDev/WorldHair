@@ -11,13 +11,33 @@ import { useTheme } from "../../contexts/ThemeContext";
 
 const TABS: Record<
   string,
-  { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }
+  {
+    label: string;
+    icon: keyof typeof MaterialCommunityIcons.glyphMap;
+    activeIcon: keyof typeof MaterialCommunityIcons.glyphMap;
+  }
 > = {
-  dashboard: { label: "Bord", icon: "view-dashboard-outline" },
-  agenda: { label: "Agenda", icon: "calendar-month-outline" },
-  salon: { label: "Salon", icon: "storefront-outline" },
-  reviews: { label: "Avis", icon: "star-outline" },
-  account: { label: "Compte", icon: "account-cog-outline" },
+  dashboard: {
+    label: "Bord",
+    icon: "view-dashboard-outline",
+    activeIcon: "view-dashboard",
+  },
+  agenda: {
+    label: "Agenda",
+    icon: "calendar-month-outline",
+    activeIcon: "calendar-month",
+  },
+  salon: {
+    label: "Salon",
+    icon: "storefront-outline",
+    activeIcon: "storefront",
+  },
+  reviews: { label: "Avis", icon: "star-outline", activeIcon: "star" },
+  account: {
+    label: "Compte",
+    icon: "account-cog-outline",
+    activeIcon: "account-cog",
+  },
 };
 
 /**
@@ -107,7 +127,7 @@ export function ProTabBar({ state, navigation }: BottomTabBarProps) {
 
               <View>
                 <MaterialCommunityIcons
-                  name={tab.icon}
+                  name={focused ? tab.activeIcon : tab.icon}
                   size={24}
                   color={focused ? theme.accent.warm : theme.foreground.gray}
                 />

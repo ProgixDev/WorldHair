@@ -80,7 +80,7 @@ export function DemoLoginBar({
                 borderWidth: 1,
                 borderColor: busy ? theme.primary.main : theme.border,
                 backgroundColor: pressed
-                  ? theme.background.darker
+                  ? theme.surface.raised
                   : theme.surface.base,
                 paddingHorizontal: spacing.md,
                 paddingVertical: spacing.md,
