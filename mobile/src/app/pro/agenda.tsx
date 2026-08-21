@@ -159,16 +159,16 @@ export default function ProAgenda() {
               paddingVertical: spacing.sm,
               borderRadius: radius.full,
               borderWidth: 1,
-              borderColor: theme.accent.warm,
+              borderColor: theme.primary.main,
               opacity: pressed ? 0.6 : 1,
             })}
           >
             <MaterialCommunityIcons
               name="clock-edit-outline"
               size={15}
-              color={theme.accent.warm}
+              color={theme.primary.main}
             />
-            <Text style={[typography.label, { color: theme.accent.warm }]}>
+            <Text style={[typography.label, { color: theme.primary.main }]}>
               Horaires
             </Text>
           </Pressable>
@@ -314,8 +314,8 @@ export default function ProAgenda() {
                     label="Accepter"
                     onPress={() => void decide(appointment, "confirmed")}
                     loading={busyId === appointment.id}
-                    background={theme.accent.warm}
-                    color={theme.accent.warmOn}
+                    background={theme.primary.main}
+                    color={theme.primary.on}
                     style={{ flex: 1.3 }}
                   />
                 </View>
@@ -355,10 +355,10 @@ export default function ProAgenda() {
                     alignItems: "center",
                     gap: 3,
                     backgroundColor: selected
-                      ? theme.accent.warm
+                      ? theme.primary.main
                       : theme.surface.raised,
                     borderWidth: 1.5,
-                    borderColor: selected ? theme.accent.warm : theme.divider,
+                    borderColor: selected ? theme.primary.main : theme.divider,
                     opacity: config?.open ? 1 : 0.5,
                   }}
                 >
@@ -367,7 +367,7 @@ export default function ProAgenda() {
                       typography.caption,
                       {
                         color: selected
-                          ? theme.accent.warmOn
+                          ? theme.primary.on
                           : theme.foreground.gray,
                       },
                     ]}
@@ -379,7 +379,7 @@ export default function ProAgenda() {
                       typography.bodyMedium,
                       {
                         color: selected
-                          ? theme.accent.warmOn
+                          ? theme.primary.on
                           : theme.foreground.white,
                       },
                     ]}
@@ -402,7 +402,7 @@ export default function ProAgenda() {
                           height: 4,
                           borderRadius: 2,
                           backgroundColor: selected
-                            ? theme.accent.warmOn
+                            ? theme.primary.on
                             : theme.primary.main,
                         }}
                       />
@@ -503,8 +503,8 @@ export default function ProAgenda() {
                 void saveAvailability(draft);
                 setHoursOpen(false);
               }}
-              background={theme.accent.warm}
-              color={theme.accent.warmOn}
+              background={theme.primary.main}
+              color={theme.primary.on}
               style={{ flex: 1.3 }}
             />
           </>
@@ -656,10 +656,10 @@ function DayColumn({
                 gap: 2,
                 backgroundColor: isPending
                   ? theme.surface.raised
-                  : theme.accent.warmSoft,
+                  : theme.primary.soft,
                 borderWidth: 1.5,
                 borderStyle: isPending ? "dashed" : "solid",
-                borderColor: isPending ? theme.danger : theme.accent.warm,
+                borderColor: isPending ? theme.danger : theme.primary.main,
                 // A tap alone does nothing here (only long-press cancels), so
                 // it still needs to visibly react — otherwise the block reads
                 // as unresponsive rather than "hold to cancel".
@@ -727,8 +727,8 @@ function AvailabilityRow({
           value={day.open}
           onValueChange={(open) => onChange({ ...day, open })}
           accessibilityLabel={"Ouvrir le " + weekdayLong(reference)}
-          trackColor={{ false: theme.surface.sunken, true: theme.accent.warm }}
-          thumbColor={day.open ? theme.accent.warmOn : theme.foreground.gray}
+          trackColor={{ false: theme.surface.sunken, true: theme.primary.main }}
+          thumbColor={day.open ? theme.primary.on : theme.foreground.gray}
         />
       </View>
 
@@ -791,7 +791,7 @@ function TimeStepper({
           <MaterialCommunityIcons
             name="minus"
             size={18}
-            color={theme.accent.warm}
+            color={theme.primary.main}
           />
         </Pressable>
         <Text style={[typography.label, { color: theme.foreground.white }]}>
@@ -806,7 +806,7 @@ function TimeStepper({
           <MaterialCommunityIcons
             name="plus"
             size={18}
-            color={theme.accent.warm}
+            color={theme.primary.main}
           />
         </Pressable>
       </View>

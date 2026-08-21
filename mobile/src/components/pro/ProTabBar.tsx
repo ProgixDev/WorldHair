@@ -108,9 +108,7 @@ export function ProTabBar({ state, navigation }: BottomTabBarProps) {
                 gap: 5,
                 marginVertical: spacing.sm,
                 borderRadius: radius.lg,
-                backgroundColor: focused
-                  ? theme.accent.warmSoft
-                  : "transparent",
+                backgroundColor: focused ? theme.primary.soft : "transparent",
                 opacity: pressed ? 0.6 : 1,
               })}
             >
@@ -121,7 +119,7 @@ export function ProTabBar({ state, navigation }: BottomTabBarProps) {
                   width: 24,
                   height: 3,
                   borderRadius: radius.full,
-                  backgroundColor: focused ? theme.accent.warm : "transparent",
+                  backgroundColor: focused ? theme.primary.main : "transparent",
                 }}
               />
 
@@ -129,7 +127,7 @@ export function ProTabBar({ state, navigation }: BottomTabBarProps) {
                 <MaterialCommunityIcons
                   name={focused ? tab.activeIcon : tab.icon}
                   size={24}
-                  color={focused ? theme.accent.warm : theme.foreground.gray}
+                  color={focused ? theme.primary.main : theme.foreground.gray}
                 />
                 {badge > 0 ? (
                   <View
@@ -164,7 +162,7 @@ export function ProTabBar({ state, navigation }: BottomTabBarProps) {
                   typography.caption,
                   {
                     fontSize: 11,
-                    color: focused ? theme.accent.warm : theme.foreground.gray,
+                    color: focused ? theme.primary.main : theme.foreground.gray,
                   },
                 ]}
                 numberOfLines={1}

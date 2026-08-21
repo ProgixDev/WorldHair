@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
+import { Group, RowShell } from "../../components/ui/SettingsList";
 import { TextField } from "../../components/ui/TextField";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
@@ -79,7 +80,7 @@ export default function ProSalonPage() {
           justifyContent: "center",
         }}
       >
-        <ActivityIndicator color={theme.accent.warm} />
+        <ActivityIndicator color={theme.primary.main} />
       </View>
     );
 
@@ -213,7 +214,9 @@ export default function ProSalonPage() {
         >
           {/* ── Presentation ───────────────────────────────────────────── */}
           <View style={{ gap: spacing.lg }}>
-            <Text style={[typography.overline, { color: theme.accent.warm }]}>
+            <Text
+              style={[typography.overline, { color: theme.foreground.gray }]}
+            >
               PAGE DE PRÉSENTATION
             </Text>
 
@@ -295,8 +298,6 @@ export default function ProSalonPage() {
                     label={specialty.label}
                     selected={draft.specialties.includes(specialty.id)}
                     onPress={() => toggleSpecialty(specialty.id)}
-                    accentColor={theme.accent.warm}
-                    accentOnColor={theme.accent.warmOn}
                   />
                 ))}
               </View>
@@ -312,7 +313,9 @@ export default function ProSalonPage() {
                 justifyContent: "space-between",
               }}
             >
-              <Text style={[typography.overline, { color: theme.accent.warm }]}>
+              <Text
+                style={[typography.overline, { color: theme.foreground.gray }]}
+              >
                 {"PRESTATIONS (" + services.length + ")"}
               </Text>
               <Pressable
@@ -337,9 +340,9 @@ export default function ProSalonPage() {
                 <MaterialCommunityIcons
                   name="plus-circle"
                   size={18}
-                  color={theme.accent.warm}
+                  color={theme.primary.main}
                 />
-                <Text style={[typography.label, { color: theme.accent.warm }]}>
+                <Text style={[typography.label, { color: theme.primary.main }]}>
                   Ajouter
                 </Text>
               </Pressable>
@@ -439,19 +442,8 @@ export default function ProSalonPage() {
 
           {/* ── Hours summary ──────────────────────────────────────────── */}
           <View style={{ gap: spacing.md }}>
-            <Text style={[typography.overline, { color: theme.accent.warm }]}>
-              HORAIRES
-            </Text>
-            <View
-              style={{
-                borderRadius: radius.xl,
-                borderWidth: 1,
-                borderColor: theme.divider,
-                backgroundColor: theme.surface.base,
-                overflow: "hidden",
-              }}
-            >
-              {[1, 2, 3, 4, 5, 6, 0].map((weekday) => {
+            <Group title="Horaires">
+              {[1, 2, 3, 4, 5, 6, 0].map((weekday, index) => {
                 const day = availability.find(
                   (item) => item.weekday === weekday,
                 );
@@ -464,44 +456,27 @@ export default function ProSalonPage() {
                   "Vendredi",
                   "Samedi",
                 ][weekday];
+                const isOpen = Boolean(day?.open);
                 return (
-                  <View
+                  <RowShell
                     key={weekday}
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      paddingHorizontal: spacing.lg,
-                      paddingVertical: spacing.md,
-                    }}
-                  >
-                    <Text
-                      style={[
-                        typography.bodySmall,
-                        { color: theme.foreground.gray },
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                    <Text
-                      style={[
-                        typography.bodySmall,
-                        {
-                          color: day?.open
-                            ? theme.foreground.white
-                            : theme.foreground.gray,
-                        },
-                      ]}
-                    >
-                      {day?.open
+                    icon="clock-outline"
+                    label={label}
+                    value={
+                      isOpen && day
                         ? minutesToTime(day.opens) +
                           " – " +
                           minutesToTime(day.closes)
-                        : "Fermé"}
-                    </Text>
-                  </View>
+                        : "Fermé"
+                    }
+                    valueColor={
+                      isOpen ? theme.foreground.white : theme.foreground.gray
+                    }
+                    isLast={index === 6}
+                  />
                 );
               })}
-            </View>
+            </Group>
             <Text
               style={[typography.caption, { color: theme.foreground.gray }]}
             >
@@ -527,8 +502,8 @@ export default function ProSalonPage() {
             label="Enregistrer les modifications"
             onPress={save}
             loading={saving}
-            background={theme.accent.warm}
-            color={theme.accent.warmOn}
+            background={theme.primary.main}
+            color={theme.primary.on}
           />
         </View>
       ) : null}
@@ -590,8 +565,8 @@ function ServiceEditor({
             }}
             disabled={!valid}
             loading={saving}
-            background={theme.accent.warm}
-            color={theme.accent.warmOn}
+            background={theme.primary.main}
+            color={theme.primary.on}
             style={{ flex: 1.3 }}
           />
         </>
@@ -645,8 +620,6 @@ function ServiceEditor({
               label={specialty.label}
               selected={draft.specialty === specialty.id}
               onPress={() => setDraft({ ...draft, specialty: specialty.id })}
-              accentColor={theme.accent.warm}
-              accentOnColor={theme.accent.warmOn}
             />
           ))}
         </View>
@@ -704,7 +677,7 @@ function Stepper({
           <MaterialCommunityIcons
             name="minus-circle-outline"
             size={22}
-            color={theme.accent.warm}
+            color={theme.primary.main}
           />
         </Pressable>
         <Text
@@ -721,7 +694,7 @@ function Stepper({
           <MaterialCommunityIcons
             name="plus-circle-outline"
             size={22}
-            color={theme.accent.warm}
+            color={theme.primary.main}
           />
         </Pressable>
       </View>

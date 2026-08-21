@@ -74,7 +74,7 @@ export default function ProDashboard() {
           justifyContent: "center",
         }}
       >
-        <ActivityIndicator color={theme.accent.warm} />
+        <ActivityIndicator color={theme.primary.main} />
       </View>
     );
 
@@ -101,7 +101,7 @@ export default function ProDashboard() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <View style={{ paddingBottom: spacing.lg }}>
         <LinearGradient
-          colors={[theme.accent.warmSoft, theme.background.dark]}
+          colors={[theme.primary.soft, theme.background.dark]}
           style={{
             position: "absolute",
             top: 0,
@@ -134,7 +134,7 @@ export default function ProDashboard() {
             transition={200}
           />
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={[typography.caption, { color: theme.accent.warm }]}>
+            <Text style={[typography.caption, { color: theme.primary.main }]}>
               ESPACE PRO
             </Text>
             <Text
@@ -164,8 +164,8 @@ export default function ProDashboard() {
                 borderColor:
                   subscription.status === "cancelled"
                     ? theme.danger
-                    : theme.accent.warm,
-                backgroundColor: theme.accent.warmSoft,
+                    : theme.primary.main,
+                backgroundColor: theme.primary.soft,
                 opacity: pressed ? 0.8 : 1,
               },
             ]}
@@ -180,7 +180,7 @@ export default function ProDashboard() {
               color={
                 subscription.status === "cancelled"
                   ? theme.danger
-                  : theme.accent.warm
+                  : theme.primary.main
               }
             />
             <View style={{ flex: 1, gap: 2 }}>
@@ -300,7 +300,7 @@ export default function ProDashboard() {
                         {
                           fontSize: 10,
                           color: isCurrent
-                            ? theme.accent.warm
+                            ? theme.primary.main
                             : theme.foreground.gray,
                         },
                       ]}
@@ -313,7 +313,7 @@ export default function ProDashboard() {
                         height: Math.max(6, (week.count / maxWeek) * 88),
                         borderRadius: radius.sm,
                         backgroundColor: isCurrent
-                          ? theme.accent.warm
+                          ? theme.primary.main
                           : theme.primary.soft,
                         borderWidth: isCurrent ? 0 : 1,
                         borderColor: theme.primary.main,
@@ -367,7 +367,7 @@ export default function ProDashboard() {
                 accessibilityRole="link"
                 hitSlop={8}
               >
-                <Text style={[typography.label, { color: theme.accent.warm }]}>
+                <Text style={[typography.label, { color: theme.primary.main }]}>
                   Tout voir
                 </Text>
               </Pressable>
@@ -473,7 +473,7 @@ export default function ProDashboard() {
                 <Text
                   style={[
                     typography.label,
-                    { color: theme.accent.warm, width: 48 },
+                    { color: theme.primary.main, width: 48 },
                   ]}
                 >
                   {timeOfDay(new Date(appointment.startsAt))}
@@ -567,7 +567,7 @@ export default function ProDashboard() {
                         width: (Math.round((entry.count / max) * 100) +
                           "%") as `${number}%`,
                         height: "100%",
-                        backgroundColor: theme.accent.warm,
+                        backgroundColor: theme.primary.main,
                       }}
                     />
                   </View>
@@ -612,7 +612,11 @@ function Kpi({
         elevation(1, theme.shadow),
       ]}
     >
-      <MaterialCommunityIcons name={icon} size={17} color={theme.accent.warm} />
+      <MaterialCommunityIcons
+        name={icon}
+        size={17}
+        color={theme.primary.main}
+      />
       <Text style={[typography.h1, { color: theme.foreground.white }]}>
         {value}
       </Text>

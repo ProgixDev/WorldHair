@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../../components/ui/Button";
+import { Group, Row, RowShell } from "../../components/ui/SettingsList";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
@@ -63,7 +64,7 @@ export default function ProAccount() {
           justifyContent: "center",
         }}
       >
-        <ActivityIndicator color={theme.accent.warm} />
+        <ActivityIndicator color={theme.primary.main} />
       </View>
     );
 
@@ -166,12 +167,12 @@ export default function ProAccount() {
             backgroundColor:
               subscription.status === "cancelled"
                 ? theme.surface.raised
-                : theme.accent.warmSoft,
+                : theme.primary.soft,
             borderWidth: 1.5,
             borderColor:
               subscription.status === "cancelled"
                 ? theme.danger
-                : theme.accent.warm,
+                : theme.primary.main,
             gap: spacing.sm,
           },
           elevation(1, theme.shadow),
@@ -196,7 +197,7 @@ export default function ProAccount() {
             color={
               subscription.status === "cancelled"
                 ? theme.danger
-                : theme.accent.warm
+                : theme.primary.main
             }
           />
           <Text style={[typography.h2, { color: theme.foreground.white }]}>
@@ -247,7 +248,7 @@ export default function ProAccount() {
                   borderRadius: radius.xl,
                   backgroundColor: theme.surface.raised,
                   borderWidth: active ? 2 : 1,
-                  borderColor: active ? theme.accent.warm : theme.divider,
+                  borderColor: active ? theme.primary.main : theme.divider,
                   gap: spacing.sm,
                   opacity: pressed ? 0.85 : 1,
                 },
@@ -272,7 +273,7 @@ export default function ProAccount() {
                       paddingHorizontal: spacing.sm,
                       paddingVertical: 2,
                       borderRadius: radius.full,
-                      backgroundColor: theme.success + "22",
+                      backgroundColor: theme.success + "1f",
                     }}
                   >
                     <Text
@@ -284,12 +285,12 @@ export default function ProAccount() {
                 ) : null}
                 <View style={{ flex: 1 }} />
                 {busy === plan.id ? (
-                  <ActivityIndicator color={theme.accent.warm} />
+                  <ActivityIndicator color={theme.primary.main} />
                 ) : active ? (
                   <MaterialCommunityIcons
                     name="check-circle"
                     size={22}
-                    color={theme.accent.warm}
+                    color={theme.primary.main}
                   />
                 ) : null}
               </View>
@@ -359,19 +360,9 @@ export default function ProAccount() {
 
       {/* ── Billing ──────────────────────────────────────────────────── */}
       <View style={{ gap: spacing.md }}>
-        <Text style={[typography.overline, { color: theme.foreground.gray }]}>
-          FACTURATION
-        </Text>
-        <View
-          style={{
-            borderRadius: radius.xl,
-            borderWidth: 1,
-            borderColor: theme.divider,
-            backgroundColor: theme.surface.base,
-            overflow: "hidden",
-          }}
-        >
-          <BillingRow
+        <Group title="Facturation">
+          <RowShell
+            icon="credit-card-outline"
             label="Moyen de paiement"
             value={
               Platform.OS === "ios"
@@ -379,16 +370,18 @@ export default function ProAccount() {
                 : "Google Play Facturation"
             }
           />
-          <BillingRow
+          <RowShell
+            icon="calendar-clock-outline"
             label="Prochain prélèvement"
             value={fullDate(new Date(subscription.renewsAt))}
           />
-          <BillingRow
+          <RowShell
+            icon="storefront-outline"
             label="Salon facturé"
             value={profile?.name ?? "—"}
             isLast
           />
-        </View>
+        </Group>
         <Text style={[typography.caption, { color: theme.foreground.gray }]}>
           Le paiement passera par la boutique de votre téléphone : rien
           n&apos;est débité par cette démo.
@@ -399,8 +392,8 @@ export default function ProAccount() {
         <Button
           label="Réactiver mon abonnement"
           onPress={() => void reactivateSubscription()}
-          background={theme.accent.warm}
-          color={theme.accent.warmOn}
+          background={theme.primary.main}
+          color={theme.primary.on}
         />
       ) : (
         <Button
@@ -413,122 +406,49 @@ export default function ProAccount() {
         />
       )}
 
-      {/* ── Account ──────────────────────────────────────────────────── */}
-      <View style={{ gap: spacing.md }}>
-        <Text style={[typography.overline, { color: theme.foreground.gray }]}>
-          COMPTE
-        </Text>
-        <View
-          style={{
-            borderRadius: radius.xl,
-            borderWidth: 1,
-            borderColor: theme.divider,
-            backgroundColor: theme.surface.base,
-            overflow: "hidden",
-          }}
-        >
-          <BillingRow label="Email" value={session?.email ?? "—"} />
-          <BillingRow label="Coiffeur" value={profile?.stylist ?? "—"} isLast />
-        </View>
-
-        <Pressable
+      {/* ── Preferences ──────────────────────────────────────────────── */}
+      <Group title="Préférences">
+        <Row
+          icon="palette-outline"
+          label="Apparence"
+          value="Clair, sombre ou système"
           onPress={() => router.push("/screens/Themes" as never)}
-          accessibilityRole="button"
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            paddingVertical: spacing.md,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <MaterialCommunityIcons
-            name="palette-outline"
-            size={19}
-            color={theme.accent.warm}
-          />
-          <Text
-            style={[typography.bodyMedium, { color: theme.foreground.white }]}
-          >
-            Apparence
-          </Text>
-        </Pressable>
+          isLast
+        />
+      </Group>
 
-        <Pressable
-          onPress={handleResetWorkspace}
-          accessibilityRole="button"
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            paddingVertical: spacing.md,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <MaterialCommunityIcons
-            name="restore"
-            size={19}
-            color={theme.foreground.gray}
-          />
-          <Text
-            style={[typography.bodyMedium, { color: theme.foreground.gray }]}
-          >
-            Réinitialiser l&apos;espace pro (démo)
-          </Text>
-        </Pressable>
-
-        <Pressable
+      {/* ── Account ──────────────────────────────────────────────────── */}
+      <Group title="Compte">
+        <RowShell
+          icon="email-outline"
+          label="Email"
+          value={session?.email ?? "—"}
+        />
+        <RowShell
+          icon="account-outline"
+          label="Coiffeur"
+          value={profile?.stylist ?? "—"}
+        />
+        <Row
+          icon="logout"
+          label="Se déconnecter"
+          tone="danger"
           onPress={handleSignOut}
-          accessibilityRole="button"
-          style={({ pressed }) => ({
-            alignItems: "center",
-            paddingVertical: spacing.lg,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Text style={[typography.label, { color: theme.danger }]}>
-            Se déconnecter
-          </Text>
-        </Pressable>
-      </View>
-    </ScrollView>
-  );
-}
+          isLast
+        />
+      </Group>
 
-function BillingRow({
-  label,
-  value,
-  isLast,
-}: {
-  label: string;
-  value: string;
-  isLast?: boolean;
-}) {
-  const { theme } = useTheme();
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        gap: spacing.md,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderColor: theme.divider,
-      }}
-    >
-      <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
-        {label}
-      </Text>
-      <Text
-        style={[
-          typography.bodySmall,
-          { color: theme.foreground.white, flex: 1, textAlign: "right" },
-        ]}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
-    </View>
+      {/* ── Dev ──────────────────────────────────────────────────────── */}
+      <Group title="Développement">
+        <Row
+          icon="restore"
+          label="Réinitialiser l'espace pro"
+          value="Prestations, agenda, avis et abonnement de démo"
+          tone="danger"
+          onPress={handleResetWorkspace}
+          isLast
+        />
+      </Group>
+    </ScrollView>
   );
 }

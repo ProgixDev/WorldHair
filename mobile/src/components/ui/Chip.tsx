@@ -14,13 +14,6 @@ interface ChipProps {
   badge?: number;
   /** Reads as a static tag rather than a control. */
   readOnly?: boolean;
-  /**
-   * Selected fill + border color — defaults to the app's blue. Pro screens
-   * pass `theme.accent.warm` so chips match their gold accent instead.
-   */
-  accentColor?: string;
-  /** Label/icon color on top of `accentColor` when selected. */
-  accentOnColor?: string;
 }
 
 /** Compact pill used for specialties, filters and tags. */
@@ -31,12 +24,10 @@ export function Chip({
   icon,
   badge,
   readOnly = false,
-  accentColor,
-  accentOnColor,
 }: ChipProps) {
   const { theme } = useTheme();
-  const accent = accentColor ?? theme.primary.main;
-  const accentOn = accentOnColor ?? theme.primary.on;
+  const accent = theme.primary.main;
+  const accentOn = theme.primary.on;
 
   const content = (
     <View
@@ -57,7 +48,7 @@ export function Chip({
         <MaterialCommunityIcons
           name={icon}
           size={17}
-          color={selected ? accentOn : theme.accent.warm}
+          color={selected ? accentOn : theme.foreground.white}
         />
       ) : null}
       <Text
