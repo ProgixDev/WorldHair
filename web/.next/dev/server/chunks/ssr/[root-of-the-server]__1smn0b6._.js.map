@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///D:/Others/expo-template/web/src/components/theme-provider.tsx"],"sourcesContent":["\"use client\";\n\nimport { ThemeProvider as NextThemesProvider } from \"next-themes\";\nimport type { ComponentProps } from \"react\";\n\n/**\n * Thin \"use client\" wrapper — next-themes' provider is a client component,\n * but the root layout that needs to render it is a server component and\n * can't import client-only code directly at the top level.\n *\n * `attribute=\"class\"` toggles a `.dark` class on `<html>`, which is exactly\n * what globals.css's `@custom-variant dark (&:is(.dark *))` already expects\n * — no CSS changes needed, this was the missing piece.\n */\nexport function ThemeProvider({ children, ...props }: ComponentProps<typeof NextThemesProvider>) {\n  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;\n}\n"],"names":["ThemeProvider","children","props"],"mappings":";;;;;AAEA;AAFA;;;AAcO,SAASA,cAAc,EAAEC,QAAQ,EAAE,GAAGC,OAAkD;IAC7F,qBAAO,8OAAC,iKAAkB;QAAE,GAAGA,KAAK;kBAAGD;;;;;;AACzC"}}]
-}

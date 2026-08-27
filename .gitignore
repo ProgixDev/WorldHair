@@ -48,6 +48,7 @@ app-example
 # generated native folders
 /mobile/ios
 /mobile/android
+/web/.next
 
 # release signing key — outside android/ so `expo prebuild --clean` can never
 # touch it; ignored wholesale (not just *.jks) so nothing dropped in here

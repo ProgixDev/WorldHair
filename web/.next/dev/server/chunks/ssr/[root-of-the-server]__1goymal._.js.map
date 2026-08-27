@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 10, "column": 0}, "map": {"version":3,"sources":["file:///D:/Others/expo-template/web/src/app/page.tsx"],"sourcesContent":["import Image from \"next/image\";\n\nexport default function Home() {\n  return (\n    <div className=\"flex flex-1 flex-col items-center justify-center gap-4\">\n      <Image src=\"/Logo.png\" alt=\"Logo\" width={96} height={96} priority />\n      <h1 className=\"text-2xl font-semibold tracking-tight\">App</h1>\n    </div>\n  );\n}\n"],"names":["Home","className","src","alt","width","height","priority"],"mappings":";;;;;AAAA;;;AAEe,SAASA;IACtB,qBACE,8OAAC;QAAIC,WAAU;;0BACb,8OAAC,wIAAK;gBAACC,KAAI;gBAAYC,KAAI;gBAAOC,OAAO;gBAAIC,QAAQ;gBAAIC,QAAQ;;;;;;0BACjE,8OAAC;gBAAGL,WAAU;0BAAwC;;;;;;;;;;;;AAG5D"}}]
-}

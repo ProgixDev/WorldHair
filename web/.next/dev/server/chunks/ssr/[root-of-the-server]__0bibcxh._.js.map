@@ -1,9 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 13, "column": 0}, "map": {"version":3,"sources":["file:///D:/Others/expo-template/web/src/app/apple-icon.png.mjs%20(structured%20image%20object)"],"sourcesContent":["import src from \"IMAGE\";\nexport default { src, width: 180, height: 180 }\n"],"names":["src","width","height"],"mappings":";;;;AAAA;;uCACe;IAAEA,KAAAA,gJAAG;IAAEC,OAAO;IAAKC,QAAQ;AAAI"}},
-    {"offset": {"line": 31, "column": 0}, "map": {"version":3,"sources":["file:///D:/Others/expo-template/web/src/app/icon.png.mjs%20(structured%20image%20object)"],"sourcesContent":["import src from \"IMAGE\";\nexport default { src, width: 512, height: 512 }\n"],"names":["src","width","height"],"mappings":";;;;AAAA;;uCACe;IAAEA,KAAAA,uIAAG;IAAEC,OAAO;IAAKC,QAAQ;AAAI"}},
-    {"offset": {"line": 49, "column": 0}, "map": {"version":3,"sources":["file:///D:/Others/expo-template/web/src/app/opengraph-image.png.mjs%20(structured%20image%20object)"],"sourcesContent":["import src from \"IMAGE\";\nexport default { src, width: 1200, height: 630 }\n"],"names":["src","width","height"],"mappings":";;;;AAAA;;uCACe;IAAEA,KAAAA,qJAAG;IAAEC,OAAO;IAAMC,QAAQ;AAAI"}},
-    {"offset": {"line": 64, "column": 0}, "map": {"version":3,"sources":["file:///D:/Others/expo-template/web/src/app/page.tsx"],"sourcesContent":["import Image from \"next/image\";\n\nexport default function Home() {\n  return (\n    <div className=\"flex flex-1 flex-col items-center justify-center gap-4\">\n      <Image src=\"/Logo.png\" alt=\"Logo\" width={96} height={96} priority />\n      <h1 className=\"text-2xl font-semibold tracking-tight\">App</h1>\n    </div>\n  );\n}\n"],"names":["Home","className","src","alt","width","height","priority"],"mappings":";;;;;AAAA;;;AAEe,SAASA;IACtB,qBACE,8OAAC;QAAIC,WAAU;;0BACb,8OAAC,wIAAK;gBAACC,KAAI;gBAAYC,KAAI;gBAAOC,OAAO;gBAAIC,QAAQ;gBAAIC,QAAQ;;;;;;0BACjE,8OAAC;gBAAGL,WAAU;0BAAwC;;;;;;;;;;;;AAG5D"}}]
-}
