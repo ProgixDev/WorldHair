@@ -2,20 +2,15 @@ import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { ConfigModule } from './config/config.module';
 import { EnvironmentVariables } from './config/env.validation';
+import { DatabaseModule } from './database/database.module';
+import { HealthModule } from './health/health.module';
+import { UsersModule } from './users/users.module';
 
-/**
- * No database variant selected yet — `auth/`, `users/`, `database/`, and
- * `health/` don't exist until `bun run setup:mongodb` or `bun run
- * setup:supabase` materializes one (see server/README.md). Each of those
- * scripts rewrites this file to import its own modules and wire the JWT/auth
- * guard back in as `APP_GUARD`. Until then, this is a bare skeleton: config
- * validation, per-caller rate limiting (falls back to IP — there's no
- * `req.user` without an auth module), and mail (unused until a variant that
- * sends verification/reset email is selected).
- */
 @Module({
   imports: [
     ConfigModule,
@@ -31,7 +26,14 @@ import { EnvironmentVariables } from './config/env.validation';
         ],
       }),
     }),
+    DatabaseModule,
+    HealthModule,
+    UsersModule,
+    AuthModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: UserThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: UserThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+  ],
 })
 export class AppModule {}

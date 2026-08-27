@@ -19,12 +19,6 @@ export enum NodeEnv {
   Production = 'production',
 }
 
-/**
- * No database variant is selected yet — this validates only what's actually
- * wired up right now (config/throttling/mail). Run `bun run setup:mongodb` or
- * `bun run setup:supabase` first; each one replaces this file with a version
- * that also validates its own database/auth vars.
- */
 export class EnvironmentVariables {
   @IsEnum(NodeEnv)
   NODE_ENV: NodeEnv = NodeEnv.Development;
@@ -34,6 +28,21 @@ export class EnvironmentVariables {
   @Min(0)
   @Max(65535)
   PORT = 3000;
+
+  // --- Supabase ---
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_URL!: string;
+
+  /** Publishable key — safe in a client. Unused server-side today (SupabaseService uses the service role key) but validated here since it's part of the standard Supabase project config a project will also hand to its mobile/web client. */
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_ANON_KEY!: string;
+
+  /** Privileged, RLS-bypassing key — server-only. See database/supabase.service.ts. */
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_SERVICE_ROLE_KEY!: string;
 
   /** Comma-separated allow-list. Empty means "allow any origin" (fine for local dev and for a mobile client, which sends no Origin header). */
   @IsString()
@@ -51,6 +60,10 @@ export class EnvironmentVariables {
   THROTTLE_LIMIT = 120;
 
   // --- Mail ---
+  // Same schema as the mongodb variant's env.validation.ts — see
+  // server/README.md ("Environment") for why: mail/ is a fixed module shared
+  // by both variants, unmodified, so both variants' EnvironmentVariables must
+  // supply every key it reads.
   @IsIn(['json', 'smtp', 'relay'])
   MAIL_TRANSPORT: 'json' | 'smtp' | 'relay' = 'json';
 
@@ -90,7 +103,14 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   MAIL_FROM = 'App <no-reply@example.com>';
 
-  /** Read by mail/'s rendered templates. Unused until a database variant that sends these emails is selected — kept here for schema parity with both variants. */
+  /**
+   * Read only by the shared mail/ module's rendered templates. Supabase's own
+   * hosted Auth sends its own verification/reset email directly to the user —
+   * this server never triggers that flow — so these two are unused dead
+   * config under this variant unless a project wires MailService up for
+   * something else. Kept for schema parity with the mongodb variant's
+   * identically-named fields.
+   */
   @Type(() => Number)
   @IsInt()
   @Min(1)
