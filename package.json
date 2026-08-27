@@ -1,5 +1,5 @@
 {
-  "name": "worldhair",
+  "name": "worldhair-monorepo",
   "private": true,
   "scripts": {
     "install:all": "cd mobile && bun install",

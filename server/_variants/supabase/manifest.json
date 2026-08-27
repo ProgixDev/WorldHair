@@ -1,0 +1,34 @@
+{
+  "files": [
+    "app.module.ts",
+    "auth/auth.module.ts",
+    "auth/guards/jwt-auth.guard.spec.ts",
+    "auth/guards/jwt-auth.guard.ts",
+    "auth/guards/optional-jwt-auth.guard.ts",
+    "auth/strategies/supabase.strategy.spec.ts",
+    "auth/strategies/supabase.strategy.ts",
+    "config/env.validation.ts",
+    "database/database.module.ts",
+    "database/supabase.service.ts",
+    "health/health.controller.ts",
+    "health/health.module.ts",
+    "users/dto/update-profile.dto.ts",
+    "users/dto/user.dto.ts",
+    "users/username.util.ts",
+    "users/users.controller.ts",
+    "users/users.module.ts",
+    "users/users.service.spec.ts",
+    "users/users.service.ts",
+    "test/health.e2e-spec.ts",
+    "test/jest-e2e.json",
+    "test/users/users.e2e-spec.ts",
+    "test/utils/app-harness.ts",
+    "test/utils/fakes/fake-supabase.service.ts",
+    "test/utils/test-env.ts"
+  ],
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3"
+  },
+  "devDependencies": {},
+  "envBlock": "# --- Supabase ---\n# From your Supabase project's Settings -> API page.\nSUPABASE_URL=https://<project-ref>.supabase.co\nSUPABASE_ANON_KEY=\n# Privileged, Row-Level-Security-bypassing key — server-only. NEVER send this\n# to a mobile/web client; the client uses SUPABASE_ANON_KEY with its own\n# Supabase client instead. See src/database/supabase.service.ts.\nSUPABASE_SERVICE_ROLE_KEY=\n\n# --- Auth ---\n# No JWT secrets here: Supabase issues and verifies its own session tokens.\n# The mobile/web client authenticates directly against Supabase\n# (auth.signUp/signInWithPassword/refreshSession/signOut/etc. via\n# @supabase/supabase-js) and sends the resulting access token to this API as\n# `Authorization: Bearer <token>`. See src/auth/auth.module.ts and\n# server/README.md. Supabase's hosted Auth sends its own verification/reset\n# email directly — this variant's code never triggers the mail/ module.\n"
+}

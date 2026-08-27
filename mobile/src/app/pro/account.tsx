@@ -164,10 +164,7 @@ export default function ProAccount() {
           {
             padding: spacing.lg,
             borderRadius: radius.xl,
-            backgroundColor:
-              subscription.status === "cancelled"
-                ? theme.surface.raised
-                : theme.primary.soft,
+            backgroundColor: theme.surface.raised,
             borderWidth: 1.5,
             borderColor:
               subscription.status === "cancelled"

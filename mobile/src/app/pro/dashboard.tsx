@@ -165,7 +165,7 @@ export default function ProDashboard() {
                   subscription.status === "cancelled"
                     ? theme.danger
                     : theme.primary.main,
-                backgroundColor: theme.primary.soft,
+                backgroundColor: theme.surface.raised,
                 opacity: pressed ? 0.8 : 1,
               },
             ]}

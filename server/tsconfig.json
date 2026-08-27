@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "target": "ES2023",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  // _variants/ holds both database-variant implementations as inert content —
+  // each mirrors a path it occupies once copied into src/ by
+  // scripts/setup-mongodb.ts or scripts/setup-supabase.ts, so its files'
+  // relative imports (e.g. "../../src/bootstrap") don't resolve in place and
+  // must never be type-checked/built/tested as-is.
+  "exclude": ["node_modules", "dist", "_variants"]
+}

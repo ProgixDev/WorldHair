@@ -674,7 +674,14 @@ function DayColumn({
               </Text>
               {blockHeight > 44 ? (
                 <Text
-                  style={[typography.caption, { color: theme.foreground.gray }]}
+                  style={[
+                    typography.caption,
+                    {
+                      color: isPending
+                        ? theme.foreground.gray
+                        : theme.foreground.white,
+                    },
+                  ]}
                   numberOfLines={1}
                 >
                   {serviceLabel(appointment.serviceId) +
