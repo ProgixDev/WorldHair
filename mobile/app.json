@@ -78,8 +78,12 @@
           "isAndroidForegroundServiceEnabled": false
         }
       ],
+      "expo-font",
+      "expo-web-browser",
       "./plugins/withTransparentNavigationBar",
-      "./plugins/withTransparentStatusBar"
+      "./plugins/withTransparentStatusBar",
+      "./plugins/withReleaseSigning",
+      "./plugins/withDebugSigning"
     ]
   }
 }

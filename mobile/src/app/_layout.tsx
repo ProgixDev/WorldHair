@@ -1,3 +1,4 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
 import * as NativeSplash from "expo-splash-screen";
@@ -12,6 +13,7 @@ import {
 import { AuthProvider } from "../contexts/AuthContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { ThemeProvider, useTheme } from "../contexts/ThemeContext";
+import { queryClient } from "../lib/queryClient";
 
 NativeSplash.preventAutoHideAsync();
 NativeSplash.setOptions({ duration: 700, fade: true });
@@ -19,15 +21,17 @@ NativeSplash.setOptions({ duration: 700, fade: true });
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <AuthProvider>
-          <LocationProvider>
-            <SafeAreaProvider>
-              <RootLayoutWithTheme />
-            </SafeAreaProvider>
-          </LocationProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <LocationProvider>
+              <SafeAreaProvider>
+                <RootLayoutWithTheme />
+              </SafeAreaProvider>
+            </LocationProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
     </GestureHandlerRootView>
   );
 }

@@ -2,9 +2,12 @@
   "name": "worldhair-monorepo",
   "private": true,
   "scripts": {
-    "install:all": "cd mobile && bun install",
+    "install:all": "cd mobile && bun install && cd ../server && bun install && cd ../web && bun install",
     "expo": "cd mobile && bun expo start",
+    "dev": "cd mobile && bun expo start",
     "mobile": "cd mobile && npx expo run:android",
+    "server": "cd server && bun run dev",
+    "web": "cd web && bun run dev",
     "rebuild": "cd mobile && npx expo prebuild --platform android --clean",
     "apk": "cd mobile && npx expo prebuild --platform android && cd android && .\\gradlew.bat assembleRelease",
     "aab": "cd mobile && npx expo prebuild --platform android && cd android && .\\gradlew.bat bundleRelease"

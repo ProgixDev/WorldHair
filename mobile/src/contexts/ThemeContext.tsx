@@ -12,14 +12,15 @@ interface ThemeContextType {
   theme: Theme;
   themeMode: ThemeMode;
   variantId: string;
+  isDark: boolean;
   setThemeMode: (mode: ThemeMode) => void;
   setVariantId: (id: string) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_MODE_STORAGE_KEY = "@mywallet_theme_mode";
-const THEME_VARIANT_STORAGE_KEY = "@mywallet_theme_variant";
+const THEME_MODE_STORAGE_KEY = "@worldhair/theme_mode";
+const THEME_VARIANT_STORAGE_KEY = "@worldhair/theme_variant";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
@@ -89,22 +90,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Determine the actual theme to use
-  const getActiveTheme = (): Theme => {
-    const effectiveMode =
-      themeMode === "system"
-        ? systemColorScheme === "light"
-          ? "light"
-          : "dark"
-        : themeMode;
+  const getEffectiveMode = (): "light" | "dark" =>
+    themeMode === "system"
+      ? systemColorScheme === "light"
+        ? "light"
+        : "dark"
+      : themeMode;
 
-    return getThemeByVariantAndMode(variantId, effectiveMode);
-  };
+  const getActiveTheme = (): Theme =>
+    getThemeByVariantAndMode(variantId, getEffectiveMode());
 
   const theme = getActiveTheme();
+  const isDark = getEffectiveMode() === "dark";
 
   return (
     <ThemeContext.Provider
-      value={{ theme, themeMode, variantId, setThemeMode, setVariantId }}
+      value={{ theme, themeMode, variantId, isDark, setThemeMode, setVariantId }}
     >
       {children}
     </ThemeContext.Provider>
@@ -119,6 +120,7 @@ export function useTheme() {
       theme: getThemeByVariantAndMode("default", "dark"),
       themeMode: "system" as ThemeMode,
       variantId: "default",
+      isDark: true,
       setThemeMode: () => {},
       setVariantId: () => {},
     };
