@@ -2,8 +2,8 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { Button } from "../../components/ui/Button";
@@ -21,10 +21,10 @@ import {
   coverPlaceholder,
   galleryFor,
 } from "../../features/salons/images";
-import { getSalonById } from "../../features/salons/data";
+import { fetchSalonById } from "../../features/salons/api";
 import { formatDistance, haversineKm } from "../../features/salons/geo";
 import { specialtyLabel } from "../../features/salons/types";
-import type { Review } from "../../features/salons/types";
+import type { Review, Salon } from "../../features/salons/types";
 import { listUserReviews, type UserReview } from "../../services/booking";
 import {
   formatDuration,
@@ -56,9 +56,9 @@ export default function SalonDetail() {
   const { gutter } = useResponsive();
   const { coords } = useLocation();
 
-  const salon = getSalonById(String(id));
   const scrollY = useRef(new Animated.Value(0)).current;
   const [userReviews, setUserReviews] = useState<UserReview[]>([]);
+  const [salon, setSalon] = useState<Salon | null | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
@@ -72,6 +72,17 @@ export default function SalonDetail() {
       };
     }, [id]),
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    setSalon(undefined);
+    fetchSalonById(String(id)).then((found) => {
+      if (!cancelled) setSalon(found ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const reviews = useMemo<Review[]>(() => {
     if (!salon) return [];
@@ -96,6 +107,20 @@ export default function SalonDetail() {
     });
     return counts;
   }, [reviews]);
+
+  if (salon === undefined)
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.background.dark,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator color={theme.primary.main} />
+      </View>
+    );
 
   if (!salon)
     return (

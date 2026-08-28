@@ -21,7 +21,7 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { SALONS } from "../../features/salons/data";
+import { fetchSalons } from "../../features/salons/api";
 import {
   activeFilterCount,
   applyFilters,
@@ -29,7 +29,7 @@ import {
   type SalonFilters,
 } from "../../features/salons/filters";
 import { withDistance } from "../../features/salons/geo";
-import { SPECIALTIES, type SalonWithDistance } from "../../features/salons/types";
+import { SPECIALTIES, type Salon, type SalonWithDistance } from "../../features/salons/types";
 import { getAdSlot, type AdSlot } from "../../services/ads";
 
 /** How often the ad banner is interleaved among search results. */
@@ -54,6 +54,7 @@ export default function Search() {
   const [filters, setFilters] = useState<SalonFilters>(DEFAULT_FILTERS);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [resultsBanner, setResultsBanner] = useState<AdSlot | null>(null);
+  const [allSalons, setAllSalons] = useState<Salon[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,9 +66,19 @@ export default function Search() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchSalons().then((salons) => {
+      if (!cancelled) setAllSalons(salons);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const salonsWithDistance = useMemo(
-    () => withDistance(SALONS, coords),
-    [coords],
+    () => withDistance(allSalons, coords),
+    [allSalons, coords],
   );
   const results = useMemo(
     () => applyFilters(salonsWithDistance, filters),

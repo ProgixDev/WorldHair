@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "setup:mongodb": "bun scripts/setup-mongodb.ts",
     "setup:supabase": "bun scripts/setup-supabase.ts",
-    "seed:demo": "bun scripts/seed-demo-accounts.ts"
+    "seed:demo": "bun scripts/seed-demo-accounts.ts",
+    "seed:catalogue": "bun scripts/seed-catalogue-salons.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

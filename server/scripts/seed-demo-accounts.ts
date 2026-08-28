@@ -194,6 +194,10 @@ async function seedSalonWorkspace(
       address_line: "12 rue des Lilas",
       postal_code: "75011",
       city: "Paris",
+      // Same address as the "Studio W" catalogue account (scripts/seed-catalogue-salons.ts) —
+      // two separate accounts, coincidentally sharing a name and address by design.
+      latitude: 48.8619,
+      longitude: 2.3765,
       phone: "06 12 34 56 78",
       specialties: salon.specialties,
     },

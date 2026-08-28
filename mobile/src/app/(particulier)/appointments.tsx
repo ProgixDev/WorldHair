@@ -10,7 +10,7 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { getSalonById } from "../../features/salons/data";
+import { useSalonSummary } from "../../features/salons/api";
 import {
   cancelAppointment,
   isUpcoming,
@@ -206,7 +206,7 @@ function TimelineItem({
   const start = new Date(appointment.startsAt);
   const cancelled = appointment.status === "cancelled";
   const upcoming = isUpcoming(appointment);
-  const salon = getSalonById(appointment.salonId);
+  const salon = useSalonSummary(appointment.salonId);
 
   const accent = cancelled
     ? theme.danger

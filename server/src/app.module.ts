@@ -10,6 +10,7 @@ import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { ConfigModule } from './config/config.module';
 import { EnvironmentVariables } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
+import { DiscoveryModule } from './discovery/discovery.module';
 import { HealthModule } from './health/health.module';
 import { SalonModule } from './salon/salon.module';
 import { UsersModule } from './users/users.module';
@@ -35,6 +36,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     CoiffeurModule,
     SalonModule,
+    DiscoveryModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

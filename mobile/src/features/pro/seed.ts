@@ -1,14 +1,20 @@
-import { getSalonById } from "../salons/data";
 import type { ProAppointment, ProService, Subscription } from "./types";
 
 /**
- * Demo data for the coiffeur area. The pro account is attached to a catalogue
- * salon so its photos, rating and client reviews are the same ones a
- * particulier sees. Everything below is derived from fixed tables — no
+ * Demo data for the coiffeur area's mock appointments/subscription/replies
+ * (see services/pro.ts — "Rendez-vous/Agenda" and "Avis" don't have a
+ * backend yet). These services are just random-assignment fodder for
+ * seedAppointments() below, unrelated to any real coiffeur's own
+ * coiffeur_services rows. Everything is derived from fixed tables — no
  * randomness, so the dashboard numbers stay put between launches.
  */
 
-export const DEMO_PRO_SALON_ID = "studio-w";
+const MOCK_SERVICES: ProService[] = [
+  { id: "seed-coupe-brushing", name: "Coupe & brushing", price: 40, durationMin: 45, specialty: "coupe" },
+  { id: "seed-coupe-homme", name: "Coupe homme", price: 28, durationMin: 30, specialty: "coupe" },
+  { id: "seed-coloration", name: "Coloration complète", price: 75, durationMin: 90, specialty: "coloration" },
+  { id: "seed-soin", name: "Soin fondant", price: 35, durationMin: 30, specialty: "soins" },
+];
 
 const CLIENTS: { id: string; name: string; isNew: boolean }[] = [
   { id: "c1", name: "Camille Durand", isNew: false },
@@ -308,11 +314,7 @@ const SLOTS: Slot[] = [
 ];
 
 export function seedProServices(): ProService[] {
-  return (
-    getSalonById(DEMO_PRO_SALON_ID)?.services.map((service) => ({
-      ...service,
-    })) ?? []
-  );
+  return MOCK_SERVICES.map((service) => ({ ...service }));
 }
 
 export function seedAppointments(services: ProService[]): ProAppointment[] {

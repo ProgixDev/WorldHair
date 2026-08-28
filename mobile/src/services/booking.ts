@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getSalonById, getServiceById } from "../features/salons/data";
+import { cachedSalon, fetchSalonById, fetchSalons } from "../features/salons/api";
 
 /**
  * Mock booking + reviews store. Same contract as `services/auth.ts`: everything
@@ -87,7 +87,8 @@ export async function bookAppointment(params: {
   startsAt: Date;
 }): Promise<Appointment> {
   await delay(700);
-  const service = getServiceById(params.salonId, params.serviceId);
+  const salon = await fetchSalonById(params.salonId);
+  const service = salon?.services.find((item) => item.id === params.serviceId);
   if (!service)
     throw new BookingError("UNKNOWN_SERVICE", "Prestation introuvable.");
 
@@ -245,22 +246,24 @@ export function awaitingReview(
   );
 }
 
-/** Salon name resolved from the catalogue, for list rows. */
+/** Salon name for list rows — reads the shared cache a nearby useSalonSummary() call warms; see features/salons/api.ts. */
 export function salonNameFor(appointment: Appointment): string {
-  return getSalonById(appointment.salonId)?.name ?? "Salon";
+  return cachedSalon(appointment.salonId)?.name ?? "Salon";
 }
 
 export function serviceNameFor(appointment: Appointment): string {
   return (
-    getServiceById(appointment.salonId, appointment.serviceId)?.name ??
-    "Prestation"
+    cachedSalon(appointment.salonId)?.services.find(
+      (service) => service.id === appointment.serviceId,
+    )?.name ?? "Prestation"
   );
 }
 
 // ─── Demo seeding ────────────────────────────────────────────────────────────
 
 interface SeedSpec {
-  salonId: string;
+  /** Matched against the real catalogue's salon name (server/scripts/seed-catalogue-salons.ts) — ids there are database UUIDs, not known ahead of time. */
+  salonName: string;
   /** Days from today; negative is in the past. */
   dayOffset: number;
   hour: number;
@@ -273,21 +276,21 @@ interface SeedSpec {
 const DEMO_SEEDS: SeedSpec[] = [
   // Upcoming
   {
-    salonId: "studio-w",
+    salonName: "Studio W",
     dayOffset: 1,
     hour: 10,
     minute: 30,
     status: "confirmed",
   },
   {
-    salonId: "le-comptoir-barbier",
+    salonName: "Le Comptoir Barbier",
     dayOffset: 4,
     hour: 18,
     minute: 0,
     status: "confirmed",
   },
   {
-    salonId: "maison-tresse",
+    salonName: "Maison Tresse",
     dayOffset: 11,
     hour: 11,
     minute: 0,
@@ -295,14 +298,14 @@ const DEMO_SEEDS: SeedSpec[] = [
   },
   // Recent past, still waiting for a rating
   {
-    salonId: "eclat-marais",
+    salonName: "Éclat Marais",
     dayOffset: -3,
     hour: 15,
     minute: 30,
     status: "confirmed",
   },
   {
-    salonId: "barbe-noire",
+    salonName: "Barbe Noire",
     dayOffset: -19,
     hour: 19,
     minute: 0,
@@ -310,7 +313,7 @@ const DEMO_SEEDS: SeedSpec[] = [
   },
   // Cancelled, kept in the history
   {
-    salonId: "coupe-carre",
+    salonName: "Coupe Carré",
     dayOffset: -8,
     hour: 9,
     minute: 30,
@@ -318,7 +321,7 @@ const DEMO_SEEDS: SeedSpec[] = [
   },
   // Past and already rated
   {
-    salonId: "racines",
+    salonName: "Racines",
     dayOffset: -12,
     hour: 16,
     minute: 30,
@@ -331,7 +334,7 @@ const DEMO_SEEDS: SeedSpec[] = [
     },
   },
   {
-    salonId: "atelier-nuance",
+    salonName: "Atelier Nuance",
     dayOffset: -27,
     hour: 14,
     minute: 0,
@@ -343,7 +346,7 @@ const DEMO_SEEDS: SeedSpec[] = [
     },
   },
   {
-    salonId: "boucles-libres",
+    salonName: "Boucles Libres",
     dayOffset: -41,
     hour: 12,
     minute: 0,
@@ -355,7 +358,7 @@ const DEMO_SEEDS: SeedSpec[] = [
     },
   },
   {
-    salonId: "onde",
+    salonName: "Onde",
     dayOffset: -63,
     hour: 11,
     minute: 30,
@@ -377,11 +380,14 @@ export async function seedDemoBookings(): Promise<void> {
   const existing = await listAppointments();
   if (existing.length > 0) return;
 
+  const catalogue = await fetchSalons();
+  const byName = new Map(catalogue.map((salon) => [salon.name, salon]));
+
   const appointments: Appointment[] = [];
   const reviews: UserReview[] = [];
 
   DEMO_SEEDS.forEach((seed, index) => {
-    const salon = getSalonById(seed.salonId);
+    const salon = byName.get(seed.salonName);
     const service = salon?.services[index % (salon.services.length || 1)];
     if (!salon || !service) return;
 

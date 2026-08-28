@@ -54,6 +54,22 @@ interface SalonProfileRow {
   phone: string;
   specialties: string[];
   cover_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  rating: number;
+  review_count: number;
+  badges: string[];
+}
+
+/** Great-circle distance in km — good enough for fake-backed test assertions; ST_Distance does the real math. */
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
 }
 
 interface AvailabilityRow {
@@ -222,6 +238,12 @@ export class FakeSupabaseService {
       }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
+    rpc: async (fn: string, params: Record<string, unknown> = {}) => {
+      if (fn === 'search_salons') {
+        return this.searchSalonsRpc(params);
+      }
+      throw new Error(`FakeSupabaseService: unsupported rpc "${fn}"`);
+    },
   };
 
   /** Registers a token as belonging to a signed-up-and-verified user, and seeds their (initially empty) profile row — mirroring `handle_new_user()`. */
@@ -239,6 +261,179 @@ export class FakeSupabaseService {
     this.salonProfiles.clear();
     this.availability.clear();
     this.services.clear();
+  }
+
+  /**
+   * Test convenience: seeds or updates a `coiffeur_applications` row without
+   * going through the real onboarding/admin-review flow. Merges onto
+   * whatever already exists for that `profileId`, so a second call (e.g.
+   * flipping `status` back to `'pending'` after `seedValidatedSalon`) reads
+   * naturally as "and now this changed" rather than a fresh row.
+   */
+  seedApplication(params: {
+    profileId: string;
+    firstName?: string;
+    lastName?: string;
+    status?: string;
+    shopProfileComplete?: boolean;
+  }): void {
+    const existing = this.coiffeurApplications.get(params.profileId);
+    this.coiffeurApplications.set(params.profileId, {
+      id: existing?.id ?? randomUUID(),
+      profile_id: params.profileId,
+      first_name: params.firstName ?? existing?.first_name ?? '',
+      last_name: params.lastName ?? existing?.last_name ?? '',
+      phone: existing?.phone ?? '',
+      salon_name: existing?.salon_name ?? '',
+      description: existing?.description ?? '',
+      practice_zone: existing?.practice_zone ?? 'salon',
+      address_line: existing?.address_line ?? null,
+      postal_code: existing?.postal_code ?? null,
+      city: existing?.city ?? null,
+      invoice_document_path: existing?.invoice_document_path ?? null,
+      travel_radius_km: existing?.travel_radius_km ?? null,
+      identity_document_path: existing?.identity_document_path ?? 'x',
+      diploma_document_path: existing?.diploma_document_path ?? 'x',
+      kbis_document_path: existing?.kbis_document_path ?? 'x',
+      status: params.status ?? existing?.status ?? 'pending',
+      review_message: existing?.review_message ?? null,
+      shop_profile_complete: params.shopProfileComplete ?? existing?.shop_profile_complete ?? false,
+      submitted_at: existing?.submitted_at ?? new Date().toISOString(),
+      reviewed_at: existing?.reviewed_at ?? null,
+    });
+  }
+
+  /**
+   * Test convenience for src/discovery/ specs: seeds a validated,
+   * shop-complete coiffeur with a salon profile in one call — the shape
+   * `search_salons()` reads (a real coiffeur only reaches this state after
+   * onboarding + admin approval + filling in their shop profile, which is
+   * its own multi-step flow this helper skips past).
+   */
+  seedValidatedSalon(params: {
+    profileId: string;
+    firstName: string;
+    lastName: string;
+    salonName: string;
+    tagline?: string;
+    description?: string;
+    addressLine?: string;
+    postalCode?: string;
+    city?: string;
+    phone?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    specialties?: string[];
+    badges?: string[];
+    rating?: number;
+    reviewCount?: number;
+    coverUrl?: string | null;
+    services?: { name: string; price: number; durationMin: number; specialty: string }[];
+  }): void {
+    this.seedApplication({
+      profileId: params.profileId,
+      firstName: params.firstName,
+      lastName: params.lastName,
+      status: 'validated',
+      shopProfileComplete: true,
+    });
+    this.salonProfiles.set(params.profileId, {
+      profile_id: params.profileId,
+      salon_name: params.salonName,
+      tagline: params.tagline ?? '',
+      description: params.description ?? '',
+      address_line: params.addressLine ?? '',
+      postal_code: params.postalCode ?? '',
+      city: params.city ?? '',
+      phone: params.phone ?? '',
+      specialties: params.specialties ?? [],
+      cover_url: params.coverUrl ?? null,
+      latitude: params.latitude ?? null,
+      longitude: params.longitude ?? null,
+      rating: params.rating ?? 0,
+      review_count: params.reviewCount ?? 0,
+      badges: params.badges ?? [],
+    });
+    for (const service of params.services ?? []) {
+      const id = randomUUID();
+      this.services.set(id, {
+        id,
+        profile_id: params.profileId,
+        name: service.name,
+        description: null,
+        price: service.price,
+        duration_min: service.durationMin,
+        specialty: service.specialty,
+      });
+    }
+  }
+
+  private searchSalonsRpc(params: Record<string, unknown>): QueryResult {
+    const lat = params.p_lat as number | null | undefined;
+    const lng = params.p_lng as number | null | undefined;
+    const radiusKm = (params.p_radius_km as number | null | undefined) ?? null;
+    const specialty = (params.p_specialty as string | null | undefined) ?? null;
+    const city = (params.p_city as string | null | undefined) ?? null;
+    const query = (params.p_query as string | null | undefined) ?? null;
+    const limit = (params.p_limit as number | undefined) ?? 20;
+    const offset = (params.p_offset as number | undefined) ?? 0;
+    const origin = lat != null && lng != null ? { lat, lng } : null;
+
+    const rows = [...this.salonProfiles.values()]
+      .map((profile) => ({
+        profile,
+        application: [...this.coiffeurApplications.values()].find((app) => app.profile_id === profile.profile_id),
+      }))
+      .filter(({ application }) => application?.status === 'validated' && application?.shop_profile_complete === true)
+      .filter(({ profile }) => specialty == null || profile.specialties.includes(specialty))
+      .filter(({ profile }) => city == null || profile.city.toLowerCase() === city.toLowerCase())
+      .filter(({ profile }) => query == null || profile.salon_name.toLowerCase().includes(query.toLowerCase()))
+      .map(({ profile, application }) => {
+        const distanceKm =
+          origin && profile.latitude != null && profile.longitude != null
+            ? haversineKm(origin, { lat: profile.latitude, lng: profile.longitude })
+            : null;
+        const services = [...this.services.values()].filter((s) => s.profile_id === profile.profile_id);
+        const priceFrom = services.length > 0 ? Math.min(...services.map((s) => Number(s.price))) : null;
+        return {
+          profile_id: profile.profile_id,
+          salon_name: profile.salon_name,
+          stylist_first_name: application?.first_name ?? '',
+          stylist_last_name: application?.last_name ?? '',
+          tagline: profile.tagline,
+          description: profile.description,
+          address_line: profile.address_line,
+          postal_code: profile.postal_code,
+          city: profile.city,
+          latitude: profile.latitude,
+          longitude: profile.longitude,
+          phone: profile.phone,
+          specialties: profile.specialties,
+          badges: profile.badges,
+          rating: profile.rating,
+          review_count: profile.review_count,
+          cover_url: profile.cover_url,
+          price_from: priceFrom,
+          distance_km: distanceKm,
+        };
+      })
+      // A salon with no known location is excluded from a radius search, not
+      // passed through by virtue of "we can't check" — mirrors search_salons().
+      .filter(
+        (row) =>
+          radiusKm == null || origin == null || (row.distance_km != null && row.distance_km <= radiusKm),
+      )
+      .sort((a, b) => {
+        if ((a.distance_km == null) !== (b.distance_km == null)) return a.distance_km == null ? 1 : -1;
+        if (a.distance_km != null && b.distance_km != null && a.distance_km !== b.distance_km) {
+          return a.distance_km - b.distance_km;
+        }
+        return b.rating - a.rating;
+      });
+
+    const totalCount = rows.length;
+    const page = rows.slice(offset, offset + limit).map((row) => ({ ...row, total_count: totalCount }));
+    return { data: page, error: null };
   }
 
   private profilesTable() {
@@ -335,7 +530,13 @@ export class FakeSupabaseService {
       /** Eager write (unlike coiffeur_applications' upsert above) — simpler, and nothing here needs the lazy-until-awaited shape. */
       upsert: (row: Record<string, unknown>) => {
         const profileId = row.profile_id as string;
-        const merged = { ...rows.get(profileId), ...row } as SalonProfileRow;
+        const existing = rows.get(profileId);
+        // Mirrors real Postgres column defaults on a fresh insert — SalonService's
+        // own patch never sets these (rating/review_count/badges are seed/system-only).
+        const defaults = existing
+          ? {}
+          : { latitude: null, longitude: null, rating: 0, review_count: 0, badges: [] };
+        const merged = { ...defaults, ...existing, ...row } as SalonProfileRow;
         rows.set(profileId, merged);
         return {
           select: () => ({

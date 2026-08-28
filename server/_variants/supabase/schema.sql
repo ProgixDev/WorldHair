@@ -205,6 +205,10 @@ create policy "Admins can view every coiffeur document"
 -- (TODO.md → Recherche & géolocalisation) — opened now rather than
 -- re-touching this RLS later for the same tables. Only the owning coiffeur
 -- may write.
+-- PostGIS powers real radius search (ST_DWithin/ST_Distance on a geography
+-- point) for search_salons() below, instead of hand-rolled Haversine SQL.
+create extension if not exists postgis with schema extensions;
+
 create table public.coiffeur_profiles (
   profile_id uuid primary key references public.profiles (id) on delete cascade,
   salon_name text not null default '',
@@ -216,12 +220,34 @@ create table public.coiffeur_profiles (
   phone text not null default '',
   specialties text[] not null default '{}',
   cover_url text,
+  -- Nullable: a coiffeur's location is only known once they (or a seed
+  -- script) set it — see UpdateSalonProfileDto. `location` is generated so it
+  -- can never drift from latitude/longitude.
+  latitude double precision,
+  longitude double precision,
+  location extensions.geography(Point, 4326) generated always as (
+    case
+      when latitude is not null and longitude is not null
+      then extensions.ST_SetSRID(extensions.ST_MakePoint(longitude, latitude), 4326)::extensions.geography
+      else null
+    end
+  ) stored,
+  -- Seeded/system-computed display fields — deliberately NOT part of
+  -- UpdateSalonProfileDto. rating/review_count will eventually be aggregated
+  -- from real reviews once "Avis" (TODO.md) exists; badges are editorial.
+  rating numeric(2, 1) not null default 0 check (rating >= 0 and rating <= 5),
+  review_count integer not null default 0 check (review_count >= 0),
+  badges text[] not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint coiffeur_profiles_specialties_valid check (
     specialties <@ array['coupe', 'coloration', 'afro', 'tresses', 'barbier', 'soins', 'mariage']::text[]
   )
 );
+
+create index coiffeur_profiles_location_idx
+  on public.coiffeur_profiles using gist (location)
+  where location is not null;
 
 alter table public.coiffeur_profiles enable row level security;
 
@@ -248,6 +274,105 @@ create policy "Anyone can view a salon profile"
 create trigger set_coiffeur_profiles_updated_at
 before update on public.coiffeur_profiles for each row
 execute procedure public.set_updated_at ();
+
+-- Backs both geo-radius search and manual-location/filter-only search (see
+-- TODO.md "Recherche & géolocalisation" and src/discovery/) —
+-- p_lat/p_lng/p_radius_km null means "no distance filter, no distance
+-- column", which is exactly the manual-location and filter-only cases.
+-- SECURITY INVOKER (the default): callers are always this app's server
+-- using the service-role key, so RLS never actually applies here, but there
+-- is no reason to reach for DEFINER when INVOKER already works.
+create or replace function public.search_salons(
+  p_lat double precision default null,
+  p_lng double precision default null,
+  p_radius_km double precision default null,
+  p_specialty text default null,
+  p_city text default null,
+  p_query text default null,
+  p_limit int default 20,
+  p_offset int default 0
+)
+returns table (
+  profile_id uuid,
+  salon_name text,
+  stylist_first_name text,
+  stylist_last_name text,
+  tagline text,
+  description text,
+  address_line text,
+  postal_code text,
+  city text,
+  latitude double precision,
+  longitude double precision,
+  phone text,
+  specialties text[],
+  badges text[],
+  rating numeric,
+  review_count integer,
+  cover_url text,
+  price_from numeric,
+  distance_km double precision,
+  total_count bigint
+)
+language sql
+stable
+set search_path = ''
+as $$
+  with origin as (
+    select
+      case when p_lat is not null and p_lng is not null
+        then extensions.ST_SetSRID(extensions.ST_MakePoint(p_lng, p_lat), 4326)::extensions.geography
+      end as point
+  ),
+  matches as (
+    select
+      cp.profile_id,
+      cp.salon_name,
+      ca.first_name as stylist_first_name,
+      ca.last_name as stylist_last_name,
+      cp.tagline,
+      cp.description,
+      cp.address_line,
+      cp.postal_code,
+      cp.city,
+      cp.latitude,
+      cp.longitude,
+      cp.phone,
+      cp.specialties,
+      cp.badges,
+      cp.rating,
+      cp.review_count,
+      cp.cover_url,
+      (select min(cs.price) from public.coiffeur_services cs where cs.profile_id = cp.profile_id) as price_from,
+      case
+        when (select point from origin) is not null and cp.location is not null
+        then extensions.ST_Distance(cp.location, (select point from origin)) / 1000.0
+      end as distance_km
+    from public.coiffeur_profiles cp
+    join public.coiffeur_applications ca
+      on ca.profile_id = cp.profile_id
+      and ca.status = 'validated'
+      and ca.shop_profile_complete = true
+    where
+      (p_specialty is null or p_specialty = any (cp.specialties))
+      and (p_city is null or cp.city ilike p_city)
+      and (p_query is null or cp.salon_name ilike '%' || p_query || '%')
+      and (
+        -- A salon with no known location is excluded from a radius search,
+        -- not passed through by virtue of "we can't check".
+        p_radius_km is null or (select point from origin) is null
+        or (cp.location is not null and extensions.ST_DWithin(cp.location, (select point from origin), p_radius_km * 1000))
+      )
+  )
+  select *, count(*) over () as total_count
+  from matches
+  order by
+    distance_km asc nulls last,
+    rating desc
+  limit p_limit offset p_offset;
+$$;
+
+grant execute on function public.search_salons to authenticated;
 
 -- One row per weekday (0 = Sunday, matching JS Date#getDay, same as mobile's
 -- OpeningDay/AvailabilityDay). Lazily seeded (all closed) on first read by

@@ -24,10 +24,10 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { fetchSalons } from "../../features/salons/api";
 import { CITIES } from "../../features/salons/cities";
-import { SALONS } from "../../features/salons/data";
 import { withDistance } from "../../features/salons/geo";
-import { SPECIALTIES, type SpecialtyId } from "../../features/salons/types";
+import { SPECIALTIES, type Salon, type SpecialtyId } from "../../features/salons/types";
 import { getAdSlot, type AdSlot } from "../../services/ads";
 
 /**
@@ -56,6 +56,7 @@ export default function Discover() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [homeBanner, setHomeBanner] = useState<AdSlot | null>(null);
+  const [allSalons, setAllSalons] = useState<Salon[]>([]);
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -68,13 +69,23 @@ export default function Discover() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchSalons().then((salons) => {
+      if (!cancelled) setAllSalons(salons);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const salons = useMemo(() => {
-    const withKm = withDistance(SALONS, coords);
+    const withKm = withDistance(allSalons, coords);
     const filtered = specialty
       ? withKm.filter((salon) => salon.specialties.includes(specialty))
       : withKm;
     return filtered.sort((a, b) => a.distanceKm - b.distanceKm);
-  }, [coords, specialty]);
+  }, [allSalons, coords, specialty]);
 
   const cardWidth = width - gutter * 2;
   const snapInterval = cardWidth + spacing.md;

@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
@@ -11,9 +11,9 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { getSalonById } from "../../features/salons/data";
+import { fetchSalonById } from "../../features/salons/api";
 import { openDays, slotsForDay, slotToDate } from "../../features/salons/slots";
-import type { Service } from "../../features/salons/types";
+import type { Salon, Service } from "../../features/salons/types";
 import { getAdSlot, type AdSlot } from "../../services/ads";
 import {
   bookAppointment,
@@ -60,15 +60,13 @@ export default function BookingFlow() {
   // pills — per AGENTS.md, bigger screens earn more content.
   const slotColumns = isExpanded ? 6 : 4;
 
-  const salon = getSalonById(String(salonId));
+  const [salon, setSalon] = useState<Salon | null | undefined>(undefined);
   const isReschedule = Boolean(appointmentId);
 
   const [step, setStep] = useState<Step>(
     serviceId || isReschedule ? "slot" : "service",
   );
-  const [selectedService, setSelectedService] = useState<Service | null>(
-    salon?.services.find((service) => service.id === serviceId) ?? null,
-  );
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [day, setDay] = useState<Date | null>(null);
   const [slotMinutes, setSlotMinutes] = useState<number | null>(null);
   const [taken, setTaken] = useState<string[]>([]);
@@ -88,6 +86,19 @@ export default function BookingFlow() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSalonById(String(salonId)).then((found) => {
+      if (cancelled) return;
+      setSalon(found ?? null);
+      const preselected = found?.services.find((service) => service.id === serviceId);
+      if (preselected) setSelectedService(preselected);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [salonId, serviceId]);
 
   // Existing bookings block their own slots, minus the one being moved.
   useEffect(() => {
@@ -127,6 +138,20 @@ export default function BookingFlow() {
       taken,
     });
   }, [salon, day, selectedService, taken]);
+
+  if (salon === undefined)
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.background.dark,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator color={theme.primary.main} />
+      </View>
+    );
 
   if (!salon)
     return (

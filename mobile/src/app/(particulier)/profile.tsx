@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { RatingStars } from "../../components/ui/RatingStars";
@@ -19,7 +19,7 @@ import {
   mapEngineDetail,
   mapEngineLabel,
 } from "../../features/salons/mapProvider";
-import { getSalonById } from "../../features/salons/data";
+import { fetchSalonById, useSalonSummary } from "../../features/salons/api";
 import {
   coverFor,
   coverPlaceholder,
@@ -82,7 +82,9 @@ export default function Profile() {
     }, []),
   );
 
-  const { upcoming, completed, nextAppointment, visitedSalons } =
+  const [visitedSalons, setVisitedSalons] = useState<Salon[]>([]);
+
+  const { upcoming, completed, nextAppointment, visitedSalonIds } =
     useMemo(() => {
       const now = new Date();
       const future = appointments
@@ -94,23 +96,36 @@ export default function Profile() {
 
       // Salons the user actually went to, most recent first.
       const seen = new Set<string>();
-      const salons: Salon[] = [];
+      const ids: string[] = [];
       [...done]
         .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
         .forEach((appointment) => {
           if (seen.has(appointment.salonId)) return;
           seen.add(appointment.salonId);
-          const salon = getSalonById(appointment.salonId);
-          if (salon) salons.push(salon);
+          ids.push(appointment.salonId);
         });
 
       return {
         upcoming: future,
         completed: done,
         nextAppointment: future[0] ?? null,
-        visitedSalons: salons,
+        visitedSalonIds: ids,
       };
     }, [appointments]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(visitedSalonIds.map((id) => fetchSalonById(id))).then((salons) => {
+      if (!cancelled) setVisitedSalons(salons.filter((salon): salon is Salon => Boolean(salon)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visitedSalonIds]);
+
+  // Unused directly — warms the shared salon-name cache salonNameFor()/
+  // serviceNameFor() read from below, and re-renders once it resolves.
+  useSalonSummary(nextAppointment?.salonId);
 
   const profile = session?.profile;
   const fullName = profile

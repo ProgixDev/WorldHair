@@ -13,6 +13,8 @@ export interface SalonProfile {
   phone: string;
   specialties: Specialty[];
   coverUrl: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 const EMPTY_PROFILE: SalonProfile = {
@@ -25,6 +27,8 @@ const EMPTY_PROFILE: SalonProfile = {
   phone: '',
   specialties: [],
   coverUrl: null,
+  latitude: null,
+  longitude: null,
 };
 
 export interface AvailabilityDay {
@@ -75,6 +79,8 @@ interface ProfileRow {
   phone: string;
   specialties: string[];
   cover_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface AvailabilityRow {
@@ -106,6 +112,8 @@ function mapProfile(row: ProfileRow): SalonProfile {
     phone: row.phone,
     specialties: row.specialties as Specialty[],
     coverUrl: row.cover_url,
+    latitude: row.latitude,
+    longitude: row.longitude,
   };
 }
 
@@ -167,6 +175,8 @@ export class SalonService {
     if (patch.phone !== undefined) row.phone = patch.phone;
     if (patch.specialties !== undefined) row.specialties = patch.specialties;
     if (patch.coverUrl !== undefined) row.cover_url = patch.coverUrl;
+    if (patch.latitude !== undefined) row.latitude = patch.latitude;
+    if (patch.longitude !== undefined) row.longitude = patch.longitude;
 
     const { data, error } = await this.supabase.client
       .from('coiffeur_profiles')

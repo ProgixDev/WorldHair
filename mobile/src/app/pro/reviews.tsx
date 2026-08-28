@@ -21,7 +21,6 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { getSalonById } from "../../features/salons/data";
 import { avatarFor } from "../../features/salons/images";
 import type { Review } from "../../features/salons/types";
 import { timeAgo } from "../../utils/date";
@@ -37,15 +36,16 @@ export default function ProReviews() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
-  const { profile, replies, saveReply, deleteReply } = usePro();
+  const { replies, saveReply, deleteReply } = usePro();
 
   const [filter, setFilter] = useState<Filter>("all");
   const [answering, setAnswering] = useState<Review | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const salon = profile ? getSalonById(profile.salonId) : undefined;
-  const reviews = useMemo(() => salon?.reviews ?? [], [salon]);
+  // No reviews backend yet ("Avis" — a separate, un-built TODO.md section) —
+  // an honest empty state until then, same as the particulier-side salon page.
+  const reviews = useMemo<Review[]>(() => [], []);
 
   const replyFor = (reviewId: string) =>
     replies.find((reply) => reply.reviewId === reviewId)?.text ??

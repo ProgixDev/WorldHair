@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsIn, IsLatitude, IsLongitude, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 /** Mirrors the `coiffeur_profiles`/`coiffeur_services` check constraints in schema.sql. */
 export const SPECIALTIES = ['coupe', 'coloration', 'afro', 'tresses', 'barbier', 'soins', 'mariage'] as const;
@@ -49,4 +49,13 @@ export class UpdateSalonProfileDto {
   @IsOptional()
   @IsString()
   coverUrl?: string;
+
+  /** The address's coordinates — feeds public search (see src/discovery/). Not auto-geocoded from addressLine yet. */
+  @IsOptional()
+  @IsLatitude()
+  latitude?: number;
+
+  @IsOptional()
+  @IsLongitude()
+  longitude?: number;
 }

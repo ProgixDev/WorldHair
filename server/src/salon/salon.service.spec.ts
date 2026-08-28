@@ -27,6 +27,8 @@ describe('SalonService', () => {
         phone: '',
         specialties: [],
         coverUrl: null,
+        latitude: null,
+        longitude: null,
       });
     });
 

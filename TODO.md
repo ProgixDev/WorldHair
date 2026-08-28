@@ -21,9 +21,9 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] CRUD prestations coiffeur (nom, tarif, durée)
 
 ### Recherche & géolocalisation
-- [ ] Endpoint recherche coiffeurs par géoloc (rayon, position)
-- [ ] Recherche par localisation manuelle
-- [ ] Filtres (type de prestation, localisation)
+- [x] Endpoint recherche coiffeurs par géoloc (rayon, position) — PostGIS `search_salons()`, GET /salons?lat&lng&radiusKm
+- [x] Recherche par localisation manuelle — same endpoint with a manually-picked position instead of GPS; mobile already worked this way (features/salons/geo.ts)
+- [x] Filtres (type de prestation, localisation) — GET /salons?specialty&city (particulier UI keeps its existing client-side specialty chips/free-text/sort over the fetched list)
 
 ### Rendez-vous / Agenda
 - [ ] Modèle agenda coiffeur (disponibilités, créneaux)
