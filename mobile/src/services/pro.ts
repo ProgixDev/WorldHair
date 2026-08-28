@@ -207,6 +207,27 @@ export async function reactivateSubscription(): Promise<Subscription> {
   return next;
 }
 
+/**
+ * Dev-only: fast-forwards the subscription's end date so the J-7 banner and
+ * the expired block (issue #8) can be exercised without waiting real days.
+ */
+export async function debugSetSubscriptionEnd(
+  daysFromNow: number,
+  status: "trial" | "cancelled",
+): Promise<Subscription> {
+  const current = await getSubscription();
+  const end = new Date();
+  end.setDate(end.getDate() + daysFromNow);
+  const next: Subscription = {
+    ...current,
+    status,
+    trialEndsAt: end.toISOString(),
+    renewsAt: end.toISOString(),
+  };
+  await write(KEYS.subscription, next);
+  return next;
+}
+
 // ─── Review replies ──────────────────────────────────────────────────────────
 
 export async function listReplies(): Promise<ReviewReply[]> {

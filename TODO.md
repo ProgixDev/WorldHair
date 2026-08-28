@@ -112,8 +112,8 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Gestion avis (consulter + répondre)
 - [x] Écran abonnement (choix mensuel/annuel, statut essai gratuit)
 - [x] Écran obligatoire de complétion profil boutique (horaires, photos...) à la 1ère connexion post-validation admin (issue #7)
-- [ ] Bandeau rouge J-7 avant fin d'abonnement: "Il vous reste x jours..." + CTA renouvellement (issue #8)
-- [ ] Écran flouté + message centré "abonnement terminé" + CTA "se réabonner" une fois l'abonnement expiré (issue #8)
+- [x] Bandeau rouge J-7 avant fin d'abonnement: "Il vous reste x jours..." + CTA renouvellement (issue #8)
+- [x] Écran flouté + message centré "abonnement terminé" + CTA "se réabonner" une fois l'abonnement expiré (issue #8)
 
 
 

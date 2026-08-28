@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button } from "../../components/ui/Button";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
@@ -24,6 +25,7 @@ import {
   serviceName,
   weeklySeries,
 } from "../../features/pro/stats";
+import { daysRemaining, isNearingExpiry } from "../../features/pro/subscription";
 import {
   avatarFor,
   coverFor,
@@ -78,15 +80,8 @@ export default function ProDashboard() {
       </View>
     );
 
-  const trialDaysLeft = subscription?.trialEndsAt
-    ? Math.max(
-        0,
-        Math.ceil(
-          (new Date(subscription.trialEndsAt).getTime() - Date.now()) /
-            86400000,
-        ),
-      )
-    : null;
+  const daysLeft = subscription ? Math.max(0, daysRemaining(subscription)) : 0;
+  const nearingExpiry = subscription ? isNearingExpiry(subscription) : false;
 
   const maxWeek = Math.max(...series.map((week) => week.count), 1);
 
@@ -150,64 +145,86 @@ export default function ProDashboard() {
       <View style={{ paddingHorizontal: gutter, gap: spacing.xl }}>
         {/* ── Trial / subscription strip ───────────────────────────────── */}
         {subscription ? (
-          <Pressable
-            onPress={() => router.push(ROUTES.proAccount as never)}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              {
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                padding: spacing.lg,
-                borderRadius: radius.xl,
-                borderWidth: 1,
-                borderColor:
-                  subscription.status === "cancelled"
-                    ? theme.danger
-                    : theme.primary.main,
-                backgroundColor: theme.surface.raised,
-                opacity: pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name={
-                subscription.status === "cancelled"
-                  ? "alert-circle-outline"
-                  : "crown-outline"
-              }
-              size={22}
-              color={
-                subscription.status === "cancelled"
+          <View
+            style={{
+              borderRadius: radius.xl,
+              borderWidth: nearingExpiry ? 1.5 : 1,
+              borderColor:
+                nearingExpiry || subscription.status === "cancelled"
                   ? theme.danger
-                  : theme.primary.main
-              }
-            />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text
-                style={[typography.label, { color: theme.foreground.white }]}
-              >
-                {subscription.status === "trial"
-                  ? "Essai gratuit — " + trialDaysLeft + " jours restants"
-                  : subscription.status === "cancelled"
-                    ? "Abonnement résilié"
-                    : "Abonnement actif"}
-              </Text>
-              <Text
-                style={[typography.caption, { color: theme.foreground.gray }]}
-              >
-                {subscription.status === "cancelled"
-                  ? "Votre fiche sera masquée à la fin de la période."
-                  : "Formule " +
-                    (subscription.plan === "yearly" ? "annuelle" : "mensuelle")}
-              </Text>
-            </View>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={20}
-              color={theme.foreground.gray}
-            />
-          </Pressable>
+                  : theme.primary.main,
+              backgroundColor: nearingExpiry
+                ? theme.danger + "14"
+                : theme.surface.raised,
+              gap: spacing.md,
+              padding: spacing.lg,
+            }}
+          >
+            <Pressable
+              onPress={() => router.push(ROUTES.proAccount as never)}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                { flexDirection: "row", alignItems: "center", gap: spacing.md },
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={
+                  nearingExpiry || subscription.status === "cancelled"
+                    ? "alert-circle-outline"
+                    : "crown-outline"
+                }
+                size={22}
+                color={
+                  nearingExpiry || subscription.status === "cancelled"
+                    ? theme.danger
+                    : theme.primary.main
+                }
+              />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={[typography.label, { color: theme.foreground.white }]}
+                >
+                  {nearingExpiry
+                    ? "Il vous reste " +
+                      daysLeft +
+                      (daysLeft > 1 ? " jours" : " jour") +
+                      " d'abonnement"
+                    : subscription.status === "trial"
+                      ? "Essai gratuit — " + daysLeft + " jours restants"
+                      : subscription.status === "cancelled"
+                        ? "Abonnement résilié"
+                        : "Abonnement actif"}
+                </Text>
+                <Text
+                  style={[typography.caption, { color: theme.foreground.gray }]}
+                >
+                  {nearingExpiry
+                    ? "Renouvelez pour garder votre fiche visible."
+                    : subscription.status === "cancelled"
+                      ? "Votre fiche sera masquée à la fin de la période."
+                      : "Formule " +
+                        (subscription.plan === "yearly"
+                          ? "annuelle"
+                          : "mensuelle")}
+                </Text>
+              </View>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={20}
+                color={theme.foreground.gray}
+              />
+            </Pressable>
+
+            {nearingExpiry ? (
+              <Button
+                label="Renouveler mon abonnement"
+                onPress={() => router.push(ROUTES.proAccount as never)}
+                background={theme.danger}
+                color="#ffffff"
+              />
+            ) : null}
+          </View>
         ) : null}
 
         {/* ── KPI grid ─────────────────────────────────────────────────── */}

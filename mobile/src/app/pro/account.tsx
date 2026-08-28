@@ -21,8 +21,9 @@ import { useAuth } from "../../contexts/AuthContext";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
+import { daysRemaining } from "../../features/pro/subscription";
 import { PLANS, type PlanId } from "../../features/pro/types";
-import { resetProWorkspace } from "../../services/pro";
+import { debugSetSubscriptionEnd, resetProWorkspace } from "../../services/pro";
 import { formatAmount, fullDate } from "../../utils/date";
 
 const BENEFITS = [
@@ -69,13 +70,7 @@ export default function ProAccount() {
     );
 
   const trialDaysLeft = subscription.trialEndsAt
-    ? Math.max(
-        0,
-        Math.ceil(
-          (new Date(subscription.trialEndsAt).getTime() - Date.now()) /
-            86400000,
-        ),
-      )
+    ? Math.max(0, daysRemaining(subscription))
     : null;
 
   const select = async (plan: PlanId) => {
@@ -139,6 +134,14 @@ export default function ProAccount() {
         },
       ],
     );
+
+  const simulateSubscriptionEnd = async (
+    daysFromNow: number,
+    status: "trial" | "cancelled",
+  ) => {
+    await debugSetSubscriptionEnd(daysFromNow, status);
+    await refresh();
+  };
 
   return (
     <ScrollView
@@ -437,6 +440,18 @@ export default function ProAccount() {
 
       {/* ── Dev ──────────────────────────────────────────────────────── */}
       <Group title="Développement">
+        <Row
+          icon="calendar-alert-outline"
+          label="Simuler J-7 avant fin d'abonnement"
+          value="Bandeau rouge sur le tableau de bord"
+          onPress={() => void simulateSubscriptionEnd(6, "cancelled")}
+        />
+        <Row
+          icon="lock-alert-outline"
+          label="Simuler un abonnement expiré"
+          value="Bloque l'espace pro entier"
+          onPress={() => void simulateSubscriptionEnd(-1, "cancelled")}
+        />
         <Row
           icon="restore"
           label="Réinitialiser l'espace pro"
