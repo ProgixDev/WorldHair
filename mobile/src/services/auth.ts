@@ -2,7 +2,6 @@ import { isAxiosError } from "axios";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
-import { seedDemoBookings } from "./booking";
 import { seedProWorkspace } from "./pro";
 
 /**
@@ -378,10 +377,6 @@ export async function saveParticulierProfile(
     .eq("id", user.id);
   if (error) throw new AuthError("STORAGE", error.message);
 
-  // Demo build: a brand-new particulier gets a populated agenda rather than
-  // three empty tabs. No-op once the account has any booking of its own.
-  await seedDemoBookings();
-
   const session = await buildSession();
   if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
   return session;
@@ -505,7 +500,6 @@ export async function signInAsDemo(persona: DemoPersona): Promise<Session> {
       "Compte démo indisponible — a-t-il bien été seedé côté Supabase ?",
     );
 
-  if (persona === "particulier") await seedDemoBookings();
   if (persona === "coiffeur_active") await seedProWorkspace();
 
   const session = await buildSession();

@@ -15,8 +15,7 @@ import {
   cancelAppointment,
   isUpcoming,
   listAppointments,
-  salonNameFor,
-  serviceNameFor,
+  listUserReviews,
   type Appointment,
 } from "../../services/booking";
 import {
@@ -41,10 +40,14 @@ export default function Appointments() {
 
   const [tab, setTab] = useState<Tab>("upcoming");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     listAppointments().then(setAppointments);
+    listUserReviews().then((reviews) =>
+      setReviewedIds(new Set(reviews.map((review) => review.appointmentId))),
+    );
   }, []);
 
   useFocusEffect(
@@ -53,22 +56,22 @@ export default function Appointments() {
     }, [refresh]),
   );
 
-  const { upcoming, past } = useMemo(() => {
-    const now = new Date();
-    return {
-      upcoming: appointments.filter((a) => isUpcoming(a, now)),
+  const { upcoming, past } = useMemo(
+    () => ({
+      upcoming: appointments.filter(isUpcoming),
       past: appointments
-        .filter((a) => !isUpcoming(a, now))
+        .filter((a) => !isUpcoming(a))
         .sort((a, b) => b.startsAt.localeCompare(a.startsAt)),
-    };
-  }, [appointments]);
+    }),
+    [appointments],
+  );
 
   const visible = tab === "upcoming" ? upcoming : past;
 
   const handleCancel = (appointment: Appointment) => {
     Alert.alert(
       "Annuler ce rendez-vous ?",
-      salonNameFor(appointment) +
+      appointment.salonName +
         " · " +
         relativeDay(new Date(appointment.startsAt)) +
         " à " +
@@ -159,6 +162,7 @@ export default function Appointments() {
               <TimelineItem
                 key={appointment.id}
                 appointment={appointment}
+                reviewed={reviewedIds.has(appointment.id)}
                 isLast={index === visible.length - 1}
                 busy={busyId === appointment.id}
                 onReschedule={() =>
@@ -187,6 +191,7 @@ export default function Appointments() {
 
 function TimelineItem({
   appointment,
+  reviewed,
   isLast,
   busy,
   onReschedule,
@@ -195,6 +200,8 @@ function TimelineItem({
   onOpenSalon,
 }: {
   appointment: Appointment;
+  /** Already has a local review for this appointment (see services/booking.ts — reviews stay mock/local, "Avis" isn't built). */
+  reviewed: boolean;
   isLast: boolean;
   busy: boolean;
   onReschedule: () => void;
@@ -205,10 +212,12 @@ function TimelineItem({
   const { theme } = useTheme();
   const start = new Date(appointment.startsAt);
   const cancelled = appointment.status === "cancelled";
+  const refused = appointment.status === "refused";
+  const inactive = cancelled || refused;
   const upcoming = isUpcoming(appointment);
   const salon = useSalonSummary(appointment.salonId);
 
-  const accent = cancelled
+  const accent = inactive
     ? theme.danger
     : upcoming
       ? theme.primary.main
@@ -258,9 +267,9 @@ function TimelineItem({
             borderWidth: 1,
             borderColor: theme.divider,
             gap: spacing.md,
-            opacity: cancelled ? 0.6 : 1,
+            opacity: inactive ? 0.6 : 1,
           },
-          cancelled ? null : elevation(1, theme.shadow),
+          inactive ? null : elevation(1, theme.shadow),
         ]}
       >
         <View style={{ gap: spacing.xs }}>
@@ -279,9 +288,9 @@ function TimelineItem({
             <Text style={[typography.label, { color: accent }]}>
               {relativeDay(start) + " · " + timeOfDay(start)}
             </Text>
-            {cancelled ? (
+            {inactive ? (
               <Text style={[typography.caption, { color: theme.danger }]}>
-                Annulé
+                {cancelled ? "Annulé" : "Refusé"}
               </Text>
             ) : null}
           </View>
@@ -291,14 +300,14 @@ function TimelineItem({
               style={[typography.h2, { color: theme.foreground.white }]}
               numberOfLines={1}
             >
-              {salonNameFor(appointment)}
+              {appointment.salonName}
             </Text>
           </Pressable>
 
           <Text
             style={[typography.bodySmall, { color: theme.foreground.gray }]}
           >
-            {serviceNameFor(appointment) +
+            {appointment.serviceName +
               " · " +
               formatDuration(appointment.durationMin) +
               " · " +
@@ -314,7 +323,7 @@ function TimelineItem({
           ) : null}
         </View>
 
-        {!cancelled ? (
+        {!inactive ? (
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             {upcoming ? (
               <>
@@ -332,7 +341,7 @@ function TimelineItem({
                   tone="danger"
                 />
               </>
-            ) : appointment.reviewId ? (
+            ) : reviewed ? (
               <View
                 style={{
                   flexDirection: "row",

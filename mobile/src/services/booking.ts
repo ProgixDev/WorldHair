@@ -1,28 +1,31 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { cachedSalon, fetchSalonById, fetchSalons } from "../features/salons/api";
+import { isAxiosError } from "axios";
+import { apiClient } from "../lib/apiClient";
 
 /**
- * Mock booking + reviews store. Same contract as `services/auth.ts`: everything
- * lives in AsyncStorage behind this module, so the real API replaces one file.
+ * "Rendez-vous / Agenda" is real (see server/src/appointments/) — every
+ * function below except the review ones calls the NestJS server. Reviews
+ * stay mocked in AsyncStorage ("Avis" — a separate, un-built TODO.md
+ * section): submitting one only updates this device's own local list,
+ * cross-referenced against a real appointment by id.
  */
 
-const APPOINTMENTS_KEY = "@worldhair/appointments";
 const REVIEWS_KEY = "@worldhair/reviews";
 
-export type AppointmentStatus = "confirmed" | "cancelled";
+export type AppointmentStatus = "pending" | "confirmed" | "refused" | "cancelled" | "done";
 
 export interface Appointment {
   id: string;
   salonId: string;
-  serviceId: string;
+  salonName: string;
+  serviceId: string | null;
+  serviceName: string;
   /** ISO start. */
   startsAt: string;
   durationMin: number;
   price: number;
   status: AppointmentStatus;
   createdAt: string;
-  /** Set once the user has rated this appointment. */
-  reviewId?: string | null;
 }
 
 export interface UserReview {
@@ -46,6 +49,26 @@ export class BookingError extends Error {
     this.name = "BookingError";
     this.code = code;
   }
+}
+
+/**
+ * The server's own rejection messages are English and meant for logs/devs
+ * (see AppointmentsService) — this maps a failed request to a French,
+ * user-facing one instead of surfacing them verbatim.
+ */
+function mapBookingError(err: unknown): never {
+  if (isAxiosError(err)) {
+    if (err.response?.status === 404) {
+      throw new BookingError("UNKNOWN_SERVICE", "Salon ou prestation introuvable.");
+    }
+    if (err.response?.status === 400) {
+      throw new BookingError(
+        "SLOT_TAKEN",
+        "Ce créneau n'est plus disponible. Choisissez un autre horaire.",
+      );
+    }
+  }
+  throw new BookingError("NOT_FOUND", "Réservation impossible. Réessayez.");
 }
 
 function delay(ms = 500): Promise<void> {
@@ -77,82 +100,55 @@ async function writeList<T>(key: string, value: T[]): Promise<void> {
 // ─── Appointments ────────────────────────────────────────────────────────────
 
 export async function listAppointments(): Promise<Appointment[]> {
-  const appointments = await readList<Appointment>(APPOINTMENTS_KEY);
-  return appointments.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const { data } = await apiClient.get<Appointment[]>("/appointments/me");
+  return data;
 }
 
 export async function bookAppointment(params: {
   salonId: string;
   serviceId: string;
   startsAt: Date;
+  note?: string;
 }): Promise<Appointment> {
-  await delay(700);
-  const salon = await fetchSalonById(params.salonId);
-  const service = salon?.services.find((item) => item.id === params.serviceId);
-  if (!service)
-    throw new BookingError("UNKNOWN_SERVICE", "Prestation introuvable.");
-
-  const appointments = await listAppointments();
-  const startsAt = params.startsAt.toISOString();
-  if (
-    appointments.some(
-      (a) => a.status === "confirmed" && a.startsAt === startsAt,
-    )
-  )
-    throw new BookingError("SLOT_TAKEN", "Ce créneau vient d'être pris.");
-
-  const appointment: Appointment = {
-    id: newId("apt"),
-    salonId: params.salonId,
-    serviceId: params.serviceId,
-    startsAt,
-    durationMin: service.durationMin,
-    price: service.price,
-    status: "confirmed",
-    createdAt: new Date().toISOString(),
-    reviewId: null,
-  };
-
-  await writeList(APPOINTMENTS_KEY, [...appointments, appointment]);
-  return appointment;
+  try {
+    const { data } = await apiClient.post<Appointment>("/appointments", {
+      coiffeurId: params.salonId,
+      serviceId: params.serviceId,
+      startsAt: params.startsAt.toISOString(),
+      note: params.note,
+    });
+    return data;
+  } catch (err) {
+    mapBookingError(err);
+  }
 }
 
 export async function cancelAppointment(id: string): Promise<Appointment> {
-  await delay(400);
-  const appointments = await listAppointments();
-  const appointment = appointments.find((a) => a.id === id);
-  if (!appointment)
-    throw new BookingError("NOT_FOUND", "Rendez-vous introuvable.");
-
-  const updated: Appointment = { ...appointment, status: "cancelled" };
-  await writeList(
-    APPOINTMENTS_KEY,
-    appointments.map((a) => (a.id === id ? updated : a)),
-  );
+  try {
+    await apiClient.patch(`/appointments/${id}/cancel`);
+  } catch (err) {
+    mapBookingError(err);
+  }
+  const updated = (await listAppointments()).find((a) => a.id === id);
+  if (!updated) throw new BookingError("NOT_FOUND", "Rendez-vous introuvable.");
   return updated;
 }
 
 /** Moves an existing appointment; the service (and price) stay the same. */
-export async function rescheduleAppointment(
-  id: string,
-  startsAt: Date,
-): Promise<Appointment> {
-  await delay(600);
-  const appointments = await listAppointments();
-  const appointment = appointments.find((a) => a.id === id);
-  if (!appointment)
-    throw new BookingError("NOT_FOUND", "Rendez-vous introuvable.");
+export async function rescheduleAppointment(id: string, startsAt: Date): Promise<Appointment> {
+  try {
+    const { data } = await apiClient.patch<Appointment>(`/appointments/${id}/reschedule`, {
+      startsAt: startsAt.toISOString(),
+    });
+    return data;
+  } catch (err) {
+    mapBookingError(err);
+  }
+}
 
-  const updated: Appointment = {
-    ...appointment,
-    startsAt: startsAt.toISOString(),
-    status: "confirmed",
-  };
-  await writeList(
-    APPOINTMENTS_KEY,
-    appointments.map((a) => (a.id === id ? updated : a)),
-  );
-  return updated;
+/** A still-active request/booking — the server already resolves "confirmed and past" to "done" (see AppointmentsService), so no date math is needed here. */
+export function isUpcoming(appointment: Appointment): boolean {
+  return appointment.status === "pending" || appointment.status === "confirmed";
 }
 
 // ─── Payment ─────────────────────────────────────────────────────────────────
@@ -174,7 +170,7 @@ export async function payForAppointment(amount: number): Promise<PaymentReceipt>
   return { amount, paidAt: new Date().toISOString() };
 }
 
-// ─── Reviews ─────────────────────────────────────────────────────────────────
+// ─── Reviews (still mock) ──────────────────────────────────────────────────
 
 export async function listUserReviews(): Promise<UserReview[]> {
   return readList<UserReview>(REVIEWS_KEY);
@@ -198,240 +194,12 @@ export async function submitReview(params: {
     createdAt: new Date().toISOString(),
   };
 
-  const [reviews, appointments] = await Promise.all([
-    listUserReviews(),
-    listAppointments(),
-  ]);
-
-  await Promise.all([
-    writeList(REVIEWS_KEY, [...reviews, review]),
-    writeList(
-      APPOINTMENTS_KEY,
-      appointments.map((a) =>
-        a.id === params.appointmentId ? { ...a, reviewId: review.id } : a,
-      ),
-    ),
-  ]);
-
+  const reviews = await listUserReviews();
+  await writeList(REVIEWS_KEY, [...reviews, review]);
   return review;
 }
 
-// ─── Derived helpers (pure) ──────────────────────────────────────────────────
-
-export function endsAt(appointment: Appointment): Date {
-  return new Date(
-    new Date(appointment.startsAt).getTime() + appointment.durationMin * 60000,
-  );
-}
-
-/** A confirmed appointment whose end time has passed counts as done. */
-export function isPast(appointment: Appointment, now = new Date()): boolean {
-  return endsAt(appointment).getTime() < now.getTime();
-}
-
-export function isUpcoming(
-  appointment: Appointment,
-  now = new Date(),
-): boolean {
-  return appointment.status === "confirmed" && !isPast(appointment, now);
-}
-
-/** Appointments still waiting for a rating — feeds the review prompt. */
-export function awaitingReview(
-  appointments: Appointment[],
-  now = new Date(),
-): Appointment[] {
-  return appointments.filter(
-    (a) => a.status === "confirmed" && isPast(a, now) && !a.reviewId,
-  );
-}
-
-/** Salon name for list rows — reads the shared cache a nearby useSalonSummary() call warms; see features/salons/api.ts. */
-export function salonNameFor(appointment: Appointment): string {
-  return cachedSalon(appointment.salonId)?.name ?? "Salon";
-}
-
-export function serviceNameFor(appointment: Appointment): string {
-  return (
-    cachedSalon(appointment.salonId)?.services.find(
-      (service) => service.id === appointment.serviceId,
-    )?.name ?? "Prestation"
-  );
-}
-
-// ─── Demo seeding ────────────────────────────────────────────────────────────
-
-interface SeedSpec {
-  /** Matched against the real catalogue's salon name (server/scripts/seed-catalogue-salons.ts) — ids there are database UUIDs, not known ahead of time. */
-  salonName: string;
-  /** Days from today; negative is in the past. */
-  dayOffset: number;
-  hour: number;
-  minute: number;
-  status: AppointmentStatus;
-  /** Seeds a matching review so the history is not uniformly unrated. */
-  review?: { rating: number; tags: string[]; comment: string };
-}
-
-const DEMO_SEEDS: SeedSpec[] = [
-  // Upcoming
-  {
-    salonName: "Studio W",
-    dayOffset: 1,
-    hour: 10,
-    minute: 30,
-    status: "confirmed",
-  },
-  {
-    salonName: "Le Comptoir Barbier",
-    dayOffset: 4,
-    hour: 18,
-    minute: 0,
-    status: "confirmed",
-  },
-  {
-    salonName: "Maison Tresse",
-    dayOffset: 11,
-    hour: 11,
-    minute: 0,
-    status: "confirmed",
-  },
-  // Recent past, still waiting for a rating
-  {
-    salonName: "Éclat Marais",
-    dayOffset: -3,
-    hour: 15,
-    minute: 30,
-    status: "confirmed",
-  },
-  {
-    salonName: "Barbe Noire",
-    dayOffset: -19,
-    hour: 19,
-    minute: 0,
-    status: "confirmed",
-  },
-  // Cancelled, kept in the history
-  {
-    salonName: "Coupe Carré",
-    dayOffset: -8,
-    hour: 9,
-    minute: 30,
-    status: "cancelled",
-  },
-  // Past and already rated
-  {
-    salonName: "Racines",
-    dayOffset: -12,
-    hour: 16,
-    minute: 30,
-    status: "confirmed",
-    review: {
-      rating: 5,
-      tags: ["Écoute", "Résultat"],
-      comment:
-        "Diagnostic hyper précis, mes boucles n'ont jamais été aussi définies.",
-    },
-  },
-  {
-    salonName: "Atelier Nuance",
-    dayOffset: -27,
-    hour: 14,
-    minute: 0,
-    status: "confirmed",
-    review: {
-      rating: 4,
-      tags: ["Ponctualité", "Conseils"],
-      comment: "Couleur très réussie, prévoir large sur la durée.",
-    },
-  },
-  {
-    salonName: "Boucles Libres",
-    dayOffset: -41,
-    hour: 12,
-    minute: 0,
-    status: "confirmed",
-    review: {
-      rating: 5,
-      tags: ["Ambiance", "Résultat", "Conseils"],
-      comment: "Routine expliquée pas à pas, je tiens enfin mes boucles.",
-    },
-  },
-  {
-    salonName: "Onde",
-    dayOffset: -63,
-    hour: 11,
-    minute: 30,
-    status: "confirmed",
-    review: {
-      rating: 3,
-      tags: ["Propreté"],
-      comment: "Brushing joli mais tenu deux jours seulement.",
-    },
-  },
-];
-
-/**
- * Fills the local store so a demo account lands on a lived-in agenda instead
- * of three empty states. Idempotent: it never touches an account that already
- * has bookings.
- */
-export async function seedDemoBookings(): Promise<void> {
-  const existing = await listAppointments();
-  if (existing.length > 0) return;
-
-  const catalogue = await fetchSalons();
-  const byName = new Map(catalogue.map((salon) => [salon.name, salon]));
-
-  const appointments: Appointment[] = [];
-  const reviews: UserReview[] = [];
-
-  DEMO_SEEDS.forEach((seed, index) => {
-    const salon = byName.get(seed.salonName);
-    const service = salon?.services[index % (salon.services.length || 1)];
-    if (!salon || !service) return;
-
-    const startsAt = new Date();
-    startsAt.setDate(startsAt.getDate() + seed.dayOffset);
-    startsAt.setHours(seed.hour, seed.minute, 0, 0);
-
-    const id = "apt_demo_" + index;
-    const review = seed.review
-      ? {
-          id: "rev_demo_" + index,
-          appointmentId: id,
-          salonId: salon.id,
-          rating: seed.review.rating,
-          tags: seed.review.tags,
-          comment: seed.review.comment,
-          createdAt: new Date(
-            startsAt.getTime() + service.durationMin * 60000,
-          ).toISOString(),
-        }
-      : null;
-
-    if (review) reviews.push(review);
-
-    appointments.push({
-      id,
-      salonId: salon.id,
-      serviceId: service.id,
-      startsAt: startsAt.toISOString(),
-      durationMin: service.durationMin,
-      price: service.price,
-      status: seed.status,
-      createdAt: new Date(startsAt.getTime() - 5 * 86400000).toISOString(),
-      reviewId: review?.id ?? null,
-    });
-  });
-
-  await Promise.all([
-    writeList(APPOINTMENTS_KEY, appointments),
-    writeList(REVIEWS_KEY, reviews),
-  ]);
-}
-
-/** Dev reset — wipes bookings and reviews. */
-export async function resetBookingData(): Promise<void> {
-  await AsyncStorage.multiRemove([APPOINTMENTS_KEY, REVIEWS_KEY]);
+/** Dev reset — wipes locally-tracked reviews (appointments are real now, nothing to reset client-side). */
+export async function resetReviewData(): Promise<void> {
+  await AsyncStorage.removeItem(REVIEWS_KEY);
 }

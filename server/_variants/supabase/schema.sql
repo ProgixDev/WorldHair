@@ -449,6 +449,55 @@ execute procedure public.set_updated_at ();
 -- keep despite the linter flagging it as unused on a brand-new, empty table.
 create index coiffeur_services_profile_id_idx on public.coiffeur_services (profile_id);
 
+-- "Rendez-vous / Agenda" (TODO.md). One row per booking, spanning its whole
+-- lifecycle (pending -> confirmed/refused, confirmed -> cancelled). "done" is
+-- NOT a stored status — the API derives it (confirmed + already past) at
+-- read time, so there's no cron/background job needed to transition it.
+create table public.appointments (
+  id uuid primary key default gen_random_uuid (),
+  particulier_id uuid not null references public.profiles (id) on delete cascade,
+  coiffeur_id uuid not null references public.profiles (id) on delete cascade,
+  -- Nullable + a snapshot alongside: a coiffeur editing/deleting a service
+  -- later must never retroactively change what a past booking says it was.
+  service_id uuid references public.coiffeur_services (id) on delete set null,
+  service_name text not null,
+  price numeric(10, 2) not null check (price > 0),
+  duration_min integer not null check (duration_min > 0),
+  starts_at timestamptz not null,
+  status text not null default 'pending' check (
+    status in ('pending', 'confirmed', 'refused', 'cancelled')
+  ),
+  client_note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index appointments_coiffeur_id_starts_at_idx on public.appointments (coiffeur_id, starts_at);
+create index appointments_particulier_id_idx on public.appointments (particulier_id);
+create index appointments_service_id_idx on public.appointments (service_id);
+
+alter table public.appointments enable row level security;
+
+-- One combined SELECT policy, not two: a separate policy per side would
+-- both be permissive on the same action, which Postgres evaluates twice
+-- per read for no benefit (same fix as coiffeur_applications' policy).
+create policy "Participant can view their own appointment"
+  on public.appointments for select
+  using ((select auth.uid ()) = particulier_id or (select auth.uid ()) = coiffeur_id);
+
+create policy "Particuliers can create their own appointment requests"
+  on public.appointments for insert
+  with check ((select auth.uid ()) = particulier_id);
+
+create policy "Participant can update their own appointment"
+  on public.appointments for update
+  using ((select auth.uid ()) = particulier_id or (select auth.uid ()) = coiffeur_id)
+  with check ((select auth.uid ()) = particulier_id or (select auth.uid ()) = coiffeur_id);
+
+create trigger set_appointments_updated_at
+before update on public.appointments for each row
+execute procedure public.set_updated_at ();
+
 -- ── Public photo storage ─────────────────────────────────────────────────────
 --
 -- Unlike coiffeur-documents, this bucket is PUBLIC: a particulier's avatar

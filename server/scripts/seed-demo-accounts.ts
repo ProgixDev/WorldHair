@@ -134,7 +134,7 @@ async function upsertAuthUser(email: string): Promise<string> {
   return data.user.id;
 }
 
-async function seedAccount(account: DemoAccount): Promise<void> {
+async function seedAccount(account: DemoAccount): Promise<string> {
   const userId = await upsertAuthUser(account.email);
 
   const { error: profileError } = await supabase
@@ -179,6 +179,80 @@ async function seedAccount(account: DemoAccount): Promise<void> {
   if (account.salon) {
     await seedSalonWorkspace(userId, account.salon);
   }
+
+  return userId;
+}
+
+/**
+ * "Rendez-vous / Agenda" (TODO.md) is real now — gives both demo personas a
+ * lived-in agenda via actual `appointments` rows instead of the old
+ * client-side AsyncStorage trick (mobile/src/services/booking.ts used to do
+ * this on first demo login; deleted once appointments moved server-side).
+ */
+interface AppointmentSeed {
+  serviceIndex: number;
+  /** Days from today; negative is in the past. */
+  dayOffset: number;
+  hour: number;
+  minute: number;
+  status: "pending" | "confirmed" | "refused" | "cancelled";
+  note?: string;
+}
+
+const APPOINTMENT_SEEDS: AppointmentSeed[] = [
+  {
+    serviceIndex: 0,
+    dayOffset: 2,
+    hour: 10,
+    minute: 0,
+    status: "pending",
+    note: "Première fois chez vous, on m'a beaucoup recommandé le salon.",
+  },
+  { serviceIndex: 1, dayOffset: 5, hour: 14, minute: 30, status: "confirmed" },
+  // In the past — the API derives "confirmed and past" as "done" at read time.
+  { serviceIndex: 2, dayOffset: -6, hour: 11, minute: 0, status: "confirmed" },
+  { serviceIndex: 3, dayOffset: -13, hour: 16, minute: 0, status: "confirmed" },
+  { serviceIndex: 0, dayOffset: -20, hour: 9, minute: 30, status: "cancelled" },
+];
+
+async function seedDemoAppointments(particulierId: string, coiffeurId: string): Promise<void> {
+  const { data: services, error: servicesError } = await supabase
+    .from("coiffeur_services")
+    .select()
+    .eq("profile_id", coiffeurId);
+  if (servicesError) throw servicesError;
+  if (!services || services.length === 0) return;
+
+  // Replace rather than accumulate duplicates on re-run.
+  const { error: deleteError } = await supabase
+    .from("appointments")
+    .delete()
+    .eq("particulier_id", particulierId)
+    .eq("coiffeur_id", coiffeurId);
+  if (deleteError) throw deleteError;
+
+  const rows = APPOINTMENT_SEEDS.map((seed) => {
+    const service = services[seed.serviceIndex % services.length];
+    const startsAt = new Date();
+    startsAt.setDate(startsAt.getDate() + seed.dayOffset);
+    startsAt.setHours(seed.hour, seed.minute, 0, 0);
+    return {
+      particulier_id: particulierId,
+      coiffeur_id: coiffeurId,
+      service_id: service.id as string,
+      service_name: service.name as string,
+      price: service.price,
+      duration_min: service.duration_min,
+      starts_at: startsAt.toISOString(),
+      status: seed.status,
+      client_note: seed.note ?? null,
+    };
+  });
+
+  const { error: insertError } = await supabase.from("appointments").insert(rows);
+  if (insertError) throw insertError;
+
+  console.log(`  demo appointments seeded (${rows.length})`);
 }
 
 async function seedSalonWorkspace(
@@ -245,9 +319,17 @@ async function seedSalonWorkspace(
 
 async function main(): Promise<void> {
   console.log("Seeding demo/preview accounts...\n");
+  const userIds = new Map<string, string>();
   for (const account of ACCOUNTS) {
-    await seedAccount(account);
+    userIds.set(account.email, await seedAccount(account));
   }
+
+  const particulierId = userIds.get("demo.particulier@worldhair.app");
+  const coiffeurId = userIds.get("demo.coiffeur.active@worldhair.app");
+  if (particulierId && coiffeurId) {
+    await seedDemoAppointments(particulierId, coiffeurId);
+  }
+
   console.log("\nDone. All demo accounts share the password:", DEMO_PASSWORD);
 }
 

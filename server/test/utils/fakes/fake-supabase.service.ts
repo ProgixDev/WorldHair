@@ -92,6 +92,20 @@ interface ServiceRow {
   specialty: string;
 }
 
+interface AppointmentRow {
+  id: string;
+  particulier_id: string;
+  coiffeur_id: string;
+  service_id: string | null;
+  service_name: string;
+  price: number;
+  duration_min: number;
+  starts_at: string;
+  status: string;
+  client_note: string | null;
+  created_at: string;
+}
+
 function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknown][]): boolean {
   return filters.every(([column, value]) => row[column] === value);
 }
@@ -105,6 +119,7 @@ function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknow
  */
 class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   private readonly eqFilters: [keyof TRow, unknown][] = [];
+  private readonly inFilters: [keyof TRow, unknown[]][] = [];
   private rangeFrom = 0;
   private rangeTo = Number.MAX_SAFE_INTEGER;
 
@@ -112,6 +127,11 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
 
   eq(column: keyof TRow, value: unknown): this {
     this.eqFilters.push([column, value]);
+    return this;
+  }
+
+  in(column: keyof TRow, values: unknown[]): this {
+    this.inFilters.push([column, values]);
     return this;
   }
 
@@ -126,7 +146,9 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   }
 
   private filtered(): TRow[] {
-    const rows = this.rows().filter((row) => matchesAll(row, this.eqFilters));
+    const rows = this.rows()
+      .filter((row) => matchesAll(row, this.eqFilters))
+      .filter((row) => this.inFilters.every(([column, values]) => values.includes(row[column])));
     return rows.slice(this.rangeFrom, this.rangeTo + 1);
   }
 
@@ -209,6 +231,7 @@ export class FakeSupabaseService {
   private readonly salonProfiles = new Map<string, SalonProfileRow>();
   private readonly availability = new Map<string, AvailabilityRow>();
   private readonly services = new Map<string, ServiceRow>();
+  private readonly appointments = new Map<string, AppointmentRow>();
 
   readonly client = {
     auth: {
@@ -236,6 +259,9 @@ export class FakeSupabaseService {
       if (table === 'coiffeur_services') {
         return this.servicesTable();
       }
+      if (table === 'appointments') {
+        return this.appointmentsTable();
+      }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
     rpc: async (fn: string, params: Record<string, unknown> = {}) => {
@@ -246,11 +272,22 @@ export class FakeSupabaseService {
     },
   };
 
-  /** Registers a token as belonging to a signed-up-and-verified user, and seeds their (initially empty) profile row — mirroring `handle_new_user()`. */
-  addUser(token: string, user: FakeAuthUser, role: string = 'particulier'): void {
+  /** Registers a token as belonging to a signed-up-and-verified user, and seeds their profile row (empty unless `profile` is given) — mirroring `handle_new_user()`. */
+  addUser(
+    token: string,
+    user: FakeAuthUser,
+    role: string = 'particulier',
+    profile?: { firstName: string; lastName: string },
+  ): void {
     this.authUsersByToken.set(token, user);
     if (!this.profiles.has(user.id)) {
-      this.profiles.set(user.id, { id: user.id, first_name: '', last_name: '', photo_url: null, role });
+      this.profiles.set(user.id, {
+        id: user.id,
+        first_name: profile?.firstName ?? '',
+        last_name: profile?.lastName ?? '',
+        photo_url: null,
+        role,
+      });
     }
   }
 
@@ -261,6 +298,7 @@ export class FakeSupabaseService {
     this.salonProfiles.clear();
     this.availability.clear();
     this.services.clear();
+    this.appointments.clear();
   }
 
   /**
@@ -444,6 +482,11 @@ export class FakeSupabaseService {
         eq: (_column: 'id', id: string) => ({
           maybeSingle: async (): Promise<QueryResult> => ({ data: profiles.get(id) ?? null, error: null }),
         }),
+        /** e.g. `.select().in('id', [...])` — src/appointments/ resolving several clients' names at once. */
+        in: async (_column: 'id', ids: string[]): Promise<QueryResult> => ({
+          data: [...profiles.values()].filter((row) => ids.includes(row.id)),
+          error: null,
+        }),
         limit: async (count: number): Promise<QueryResult> => ({
           data: [...profiles.values()].slice(0, count),
           error: null,
@@ -607,6 +650,36 @@ export class FakeSupabaseService {
           }
           rows.delete(existing.id);
           return { data: existing, count: 1 };
+        }),
+    };
+  }
+
+  private appointmentsTable() {
+    const rows = this.appointments;
+
+    return {
+      select: () => new FakeSelectQuery<AppointmentRow>(() => [...rows.values()]),
+
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async (): Promise<QueryResult> => {
+            const id = randomUUID();
+            const created = { ...row, id, created_at: new Date().toISOString() } as AppointmentRow;
+            rows.set(id, created);
+            return { data: created, error: null };
+          },
+        }),
+      }),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<AppointmentRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          const updated = { ...existing, ...patch };
+          rows.set(existing.id, updated);
+          return { data: updated, count: 1 };
         }),
     };
   }

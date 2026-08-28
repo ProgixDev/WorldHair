@@ -18,11 +18,8 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { useSalonSummary } from "../../features/salons/api";
 import {
   listAppointments,
-  salonNameFor,
-  serviceNameFor,
   submitReview,
   type Appointment,
 } from "../../services/booking";
@@ -64,9 +61,6 @@ export default function LeaveReview() {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Unused directly — warms the shared salon-name cache salonNameFor()/
-  // serviceNameFor() below read from, and re-renders once it resolves.
-  useSalonSummary(appointment?.salonId);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,9 +154,9 @@ export default function LeaveReview() {
                 { color: theme.foreground.gray, textAlign: "center" },
               ]}
             >
-              {salonNameFor(appointment) +
+              {appointment.salonName +
                 " · " +
-                serviceNameFor(appointment) +
+                appointment.serviceName +
                 "\n" +
                 fullDate(start) +
                 " à " +

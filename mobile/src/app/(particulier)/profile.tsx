@@ -19,7 +19,7 @@ import {
   mapEngineDetail,
   mapEngineLabel,
 } from "../../features/salons/mapProvider";
-import { fetchSalonById, useSalonSummary } from "../../features/salons/api";
+import { fetchSalonById } from "../../features/salons/api";
 import {
   coverFor,
   coverPlaceholder,
@@ -30,9 +30,7 @@ import {
   isUpcoming,
   listAppointments,
   listUserReviews,
-  resetBookingData,
-  salonNameFor,
-  serviceNameFor,
+  resetReviewData,
   type Appointment,
 } from "../../services/booking";
 import {
@@ -86,13 +84,10 @@ export default function Profile() {
 
   const { upcoming, completed, nextAppointment, visitedSalonIds } =
     useMemo(() => {
-      const now = new Date();
       const future = appointments
-        .filter((a) => isUpcoming(a, now))
+        .filter(isUpcoming)
         .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-      const done = appointments.filter(
-        (a) => a.status === "confirmed" && !isUpcoming(a, now),
-      );
+      const done = appointments.filter((a) => a.status === "done");
 
       // Salons the user actually went to, most recent first.
       const seen = new Set<string>();
@@ -122,10 +117,6 @@ export default function Profile() {
       cancelled = true;
     };
   }, [visitedSalonIds]);
-
-  // Unused directly — warms the shared salon-name cache salonNameFor()/
-  // serviceNameFor() read from below, and re-renders once it resolves.
-  useSalonSummary(nextAppointment?.salonId);
 
   const profile = session?.profile;
   const fullName = profile
@@ -158,15 +149,14 @@ export default function Profile() {
   const handleResetDemo = () => {
     Alert.alert(
       "Réinitialiser les données démo ?",
-      "Rendez-vous et avis enregistrés sur cet appareil seront effacés.",
+      "Les avis enregistrés sur cet appareil seront effacés.",
       [
         { text: "Annuler", style: "cancel" },
         {
           text: "Effacer",
           style: "destructive",
           onPress: async () => {
-            await resetBookingData();
-            setAppointments([]);
+            await resetReviewData();
             setReviewCount(0);
           },
         },
@@ -177,7 +167,7 @@ export default function Profile() {
   const handleReplayOnboarding = () => {
     Alert.alert(
       "Rejouer l'onboarding ?",
-      "La session, les rendez-vous et les avis locaux seront effacés.",
+      "La session et les avis locaux seront effacés.",
       [
         { text: "Annuler", style: "cancel" },
         {
@@ -185,7 +175,7 @@ export default function Profile() {
           style: "destructive",
           onPress: async () => {
             await signOut();
-            await Promise.all([resetBookingData(), clearPreferences()]);
+            await Promise.all([resetReviewData(), clearPreferences()]);
             router.replace(ROUTES.onboarding as never);
           },
         },
@@ -396,13 +386,13 @@ export default function Profile() {
                   ]}
                   numberOfLines={1}
                 >
-                  {salonNameFor(nextAppointment)}
+                  {nextAppointment.salonName}
                 </Text>
                 <Text
                   style={[typography.caption, { color: theme.foreground.gray }]}
                   numberOfLines={1}
                 >
-                  {serviceNameFor(nextAppointment)}
+                  {nextAppointment.serviceName}
                 </Text>
               </View>
 

@@ -11,7 +11,7 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { fetchSalonById } from "../../features/salons/api";
+import { fetchBusySlots, fetchSalonById } from "../../features/salons/api";
 import { openDays, slotsForDay, slotToDate } from "../../features/salons/slots";
 import type { Salon, Service } from "../../features/salons/types";
 import { getAdSlot, type AdSlot } from "../../services/ads";
@@ -100,28 +100,34 @@ export default function BookingFlow() {
     };
   }, [salonId, serviceId]);
 
-  // Existing bookings block their own slots, minus the one being moved.
+  // A slot is unavailable if the particulier already holds it elsewhere
+  // (minus the one being moved) or if anyone else already holds it at this
+  // salon (see AppointmentsService.listBusySlots — no client identity, just
+  // starts, so it's safe to ask for regardless of who's browsing).
   useEffect(() => {
     let cancelled = false;
-    listAppointments().then((appointments) => {
-      if (cancelled) return;
-      setTaken(
-        appointments
-          .filter((a) => a.status === "confirmed" && a.id !== appointmentId)
-          .map((a) => a.startsAt),
-      );
-      if (isReschedule && !selectedService) {
-        const current = appointments.find((a) => a.id === appointmentId);
-        const service = salon?.services.find(
-          (s) => s.id === current?.serviceId,
-        );
-        if (service) setSelectedService(service);
-      }
-    });
+    Promise.all([listAppointments(), fetchBusySlots(String(salonId))]).then(
+      ([appointments, busy]) => {
+        if (cancelled) return;
+        const own = appointments
+          .filter(
+            (a) => (a.status === "pending" || a.status === "confirmed") && a.id !== appointmentId,
+          )
+          .map((a) => a.startsAt);
+        setTaken([...own, ...busy]);
+        if (isReschedule && !selectedService) {
+          const current = appointments.find((a) => a.id === appointmentId);
+          const service = salon?.services.find(
+            (s) => s.id === current?.serviceId,
+          );
+          if (service) setSelectedService(service);
+        }
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [appointmentId, isReschedule, salon, selectedService]);
+  }, [appointmentId, isReschedule, salon, salonId, selectedService]);
 
   const days = useMemo(() => (salon ? openDays(salon, 10) : []), [salon]);
 
@@ -220,6 +226,7 @@ export default function BookingFlow() {
         service={selectedService}
         startsAt={new Date(booked.startsAt)}
         isReschedule={isReschedule}
+        pending={booked.status === "pending"}
         adSlot={confirmationAd}
         onAppointments={() => router.replace("/appointments" as never)}
         onHome={() => router.replace("/discover" as never)}
@@ -910,6 +917,7 @@ function BookingSuccess({
   service,
   startsAt,
   isReschedule,
+  pending,
   adSlot,
   onAppointments,
   onHome,
@@ -918,6 +926,8 @@ function BookingSuccess({
   service: Service | null;
   startsAt: Date;
   isReschedule: boolean;
+  /** Awaiting the coiffeur's decision — not confirmed yet. */
+  pending: boolean;
   adSlot: AdSlot | null;
   onAppointments: () => void;
   onHome: () => void;
@@ -970,7 +980,11 @@ function BookingSuccess({
               { color: theme.foreground.white, textAlign: "center" },
             ]}
           >
-            {isReschedule ? "Rendez-vous déplacé." : "C'est réservé."}
+            {isReschedule
+              ? "Rendez-vous déplacé."
+              : pending
+                ? "Demande envoyée."
+                : "C'est réservé."}
           </Text>
           <Text
             style={[
@@ -985,6 +999,16 @@ function BookingSuccess({
               " à " +
               timeOfDay(startsAt)}
           </Text>
+          {!isReschedule && pending ? (
+            <Text
+              style={[
+                typography.caption,
+                { color: theme.foreground.gray, textAlign: "center" },
+              ]}
+            >
+              Le salon doit encore confirmer votre créneau.
+            </Text>
+          ) : null}
         </View>
       </View>
 

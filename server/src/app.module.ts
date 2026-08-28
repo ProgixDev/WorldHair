@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { CoiffeurModule } from './coiffeur/coiffeur.module';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     CoiffeurModule,
     SalonModule,
     DiscoveryModule,
+    AppointmentsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

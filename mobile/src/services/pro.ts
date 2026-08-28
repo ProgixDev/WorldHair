@@ -2,11 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
-import {
-  seedAppointments,
-  seedProServices as seedMockCatalogueServices,
-  seedSubscription,
-} from "../features/pro/seed";
+import { seedSubscription } from "../features/pro/seed";
 import type {
   AvailabilityDay,
   PlanId,
@@ -20,18 +16,19 @@ import type {
 
 /**
  * The coiffeur area's data layer, split by how real it is:
- *  - Profile, prestations and weekly hours go straight to the NestJS server
- *    (`/salon/me/*`, see server/src/salon/) — real, persisted in Supabase.
- *  - Appointments, subscription and review replies stay mocked in
- *    AsyncStorage — "Rendez-vous/Agenda", "Paiements/Abonnements" and "Avis"
- *    don't have a backend yet (separate TODO.md sections).
- * `seedMockExtras()` only seeds that second group now; the first group's
+ *  - Profile, prestations, weekly hours, and appointments all go straight to
+ *    the NestJS server (`/salon/me/*`, `/appointments/*` — see
+ *    server/src/salon/ and server/src/appointments/) — real, persisted in
+ *    Supabase.
+ *  - Subscription and review replies stay mocked in AsyncStorage —
+ *    "Paiements/Abonnements" and "Avis" don't have a backend yet (separate
+ *    TODO.md sections).
+ * `seedProWorkspace()` only seeds that mock part now; everything else's
  * defaults come from the server itself (an empty profile, a sensible
- * default week, no services yet).
+ * default week, no services or appointments yet).
  */
 
 const KEYS = {
-  appointments: "@worldhair/pro_appointments",
   subscription: "@worldhair/pro_subscription",
   replies: "@worldhair/pro_replies",
 } as const;
@@ -64,21 +61,16 @@ async function currentUserId(): Promise<string> {
 // ─── Seeding (mock extras only) ───────────────────────────────────────────────
 
 /**
- * Fills the mock-only part of the pro store (appointments, subscription,
- * replies) so the dashboard/agenda/account tabs have numbers to show.
- * Idempotent, and independent of whether the real profile/services/
- * availability have been filled in yet. Appointments are still generated
- * against the static mock salon catalogue purely as random-assignment
- * fodder — unrelated to a coiffeur's own real `coiffeur_services` rows,
- * which start empty until "Rendez-vous/Agenda" gets its own real backend.
+ * Fills the mock-only part of the pro store (subscription, replies) so the
+ * account/reviews tabs have numbers to show. Idempotent, and independent of
+ * whether the real profile/services/availability/appointments have been
+ * filled in yet.
  */
 export async function seedProWorkspace(): Promise<void> {
   const existing = await AsyncStorage.getItem(KEYS.subscription);
   if (existing) return;
 
-  const catalogueServices = seedMockCatalogueServices();
   await Promise.all([
-    write(KEYS.appointments, seedAppointments(catalogueServices)),
     write(KEYS.subscription, seedSubscription()),
     write(KEYS.replies, [] as ReviewReply[]),
   ]);
@@ -260,25 +252,24 @@ export async function saveAvailability(
   return data.map(fromAvailabilityResponse);
 }
 
-// ─── Appointments (still mock) ────────────────────────────────────────────────
+// ─── Appointments ────────────────────────────────────────────────────────────
 
 export async function listProAppointments(): Promise<ProAppointment[]> {
-  await seedProWorkspace();
-  const appointments = await read<ProAppointment[]>(KEYS.appointments, []);
-  return appointments.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const { data } = await apiClient.get<ProAppointment[]>("/appointments/salon");
+  return data;
 }
 
+/** Only ever called with "confirmed"/"refused" (accepting or refusing a pending request) or "cancelled" — never "pending"/"done", which aren't decisions a coiffeur makes. */
 export async function setAppointmentStatus(
   id: string,
   status: ProAppointmentStatus,
 ): Promise<ProAppointment[]> {
-  await delay(250);
-  const appointments = await listProAppointments();
-  const next = appointments.map((appointment) =>
-    appointment.id === id ? { ...appointment, status } : appointment,
-  );
-  await write(KEYS.appointments, next);
-  return next;
+  if (status === "confirmed" || status === "refused") {
+    await apiClient.patch(`/appointments/${id}/decide`, { decision: status });
+  } else if (status === "cancelled") {
+    await apiClient.patch(`/appointments/${id}/cancel`);
+  }
+  return listProAppointments();
 }
 
 // ─── Subscription (still mock) ────────────────────────────────────────────────

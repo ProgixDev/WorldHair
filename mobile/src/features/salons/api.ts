@@ -124,16 +124,23 @@ export async function fetchSalonCities(): Promise<string[]> {
   return data;
 }
 
+/**
+ * Starts already held by *anyone* at this salon (pending or confirmed, no
+ * client identity) — feeds the booking flow's slot picker so a slot someone
+ * else already holds shows as unavailable too, not just the caller's own.
+ */
+export async function fetchBusySlots(salonId: string): Promise<string[]> {
+  const { data } = await apiClient.get<{ startsAt: string; durationMin: number }[]>(
+    `/appointments/salon/${salonId}/busy`,
+  );
+  return data.map((slot) => slot.startsAt);
+}
+
 // ─── Lightweight shared cache for display-only lookups ─────────────────────
-// appointments.tsx/profile.tsx and services/booking.ts only need a name/cover
-// for a salonId they already have — not worth a loading state per row.
+// A row that already has a salonId but needs more (address, cover) than the
+// name/price snapshot it carries directly — not worth a loading state per row.
 
 const cache = new Map<string, Salon>();
-
-/** Synchronous, non-hook read of the shared cache — for plain helpers (services/booking.ts's salonNameFor/serviceNameFor) that can't call useSalonSummary themselves. Relies on some rendered component having called useSalonSummary(id) first to warm it. */
-export function cachedSalon(id: string): Salon | undefined {
-  return cache.get(id);
-}
 
 /**
  * Warms the shared cache for `id` and re-renders the calling component once

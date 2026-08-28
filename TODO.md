@@ -26,11 +26,11 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Filtres (type de prestation, localisation) — GET /salons?specialty&city (particulier UI keeps its existing client-side specialty chips/free-text/sort over the fetched list)
 
 ### Rendez-vous / Agenda
-- [ ] Modèle agenda coiffeur (disponibilités, créneaux)
-- [ ] Prise de RDV (sélection prestation + créneau)
-- [ ] Modification / annulation RDV (particulier)
-- [ ] Acceptation / refus / annulation RDV (coiffeur)
-- [ ] Statistiques de réservations (coiffeur)
+- [x] Modèle agenda coiffeur (disponibilités, créneaux) — coiffeur_availability (Profils) + new `appointments` table
+- [x] Prise de RDV (sélection prestation + créneau) — POST /appointments, validates hours/break/overlap server-side
+- [x] Modification / annulation RDV (particulier) — PATCH /appointments/:id/reschedule and /cancel
+- [x] Acceptation / refus / annulation RDV (coiffeur) — PATCH /appointments/:id/decide and /cancel, @Roles('coiffeur')
+- [x] Statistiques de réservations (coiffeur) — GET /appointments/salon feeds the existing client-side stats.ts aggregation, no separate stats endpoint needed
 
 ### Paiement prestation (particulier)
 - [ ] Prélèvement du montant de la prestation avant l'envoi de la demande de réservation au coiffeur (issue #2 — pas au moment de l'acceptation)
