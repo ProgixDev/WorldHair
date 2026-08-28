@@ -86,7 +86,7 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Upload KBIS / extrait RNE, obligatoire (issue #6)
 - [x] Choix zone de pratique: salon (+ adresse exacte + facture société) ou domicile (+ rayon de déplacement) (issue #6)
 - [x] Écran "compte en attente de validation"
-- [ ] 4e slide onboarding "Des produits de qualité" — texte descriptif (IA) + image gérée côté admin (issue #5)
+- [x] 4e slide onboarding "Des produits de qualité" — texte descriptif (IA) + image gérée côté admin (issue #5)
 
 ### Particulier
 - [x] Écran accueil: carte/liste coiffeurs à proximité (carte plein écran + carrousel)

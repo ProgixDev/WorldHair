@@ -20,6 +20,9 @@ import {
   setOnboardingSeen,
   type LocationIntent,
 } from "../../services/preferences";
+import { getOnboardingProductsSlideContent } from "../../services/content";
+
+const LAST_SLIDE = ONBOARDING_SLIDES.length - 1;
 
 export default function Onboarding() {
   const router = useRouter();
@@ -27,6 +30,36 @@ export default function Onboarding() {
   const { enable } = useLocation();
   const listRef = useRef<FlatList<OnboardingSlideData>>(null);
   const [index, setIndex] = useState(0);
+  const [slides, setSlides] = useState(ONBOARDING_SLIDES);
+  // Slide 3 sets this before the user reaches the last slide; a direct swipe
+  // past it (no CTA press) falls back to "manual".
+  const [locationIntent, setStoredLocationIntent] =
+    useState<LocationIntent>("manual");
+
+  // Admin-managed copy/photo for the products slide (issue #5) — a no-op
+  // today since the mock always returns the same fallback, but this is the
+  // seam a real admin CMS replaces.
+  useEffect(() => {
+    let cancelled = false;
+    getOnboardingProductsSlideContent().then((content) => {
+      if (cancelled) return;
+      setSlides((prev) =>
+        prev.map((slide) =>
+          slide.id === "products"
+            ? {
+                ...slide,
+                heading: content.heading,
+                body: content.body,
+                art: content.imageUri ? { uri: content.imageUri } : null,
+              }
+            : slide,
+        ),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Keep the current page aligned when the viewport changes (rotate / fold).
   useEffect(() => {
@@ -49,20 +82,28 @@ export default function Onboarding() {
     [width],
   );
 
-  const handlePrimary = useCallback(
-    (slideIndex: number) => {
-      const slide = ONBOARDING_SLIDES[slideIndex];
-      if (slide.cta.locationIntent) {
-        // "Activer ma position" should actually prompt for it, not just
-        // record the intent — the permission dialog runs alongside the
-        // navigation rather than blocking it.
-        if (slide.cta.locationIntent === "gps") void enable();
-        void finish(slide.cta.locationIntent);
+  const advanceOrFinish = useCallback(
+    (slideIndex: number, intent?: LocationIntent) => {
+      if (intent) setStoredLocationIntent(intent);
+      if (slideIndex === LAST_SLIDE) {
+        void finish(intent ?? locationIntent);
         return;
       }
-      goTo(Math.min(slideIndex + 1, ONBOARDING_SLIDES.length - 1));
+      goTo(Math.min(slideIndex + 1, LAST_SLIDE));
     },
-    [enable, finish, goTo],
+    [finish, goTo, locationIntent],
+  );
+
+  const handlePrimary = useCallback(
+    (slideIndex: number) => {
+      const slide = slides[slideIndex];
+      // "Activer ma position" should actually prompt for it, not just
+      // record the intent — the permission dialog runs alongside the
+      // navigation rather than blocking it.
+      if (slide.cta.locationIntent === "gps") void enable();
+      advanceOrFinish(slideIndex, slide.cta.locationIntent);
+    },
+    [slides, enable, advanceOrFinish],
   );
 
   const handleMomentumEnd = (
@@ -77,7 +118,7 @@ export default function Onboarding() {
       <StatusBar style={index === 0 ? "light" : "dark"} />
       <FlatList
         ref={listRef}
-        data={ONBOARDING_SLIDES}
+        data={slides}
         keyExtractor={(slide) => slide.id}
         horizontal
         pagingEnabled
@@ -97,7 +138,11 @@ export default function Onboarding() {
             onPrimary={() => handlePrimary(slideIndex)}
             onSecondary={
               item.secondaryCta
-                ? () => void finish(item.secondaryCta!.locationIntent)
+                ? () =>
+                    advanceOrFinish(
+                      slideIndex,
+                      item.secondaryCta!.locationIntent,
+                    )
                 : undefined
             }
           />

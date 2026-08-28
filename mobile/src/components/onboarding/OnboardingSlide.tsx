@@ -1,7 +1,8 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
@@ -9,6 +10,7 @@ import { typography } from "../../constants/typography";
 import {
   SLIDE_CTA,
   type OnboardingSlideData,
+  type SlidePalette,
 } from "../../features/onboarding/slides";
 import { Button } from "../ui/Button";
 import { Pagination } from "./Pagination";
@@ -91,13 +93,11 @@ export function OnboardingSlide({
   if (slide.fullBleed) {
     return (
       <View style={{ width, flex: 1, backgroundColor: palette.surface }}>
-        <Image
-          source={slide.art}
+        <ArtOrFallback
+          art={slide.art}
+          iconFallback={slide.iconFallback}
+          palette={palette}
           style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          contentPosition="top center"
-          transition={200}
-          accessible={false}
         />
         <LinearGradient
           colors={[fade, palette.surface + "cc", palette.surface]}
@@ -135,13 +135,11 @@ export function OnboardingSlide({
   return (
     <View style={{ width, flex: 1, backgroundColor: palette.surface }}>
       <View style={{ height: onboardingArtHeight + insets.top }}>
-        <Image
-          source={slide.art}
+        <ArtOrFallback
+          art={slide.art}
+          iconFallback={slide.iconFallback}
+          palette={palette}
           style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          contentPosition="top center"
-          transition={200}
-          accessible={false}
         />
         <LinearGradient
           colors={[fade, palette.surface]}
@@ -167,6 +165,54 @@ export function OnboardingSlide({
       >
         {copy}
       </View>
+    </View>
+  );
+}
+
+/**
+ * The art panel, or — while no photo is set (the products slide before an
+ * admin uploads one, issue #5) — a tinted icon panel in its place.
+ */
+function ArtOrFallback({
+  art,
+  iconFallback,
+  palette,
+  style,
+}: {
+  art: OnboardingSlideData["art"];
+  iconFallback: OnboardingSlideData["iconFallback"];
+  palette: SlidePalette;
+  style: StyleProp<ViewStyle>;
+}) {
+  if (art) {
+    return (
+      <Image
+        source={art}
+        style={style as React.ComponentProps<typeof Image>["style"]}
+        contentFit="cover"
+        contentPosition="top center"
+        transition={200}
+        accessible={false}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={[
+        style,
+        {
+          backgroundColor: palette.rule + "1a",
+          alignItems: "center",
+          justifyContent: "center",
+        },
+      ]}
+    >
+      <MaterialCommunityIcons
+        name={iconFallback ?? "image-outline"}
+        size={64}
+        color={palette.rule}
+      />
     </View>
   );
 }

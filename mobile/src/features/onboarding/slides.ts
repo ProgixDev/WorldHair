@@ -14,7 +14,10 @@ export interface SlidePalette {
 
 export interface OnboardingSlideData {
   id: string;
-  art: number;
+  /** Bundled asset, a remote/admin-uploaded photo, or none yet. */
+  art: number | { uri: string } | null;
+  /** Shown instead of the photo panel while `art` is null. */
+  iconFallback?: keyof typeof MaterialCommunityIcons.glyphMap;
   palette: SlidePalette;
   /** Art covers the whole page (slide 1) instead of a top panel. */
   fullBleed: boolean;
@@ -84,6 +87,24 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
       locationIntent: "gps",
     },
     secondaryCta: { label: "Choisir une ville", locationIntent: "manual" },
+  },
+  {
+    id: "products",
+    // No bundled photo: the real image is uploaded by an admin (issue #5).
+    // `app/onboarding/index.tsx` fetches it through `services/content.ts`
+    // and swaps it in here once it resolves.
+    art: null,
+    iconFallback: "spray-bottle",
+    palette: {
+      surface: "#f7f4f1",
+      onSurface: "#0c2340",
+      muted: "#5b7186",
+      rule: "#b9855a",
+    },
+    fullBleed: false,
+    heading: "Des produits de qualité",
+    body: "Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.",
+    cta: { label: "Découvrir WorldHair" },
   },
 ];
 
