@@ -32,11 +32,16 @@ export default function PendingReview() {
   const rejected = session?.status === "rejected";
   const application = session?.application ?? null;
 
-  // An approved dossier has no business sitting on this screen.
+  // An approved dossier has no business sitting on this screen. A freshly
+  // approved coiffeur owes the mandatory shop-profile screen first (issue #7).
   useEffect(() => {
-    if (session?.status === "active")
-      router.replace(ROUTES.proDashboard as never);
-  }, [session?.status, router]);
+    if (session?.status !== "active") return;
+    router.replace(
+      (session.role === "coiffeur" && !session.shopProfileComplete
+        ? ROUTES.proShopSetup
+        : ROUTES.proDashboard) as never,
+    );
+  }, [session?.status, session?.shopProfileComplete, session?.role, router]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -52,7 +57,6 @@ export default function PendingReview() {
           ? "Le diplôme envoyé est illisible. Merci de renvoyer une photo nette."
           : undefined,
       );
-      if (outcome === "approved") router.replace(ROUTES.proDashboard as never);
     } finally {
       setBusy(false);
     }

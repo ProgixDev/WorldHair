@@ -69,6 +69,11 @@ export interface Session {
   application?: ProApplication | null;
   /** Reason shown on the refused-account state. */
   reviewMessage?: string | null;
+  /**
+   * Coiffeur only: false right after admin approval until the mandatory
+   * shop-profile screen (hours, photo) is completed (issue #7).
+   */
+  shopProfileComplete?: boolean;
   /** ISO creation date — drives the "membre depuis" line. */
   createdAt: string;
 }
@@ -300,13 +305,21 @@ export async function simulateReviewOutcome(
 ): Promise<Session> {
   await delay(400);
   const user = await requireUser();
-  // An approved coiffeur walks straight into a workspace with data in it.
+  // An approved coiffeur walks straight into a workspace with data in it,
+  // but still owes the mandatory shop-profile screen (issue #7).
   if (outcome === "approved") await seedProWorkspace();
   return commit({
     ...user,
     status: outcome === "approved" ? "active" : "rejected",
+    shopProfileComplete: outcome === "approved" ? false : user.shopProfileComplete,
     reviewMessage: message ?? null,
   });
+}
+
+/** Marks the mandatory post-approval shop-profile screen as done (issue #7). */
+export async function completeShopProfile(): Promise<Session> {
+  const user = await requireUser();
+  return commit({ ...user, shopProfileComplete: true });
 }
 
 // ─── Demo accounts ───────────────────────────────────────────────────────────
@@ -422,6 +435,9 @@ function buildDemoUser(persona: DemoPersona): StoredUser {
       },
       application,
       reviewMessage: null,
+      // This persona is a shortcut into a populated workspace, not the real
+      // approval flow, so it skips the mandatory shop-profile screen.
+      shopProfileComplete: true,
     };
 
   if (persona === "coiffeur_pending")

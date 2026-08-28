@@ -32,6 +32,8 @@ interface AuthContextValue {
     outcome: "approved" | "rejected",
     message?: string,
   ) => Promise<Session>;
+  /** Marks the mandatory post-approval shop-profile screen as done (issue #7). */
+  completeShopProfile: () => Promise<Session>;
   /** Dev shortcut into a ready-made account. */
   signInAsDemo: (persona: DemoPersona) => Promise<Session>;
   signOut: () => Promise<void>;
@@ -82,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         capture(auth.submitProApplication(application)),
       simulateReviewOutcome: (outcome, message) =>
         capture(auth.simulateReviewOutcome(outcome, message)),
+      completeShopProfile: () => capture(auth.completeShopProfile()),
       signInAsDemo: (persona) => capture(auth.signInAsDemo(persona)),
       signOut: async () => {
         await auth.signOut();

@@ -12,6 +12,8 @@ export const ROUTES = {
   proZone: "/auth/pro/zone",
   proDocuments: "/auth/pro/documents",
   pending: "/auth/pending",
+  /** Mandatory shop-profile completion, once per coiffeur (issue #7). */
+  proShopSetup: "/pro-shop-setup",
   /** Particulier shell (map tab). */
   discover: "/discover",
   search: "/search",
@@ -42,7 +44,10 @@ export function nextRouteForSession(
   if (session.role === "coiffeur") {
     if (session.status === "pending_review" || session.status === "rejected")
       return ROUTES.pending;
-    if (session.status === "active") return ROUTES.proDashboard;
+    if (session.status === "active")
+      return session.shopProfileComplete
+        ? ROUTES.proDashboard
+        : ROUTES.proShopSetup;
     return ROUTES.proIdentity;
   }
 
