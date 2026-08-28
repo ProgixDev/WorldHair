@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FilterSheet } from "../../components/particulier/FilterSheet";
 import { SalonRow } from "../../components/particulier/SalonRow";
+import { AdBanner } from "../../components/ui/AdBanner";
 import { Chip } from "../../components/ui/Chip";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -28,7 +29,15 @@ import {
   type SalonFilters,
 } from "../../features/salons/filters";
 import { withDistance } from "../../features/salons/geo";
-import { SPECIALTIES } from "../../features/salons/types";
+import { SPECIALTIES, type SalonWithDistance } from "../../features/salons/types";
+import { getAdSlot, type AdSlot } from "../../services/ads";
+
+/** How often the ad banner is interleaved among search results. */
+const AD_INTERVAL = 6;
+
+type ResultItem =
+  | { kind: "salon"; salon: SalonWithDistance }
+  | { kind: "ad" };
 
 /**
  * Text-first search: no map, a dense ranked list with a distance rail. The
@@ -44,6 +53,17 @@ export default function Search() {
 
   const [filters, setFilters] = useState<SalonFilters>(DEFAULT_FILTERS);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [resultsBanner, setResultsBanner] = useState<AdSlot | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAdSlot("search_results").then((slot) => {
+      if (!cancelled) setResultsBanner(slot);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const salonsWithDistance = useMemo(
     () => withDistance(SALONS, coords),
@@ -55,11 +75,25 @@ export default function Search() {
   );
   const filterCount = activeFilterCount(filters);
 
+  const listData = useMemo<ResultItem[]>(() => {
+    if (!resultsBanner?.active)
+      return results.map((salon) => ({ kind: "salon", salon }));
+
+    const items: ResultItem[] = [];
+    results.forEach((salon, index) => {
+      items.push({ kind: "salon", salon });
+      if ((index + 1) % AD_INTERVAL === 0) items.push({ kind: "ad" });
+    });
+    return items;
+  }, [results, resultsBanner]);
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.background.dark }}>
       <FlatList
-        data={results}
-        keyExtractor={(salon) => salon.id}
+        data={listData}
+        keyExtractor={(item, index) =>
+          item.kind === "salon" ? item.salon.id : "ad-" + index
+        }
         contentContainerStyle={{
           paddingHorizontal: gutter,
           paddingTop: insets.top + spacing.md,
@@ -214,12 +248,18 @@ export default function Search() {
             }}
           />
         }
-        renderItem={({ item }) => (
-          <SalonRow
-            salon={item}
-            onPress={() => router.push(("/salon/" + item.id) as never)}
-          />
-        )}
+        renderItem={({ item }) =>
+          item.kind === "ad" && resultsBanner ? (
+            <View style={{ paddingVertical: spacing.sm }}>
+              <AdBanner slot={resultsBanner} />
+            </View>
+          ) : item.kind === "salon" ? (
+            <SalonRow
+              salon={item.salon}
+              onPress={() => router.push(("/salon/" + item.salon.id) as never)}
+            />
+          ) : null
+        }
       />
 
       <FilterSheet

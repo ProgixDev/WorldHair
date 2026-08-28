@@ -97,7 +97,7 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Étape paiement de la prestation avant envoi de la demande au coiffeur (issue #2)
 - [x] Gestion RDV (modifier / annuler)
 - [x] Écran laisser avis + note après prestation
-- [ ] Emplacements publicitaires — propositions à valider avec le client (issue #5):
+- [x] Emplacements publicitaires — propositions à valider avec le client (issue #5):
       1. Bandeau sur l'écran d'accueil (au-dessus/en dessous de la carte des coiffeurs à proximité)
       2. Bannière insérée dans les résultats de recherche (tous les N résultats) ou en bas de la fiche coiffeur
       3. Pop-up à l'ouverture de l'app (fréquence limitée) ou sur l'écran de confirmation de réservation

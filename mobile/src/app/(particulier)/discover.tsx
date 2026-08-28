@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { SalonCard } from "../../components/particulier/SalonCard";
+import { AdBanner } from "../../components/ui/AdBanner";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
@@ -27,6 +28,7 @@ import { CITIES } from "../../features/salons/cities";
 import { SALONS } from "../../features/salons/data";
 import { withDistance } from "../../features/salons/geo";
 import { SPECIALTIES, type SpecialtyId } from "../../features/salons/types";
+import { getAdSlot, type AdSlot } from "../../services/ads";
 
 /**
  * Map-first home. The map owns the whole screen; everything else floats over
@@ -53,7 +55,18 @@ export default function Discover() {
   const [specialty, setSpecialty] = useState<SpecialtyId | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [homeBanner, setHomeBanner] = useState<AdSlot | null>(null);
   const listRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAdSlot("home_banner").then((slot) => {
+      if (!cancelled) setHomeBanner(slot);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const salons = useMemo(() => {
     const withKm = withDistance(SALONS, coords);
@@ -297,6 +310,12 @@ export default function Discover() {
                 style={{ flex: 1 }}
               />
             </View>
+          </View>
+        ) : null}
+
+        {homeBanner?.active ? (
+          <View style={{ marginHorizontal: gutter }}>
+            <AdBanner slot={homeBanner} />
           </View>
         ) : null}
 
