@@ -26,7 +26,6 @@ import {
   initials,
 } from "../../features/salons/images";
 import type { Salon } from "../../features/salons/types";
-import { resetMockAuth } from "../../services/auth";
 import {
   isUpcoming,
   listAppointments,
@@ -163,7 +162,7 @@ export default function Profile() {
   const handleReplayOnboarding = () => {
     Alert.alert(
       "Rejouer l'onboarding ?",
-      "La session, les comptes de test, les rendez-vous et les avis locaux seront effacés.",
+      "La session, les rendez-vous et les avis locaux seront effacés.",
       [
         { text: "Annuler", style: "cancel" },
         {
@@ -171,11 +170,7 @@ export default function Profile() {
           style: "destructive",
           onPress: async () => {
             await signOut();
-            await Promise.all([
-              resetMockAuth(),
-              resetBookingData(),
-              clearPreferences(),
-            ]);
+            await Promise.all([resetBookingData(), clearPreferences()]);
             router.replace(ROUTES.onboarding as never);
           },
         },

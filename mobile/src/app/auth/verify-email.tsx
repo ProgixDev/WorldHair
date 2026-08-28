@@ -1,5 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { AuthHeader } from "../../components/ui/AuthHeader";
@@ -7,12 +6,16 @@ import { Button } from "../../components/ui/Button";
 import { OtpInput } from "../../components/ui/OtpInput";
 import { Screen } from "../../components/ui/Screen";
 import { useResponsive } from "../../constants/responsive";
-import { radius, spacing } from "../../constants/spacing";
+import { spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES, nextRouteForSession } from "../../features/auth/routing";
-import { AuthError, DEMO_VERIFICATION_CODE } from "../../services/auth";
+import {
+  clearSignupIntent,
+  getSignupIntent,
+} from "../../services/preferences";
+import { AuthError } from "../../services/auth";
 import { isValidVerificationCode } from "../../utils/validation";
 
 const RESEND_COOLDOWN_S = 30;
@@ -22,6 +25,13 @@ export default function VerifyEmail() {
   const { theme } = useTheme();
   const { space } = useResponsive();
   const { session, verifyEmail, resendCode, signOut } = useAuth();
+  const { email: emailParam } = useLocalSearchParams<{ email?: string }>();
+
+  // Signup leaves no session until verification succeeds, so the email this
+  // screen operates on comes from the route param it was navigated with;
+  // session.email only ever matters if this screen is somehow re-entered
+  // with one already (e.g. resend after a hot reload).
+  const email = emailParam ?? session?.email ?? "";
 
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +54,19 @@ export default function VerifyEmail() {
     setError(null);
     setVerifying(true);
     try {
-      const next = await verifyEmail(value);
-      router.replace(nextRouteForSession(next, true) as never);
+      const next = await verifyEmail(email, value);
+
+      // Honor the role picked at sign-up: a freshly-verified account is
+      // still role "particulier" in the database until a coiffeur
+      // application is actually submitted (see services/auth.ts), so this
+      // is the one place that intent needs to be read back.
+      const intent = await getSignupIntent();
+      await clearSignupIntent();
+      if (intent === "coiffeur" && !next.application) {
+        router.replace(ROUTES.proIdentity as never);
+      } else {
+        router.replace(nextRouteForSession(next, true) as never);
+      }
     } catch (err) {
       setError(
         err instanceof AuthError
@@ -60,7 +81,7 @@ export default function VerifyEmail() {
   const handleResend = async () => {
     setError(null);
     try {
-      await resendCode();
+      await resendCode(email);
       setResent(true);
       setCooldown(RESEND_COOLDOWN_S);
     } catch {
@@ -82,7 +103,7 @@ export default function VerifyEmail() {
           title="Vérifiez votre email"
           subtitle={
             "Nous avons envoyé un code à 6 chiffres à " +
-            (session?.email ?? "votre adresse") +
+            (email || "votre adresse") +
             "."
           }
           onBack={handleChangeEmail}
@@ -108,37 +129,6 @@ export default function VerifyEmail() {
               Nouveau code envoyé.
             </Text>
           ) : null}
-        </View>
-
-        {/* Frontend-only build: no mail is actually sent. */}
-        <View
-          style={{
-            flexDirection: "row",
-            gap: spacing.md,
-            padding: spacing.lg,
-            borderRadius: radius.lg,
-            backgroundColor: theme.surface.base,
-            borderWidth: 1,
-            borderColor: theme.border,
-          }}
-        >
-          <MaterialCommunityIcons
-            name="information-outline"
-            size={20}
-            color={theme.primary.main}
-          />
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={[typography.label, { color: theme.foreground.white }]}>
-              Mode démo
-            </Text>
-            <Text
-              style={[typography.caption, { color: theme.foreground.gray }]}
-            >
-              {"Aucun email n'est envoyé pour l'instant. Utilisez le code " +
-                DEMO_VERIFICATION_CODE +
-                "."}
-            </Text>
-          </View>
         </View>
 
         <View style={{ gap: spacing.md }}>

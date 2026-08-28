@@ -14,6 +14,7 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES, nextRouteForSession } from "../../features/auth/routing";
+import { setSignupIntent } from "../../services/preferences";
 import { AuthError, type UserRole } from "../../services/auth";
 import { checkPassword, isValidEmail } from "../../utils/validation";
 
@@ -56,7 +57,11 @@ export default function SignUp() {
     setPending("email");
     try {
       await signUp(email, password, role);
-      router.replace(ROUTES.verifyEmail as never);
+      await setSignupIntent(role);
+      router.replace({
+        pathname: ROUTES.verifyEmail,
+        params: { email: email.trim() },
+      } as never);
     } catch (error) {
       setFormError(
         error instanceof AuthError

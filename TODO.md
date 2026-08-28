@@ -5,8 +5,8 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 ## Backend
 
 ### Auth & comptes
-- [ ] Inscription particulier (email + mdp, ou social login) — client-side against Supabase Auth directly, not this server; see `server/src/auth/auth.module.ts`. Left unchecked until the mobile app itself is switched over from its mocked `services/auth.ts`.
-- [ ] Vérification email — same as above, Supabase's hosted Auth sends this itself.
+- [x] Inscription particulier (email + mdp — mobile now calls Supabase Auth directly, see mobile/src/services/auth.ts; social login stays mocked, no OAuth app registered yet)
+- [x] Vérification email (real 6-digit OTP via supabase.auth.verifyOtp)
 - [x] Inscription coiffeur (infos perso, salon, adresse)
 - [x] Upload pièce d'identité + diplôme (stockage sécurisé)
 - [x] Upload KBIS ou extrait d'immatriculation RNE, obligatoire (issue #6 — preuve d'activité déclarée)

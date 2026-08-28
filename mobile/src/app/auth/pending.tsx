@@ -26,8 +26,8 @@ export default function PendingReview() {
   const router = useRouter();
   const { theme } = useTheme();
   const { space } = useResponsive();
-  const { session, signOut, simulateReviewOutcome } = useAuth();
-  const [busy, setBusy] = useState(false);
+  const { session, signOut, refresh } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
 
   const rejected = session?.status === "rejected";
   const application = session?.application ?? null;
@@ -48,17 +48,12 @@ export default function PendingReview() {
     router.replace(ROUTES.signIn as never);
   };
 
-  const handleSimulate = async (outcome: "approved" | "rejected") => {
-    setBusy(true);
+  const handleRefresh = async () => {
+    setRefreshing(true);
     try {
-      await simulateReviewOutcome(
-        outcome,
-        outcome === "rejected"
-          ? "Le diplôme envoyé est illisible. Merci de renvoyer une photo nette."
-          : undefined,
-      );
+      await refresh();
     } finally {
-      setBusy(false);
+      setRefreshing(false);
     }
   };
 
@@ -192,39 +187,13 @@ export default function PendingReview() {
           </View>
         ) : null}
 
-        {/* Frontend-only build: no admin back-office exists yet. */}
-        <View
-          style={{
-            padding: spacing.lg,
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderStyle: "dashed",
-            borderColor: theme.border,
-            gap: spacing.md,
-          }}
-        >
-          <Text style={[typography.label, { color: theme.foreground.gray }]}>
-            Mode démo — simuler la décision admin
-          </Text>
-          <View style={{ flexDirection: "row", gap: spacing.md }}>
-            <Button
-              label="Valider"
-              variant="outline"
-              onPress={() => handleSimulate("approved")}
-              disabled={busy}
-              style={{ flex: 1 }}
-            />
-            <Button
-              label="Refuser"
-              variant="outline"
-              onPress={() => handleSimulate("rejected")}
-              disabled={busy}
-              color={theme.danger}
-              background={theme.danger}
-              style={{ flex: 1 }}
-            />
-          </View>
-        </View>
+        <Button
+          label="Actualiser mon statut"
+          variant="outline"
+          icon="refresh"
+          onPress={handleRefresh}
+          loading={refreshing}
+        />
 
         <Pressable
           onPress={handleSignOut}

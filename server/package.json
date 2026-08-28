@@ -14,7 +14,8 @@
     "test:e2e": "node -e \"if(!require('fs').existsSync('test/jest-e2e.json')){console.error('No database variant selected — run bun run setup:mongodb or bun run setup:supabase first.');process.exit(1)}\" && jest --config ./test/jest-e2e.json --runInBand",
     "typecheck": "tsc --noEmit",
     "setup:mongodb": "bun scripts/setup-mongodb.ts",
-    "setup:supabase": "bun scripts/setup-supabase.ts"
+    "setup:supabase": "bun scripts/setup-supabase.ts",
+    "seed:demo": "bun scripts/seed-demo-accounts.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

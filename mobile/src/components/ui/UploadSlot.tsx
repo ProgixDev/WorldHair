@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
+import { supabase } from "../../lib/supabase";
 import type { ProDocument, ProDocumentKind } from "../../services/auth";
 
 interface UploadSlotProps {
@@ -20,6 +21,7 @@ interface UploadSlotProps {
 }
 
 const MAX_BYTES = 10 * 1024 * 1024;
+const BUCKET = "coiffeur-documents";
 
 function formatSize(bytes?: number | null): string {
   if (!bytes) return "";
@@ -31,10 +33,47 @@ function isImage(document: ProDocument): boolean {
   return (document.mimeType ?? "").startsWith("image/");
 }
 
+function extensionFor(name: string, mimeType: string | null | undefined): string {
+  const fromName = name.split(".").pop();
+  if (fromName && fromName !== name) return fromName.toLowerCase();
+  return mimeType === "application/pdf" ? "pdf" : "jpg";
+}
+
 /**
- * One required document (pièce d'identité / diplôme). Accepts a photo from the
- * library or a PDF from the file browser; the file only ever stays on-device
- * until a backend exists to receive it.
+ * Uploads straight to the private `coiffeur-documents` Storage bucket under
+ * the caller's own `{uid}/` prefix — Storage RLS is what actually enforces
+ * that prefix (see server/_variants/supabase/schema.sql), this is just
+ * building the matching path. Overwrites any previous upload for this `kind`.
+ */
+async function uploadDocument(
+  kind: ProDocumentKind,
+  name: string,
+  localUri: string,
+  mimeType: string | null | undefined,
+): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Aucune session active.");
+
+  const path = `${user.id}/${kind}.${extensionFor(name, mimeType)}`;
+  const response = await fetch(localUri);
+  const blob = await response.blob();
+
+  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+    contentType: mimeType ?? undefined,
+    upsert: true,
+  });
+  if (error) throw error;
+
+  return path;
+}
+
+/**
+ * One required document (pièce d'identité / diplôme / KBIS / facture).
+ * Accepts a photo from the library or a PDF from the file browser, uploads it
+ * to Supabase Storage right away, and hands the caller both a local preview
+ * URI and the resulting Storage path (`ProDocument.storagePath`) once done.
  */
 export function UploadSlot({
   kind,
@@ -76,13 +115,20 @@ export function UploadSlot({
         return;
       }
 
+      const name = asset.fileName ?? title + ".jpg";
+      const mimeType = asset.mimeType ?? "image/jpeg";
+      const storagePath = await uploadDocument(kind, name, asset.uri, mimeType);
+
       onChange({
         kind,
-        name: asset.fileName ?? title + ".jpg",
+        name,
         uri: asset.uri,
-        mimeType: asset.mimeType ?? "image/jpeg",
+        mimeType,
         size: asset.fileSize ?? null,
+        storagePath,
       });
+    } catch {
+      reject("Envoi impossible. Réessayez.");
     } finally {
       setBusy(false);
     }
@@ -105,13 +151,23 @@ export function UploadSlot({
         return;
       }
 
+      const storagePath = await uploadDocument(
+        kind,
+        asset.name,
+        asset.uri,
+        asset.mimeType,
+      );
+
       onChange({
         kind,
         name: asset.name,
         uri: asset.uri,
         mimeType: asset.mimeType ?? null,
         size: asset.size ?? null,
+        storagePath,
       });
+    } catch {
+      reject("Envoi impossible. Réessayez.");
     } finally {
       setBusy(false);
     }

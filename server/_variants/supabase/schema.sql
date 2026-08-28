@@ -10,24 +10,41 @@
 -- row per `auth.users` row, kept in sync by a trigger, with Row Level
 -- Security restricting each user to their own row.
 
+-- `first_name`/`last_name`/`photo_url` are the particulier profile fields
+-- from the mobile app's `ParticulierProfile` (see
+-- mobile/src/services/auth.ts) — there's no username/handle concept
+-- anywhere in this product, so this departs from the generic starter
+-- template's username-based `profiles` shape rather than keeping unused
+-- columns alongside real ones. A coiffeur account leaves these at their
+-- defaults; their identity lives in `coiffeur_applications` instead (below).
+-- `role` starts 'particulier' for everyone; submitting a coiffeur
+-- application (below) is what flips it to 'coiffeur' — see
+-- src/coiffeur/coiffeur-applications.service.ts. There is no 'admin' signup
+-- path: promote a user by hand (`update public.profiles set role = 'admin'
+-- where id = '<uuid>'`) since the back-office that would do this doesn't
+-- exist yet (TODO.md → Back-office admin).
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  username text unique,
-  display_name text not null default '',
+  first_name text not null default '',
+  last_name text not null default '',
+  photo_url text,
+  role text not null default 'particulier' check (role in ('particulier', 'coiffeur', 'admin')),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint username_length check (username is null or char_length(username) between 3 and 20)
+  updated_at timestamptz not null default now()
 );
 
 alter table public.profiles enable row level security;
 
+-- auth.uid() wrapped in (select ...) so Postgres evaluates it once per
+-- query instead of once per row — see
+-- https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select
 create policy "Users can view their own profile"
   on public.profiles for select
-  using (auth.uid () = id);
+  using ((select auth.uid ()) = id);
 
 create policy "Users can update their own profile"
   on public.profiles for update
-  using (auth.uid () = id);
+  using ((select auth.uid ()) = id);
 
 -- The server itself talks to Postgres with the SERVICE ROLE key
 -- (see src/database/supabase.service.ts), which bypasses RLS entirely — the
@@ -36,6 +53,9 @@ create policy "Users can update their own profile"
 
 -- Auto-create an empty profile row whenever a new auth user signs up, so
 -- `GET /users/me` always has a row to find (see src/users/users.service.ts).
+-- Only ever invoked by the trigger below, never directly — EXECUTE is
+-- revoked from PUBLIC so it can't be called as a PostgREST RPC endpoint
+-- despite being SECURITY DEFINER.
 create function public.handle_new_user ()
 returns trigger
 language plpgsql
@@ -48,14 +68,18 @@ begin
 end;
 $$;
 
+revoke execute on function public.handle_new_user () from public;
+
 create trigger on_auth_user_created
 after insert on auth.users for each row
 execute procedure public.handle_new_user ();
 
--- Keep updated_at current on every profile edit.
+-- Keep updated_at current on every profile edit. Same PUBLIC-execute
+-- revocation as handle_new_user, for the same reason.
 create function public.set_updated_at ()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = now();
@@ -63,22 +87,14 @@ begin
 end;
 $$;
 
+revoke execute on function public.set_updated_at () from public;
+
 create trigger set_profiles_updated_at
 before update on public.profiles for each row
 execute procedure public.set_updated_at ();
 
--- ── Roles & coiffeur onboarding (TODO.md → Backend → "Auth & comptes") ──────
+-- ── Coiffeur onboarding (TODO.md → Backend → "Auth & comptes") ──────────────
 --
--- `role` starts 'particulier' for everyone; submitting a coiffeur application
--- (see below) is what flips it to 'coiffeur' — see
--- src/coiffeur/coiffeur-applications.service.ts. There is no 'admin' signup
--- path: promote a user by hand (`update public.profiles set role = 'admin'
--- where id = '<uuid>'`) since the back-office that would do this doesn't
--- exist yet (TODO.md → Back-office admin).
-alter table public.profiles
-  add column role text not null default 'particulier'
-    check (role in ('particulier', 'coiffeur', 'admin'));
-
 -- One row per coiffeur, covering their whole onboarding lifecycle: the
 -- application itself, the admin's decision, and the mandatory post-approval
 -- shop-profile completion (issue #7). Mirrors the mobile app's mocked
@@ -130,13 +146,15 @@ alter table public.coiffeur_applications enable row level security;
 -- As with `profiles` above: this server always queries with the service-role
 -- key (bypassing RLS), so these policies only matter if this table is ever
 -- queried directly with a user's own session instead.
-create policy "Coiffeurs can view their own application"
+-- One combined policy, not two: Postgres evaluates every permissive policy
+-- that applies to a query, so an owner-only policy plus an admin-only policy
+-- costs twice what one owner-or-admin policy does.
+create policy "Coiffeurs can view their own application, admins can view every application"
   on public.coiffeur_applications for select
-  using (auth.uid () = profile_id);
-
-create policy "Admins can view every application"
-  on public.coiffeur_applications for select
-  using (exists (select 1 from public.profiles where id = auth.uid () and role = 'admin'));
+  using (
+    (select auth.uid ()) = profile_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
 
 create trigger set_coiffeur_applications_updated_at
 before update on public.coiffeur_applications for each row

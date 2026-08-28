@@ -1,19 +1,20 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { isAxiosError } from "axios";
+import { apiClient } from "../lib/apiClient";
+import { supabase } from "../lib/supabase";
 import { seedDemoBookings } from "./booking";
 import { seedProWorkspace } from "./pro";
 
 /**
- * Mock auth service. No backend exists yet (stack undecided — see TODO.md), so
- * every call here fakes latency against AsyncStorage. This module is the seam:
- * when the real API lands, only this file is replaced. Nothing outside it may
- * touch the storage keys below.
+ * Real auth service: Supabase Auth directly for signup/login/verify/reset
+ * (see server/src/auth/auth.module.ts's doc comment for why that split
+ * exists), the NestJS server for coiffeur onboarding (`/coiffeur/
+ * applications/*`, since that's where the business logic — path ownership,
+ * conditional practice-zone validation, role promotion — actually lives; see
+ * server/src/coiffeur/). `profiles` itself is read directly here too (RLS
+ * lets the owner read/update their own row), so session/role/status
+ * resolution never needs the NestJS server to be reachable — only
+ * *submitting or deciding* a coiffeur application does.
  */
-
-const USERS_KEY = "@worldhair/mock_users";
-const SESSION_KEY = "@worldhair/session";
-
-/** Frontend-only build: the "emailed" code is always this. */
-export const DEMO_VERIFICATION_CODE = "123456";
 
 export type UserRole = "particulier" | "coiffeur";
 
@@ -35,9 +36,16 @@ export type ProDocumentKind = "identity" | "diploma" | "kbis" | "invoice";
 export interface ProDocument {
   kind: ProDocumentKind;
   name: string;
+  /** Local file URI — kept only for the on-device preview thumbnail. */
   uri: string;
   mimeType?: string | null;
   size?: number | null;
+  /**
+   * Path in the private `coiffeur-documents` Storage bucket, set once
+   * `UploadSlot` finishes uploading — this, not `uri`, is what
+   * `submitProApplication` sends the server.
+   */
+  storagePath?: string | null;
 }
 
 export type PracticeZone = "salon" | "domicile";
@@ -49,11 +57,9 @@ export interface ProApplication {
   salonName: string;
   description?: string;
   practiceZone: PracticeZone;
-  /** Only set when practiceZone is "salon". */
   addressLine?: string;
   postalCode?: string;
   city?: string;
-  /** Only set when practiceZone is "domicile". */
   travelRadiusKm?: number;
   documents: ProDocument[];
   submittedAt: string;
@@ -69,17 +75,10 @@ export interface Session {
   application?: ProApplication | null;
   /** Reason shown on the refused-account state. */
   reviewMessage?: string | null;
-  /**
-   * Coiffeur only: false right after admin approval until the mandatory
-   * shop-profile screen (hours, photo) is completed (issue #7).
-   */
+  /** Coiffeur only — issue #7. */
   shopProfileComplete?: boolean;
   /** ISO creation date — drives the "membre depuis" line. */
   createdAt: string;
-}
-
-interface StoredUser extends Session {
-  password: string;
 }
 
 export type AuthErrorCode =
@@ -101,173 +100,252 @@ export class AuthError extends Error {
   }
 }
 
-const LATENCY_MS = 700;
-
-function delay(ms = LATENCY_MS): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-async function readUsers(): Promise<StoredUser[]> {
-  try {
-    const raw = await AsyncStorage.getItem(USERS_KEY);
-    return raw ? (JSON.parse(raw) as StoredUser[]) : [];
-  } catch {
-    throw new AuthError("STORAGE", "Stockage local indisponible.");
+function mapApiError(err: unknown): AuthError {
+  if (isAxiosError(err)) {
+    const body = err.response?.data as
+      | { message?: string | string[] }
+      | undefined;
+    const message = Array.isArray(body?.message)
+      ? body.message.join(" ")
+      : body?.message;
+    return new AuthError("STORAGE", message ?? "Une erreur est survenue.");
   }
+  return new AuthError("STORAGE", "Une erreur est survenue.");
 }
 
-async function writeUsers(users: StoredUser[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
-  } catch {
-    throw new AuthError("STORAGE", "Stockage local indisponible.");
+function basename(path: string): string {
+  return path.split("/").pop() ?? path;
+}
+
+interface CoiffeurApplicationRow {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  salon_name: string;
+  description: string;
+  practice_zone: PracticeZone;
+  address_line: string | null;
+  postal_code: string | null;
+  city: string | null;
+  invoice_document_path: string | null;
+  travel_radius_km: number | null;
+  identity_document_path: string;
+  diploma_document_path: string;
+  kbis_document_path: string;
+  status: "pending" | "validated" | "rejected";
+  review_message: string | null;
+  shop_profile_complete: boolean;
+  submitted_at: string;
+}
+
+/** Rebuilds the `documents` array display from Storage paths — the DB only
+ * ever stores the path, not the original filename/mimetype/size. */
+function mapApplicationRow(row: CoiffeurApplicationRow): ProApplication {
+  const documents: ProDocument[] = [
+    { kind: "identity", name: basename(row.identity_document_path), uri: row.identity_document_path },
+    { kind: "diploma", name: basename(row.diploma_document_path), uri: row.diploma_document_path },
+    { kind: "kbis", name: basename(row.kbis_document_path), uri: row.kbis_document_path },
+  ];
+  if (row.invoice_document_path) {
+    documents.push({
+      kind: "invoice",
+      name: basename(row.invoice_document_path),
+      uri: row.invoice_document_path,
+    });
   }
-}
 
-function toSession(user: StoredUser): Session {
-  const { password: _password, ...session } = user;
-  return session;
-}
-
-async function persistSession(user: StoredUser): Promise<Session> {
-  const session = toSession(user);
-  await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  return session;
-}
-
-/** Writes the mutated user back to the mock table and refreshes the session. */
-async function commit(user: StoredUser): Promise<Session> {
-  const users = await readUsers();
-  const next = users.map((u) => (u.userId === user.userId ? user : u));
-  await writeUsers(next);
-  return persistSession(user);
-}
-
-async function requireUser(): Promise<StoredUser> {
-  const session = await getSession();
-  if (!session) throw new AuthError("NO_SESSION", "Aucune session active.");
-  const users = await readUsers();
-  const user = users.find((u) => u.userId === session.userId);
-  if (!user) throw new AuthError("NO_SESSION", "Compte introuvable.");
-  return user;
+  return {
+    firstName: row.first_name,
+    lastName: row.last_name,
+    phone: row.phone,
+    salonName: row.salon_name,
+    description: row.description,
+    practiceZone: row.practice_zone,
+    addressLine: row.address_line ?? undefined,
+    postalCode: row.postal_code ?? undefined,
+    city: row.city ?? undefined,
+    travelRadiusKm: row.travel_radius_km ?? undefined,
+    documents,
+    submittedAt: row.submitted_at,
+  };
 }
 
 // ─── Session ─────────────────────────────────────────────────────────────────
 
-export async function getSession(): Promise<Session | null> {
-  try {
-    const raw = await AsyncStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
-  } catch {
-    return null;
+/**
+ * The single place a `Session` gets assembled: the Supabase auth user plus
+ * its `profiles` row plus (coiffeurs only) its `coiffeur_applications` row —
+ * both read directly via RLS, not through the NestJS server.
+ */
+async function buildSession(): Promise<Session | null> {
+  const {
+    data: { session: authSession },
+  } = await supabase.auth.getSession();
+  const user = authSession?.user;
+  if (!user) return null;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("first_name, last_name, photo_url, role, created_at")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileError) throw new AuthError("STORAGE", profileError.message);
+
+  const role = (profile?.role as UserRole | undefined) ?? "particulier";
+  const emailVerified = user.email_confirmed_at != null;
+  const createdAt = profile?.created_at ?? user.created_at;
+
+  if (role === "coiffeur") {
+    const { data: applicationRow, error: applicationError } = await supabase
+      .from("coiffeur_applications")
+      .select()
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    if (applicationError) throw new AuthError("STORAGE", applicationError.message);
+
+    const row = applicationRow as CoiffeurApplicationRow | null;
+    const status: AccountStatus = !emailVerified
+      ? "pending_email"
+      : !row
+        ? "profile_incomplete"
+        : row.status === "pending"
+          ? "pending_review"
+          : row.status === "rejected"
+            ? "rejected"
+            : "active";
+
+    return {
+      userId: user.id,
+      email: user.email ?? "",
+      role: "coiffeur",
+      status,
+      emailVerified,
+      profile: null,
+      application: row ? mapApplicationRow(row) : null,
+      reviewMessage: row?.review_message ?? null,
+      shopProfileComplete: row?.shop_profile_complete ?? false,
+      createdAt,
+    };
   }
+
+  const hasProfile = Boolean(profile?.first_name);
+  const status: AccountStatus = !emailVerified
+    ? "pending_email"
+    : !hasProfile
+      ? "profile_incomplete"
+      : "active";
+
+  return {
+    userId: user.id,
+    email: user.email ?? "",
+    role: "particulier",
+    status,
+    emailVerified,
+    profile: hasProfile
+      ? {
+          firstName: profile!.first_name,
+          lastName: profile!.last_name,
+          photoUri: profile?.photo_url ?? null,
+        }
+      : null,
+    application: null,
+    reviewMessage: null,
+    createdAt,
+  };
+}
+
+export async function getSession(): Promise<Session | null> {
+  return buildSession();
 }
 
 export async function signOut(): Promise<void> {
-  await AsyncStorage.removeItem(SESSION_KEY);
+  await supabase.auth.signOut();
 }
 
 // ─── Email + password ────────────────────────────────────────────────────────
 
+/**
+ * No session exists yet after this — Supabase withholds one until the email
+ * is confirmed (see `verifyEmail`). Callers navigate to the verify screen
+ * unconditionally rather than reading a returned session.
+ */
 export async function signUpWithEmail(params: {
   email: string;
   password: string;
   role: UserRole;
-}): Promise<Session> {
-  await delay();
-  const email = normalizeEmail(params.email);
-  if (params.password.length < 8)
-    throw new AuthError("WEAK_PASSWORD", "Mot de passe trop court.");
-
-  const users = await readUsers();
-  if (users.some((u) => u.email === email))
-    throw new AuthError(
-      "EMAIL_IN_USE",
-      "Un compte existe déjà avec cet email.",
-    );
-
-  const user: StoredUser = {
-    userId: "u_" + (users.length + 1) + "_" + params.role,
-    email,
+}): Promise<void> {
+  const { error } = await supabase.auth.signUp({
+    email: params.email.trim(),
     password: params.password,
-    role: params.role,
-    status: "pending_email",
-    emailVerified: false,
-    profile: null,
-    application: null,
-    reviewMessage: null,
-    createdAt: new Date().toISOString(),
-  };
+  });
 
-  await writeUsers([...users, user]);
-  return persistSession(user);
+  if (error) {
+    if (error.message.toLowerCase().includes("already registered"))
+      throw new AuthError("EMAIL_IN_USE", "Un compte existe déjà avec cet email.");
+    if (error.message.toLowerCase().includes("password"))
+      throw new AuthError("WEAK_PASSWORD", "Mot de passe trop court.");
+    throw new AuthError("STORAGE", error.message);
+  }
+  // `params.role` is only ever a client-side hint for which onboarding wizard
+  // to land in post-verification (see features/auth/routing.ts and
+  // services/preferences.ts's setSignupIntent) — the database's `profiles.role`
+  // stays 'particulier' until a coiffeur application is actually submitted.
 }
 
 export async function signInWithEmail(params: {
   email: string;
   password: string;
 }): Promise<Session> {
-  await delay();
-  const email = normalizeEmail(params.email);
-  const users = await readUsers();
-  const user = users.find((u) => u.email === email);
+  const { error } = await supabase.auth.signInWithPassword({
+    email: params.email.trim(),
+    password: params.password,
+  });
+  if (error) throw new AuthError("INVALID_CREDENTIALS", "Email ou mot de passe incorrect.");
 
-  if (!user)
-    throw new AuthError("UNKNOWN_EMAIL", "Aucun compte avec cet email.");
-  if (user.password !== params.password)
-    throw new AuthError("INVALID_CREDENTIALS", "Mot de passe incorrect.");
-
-  return persistSession(user);
+  const session = await buildSession();
+  if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
+  return session;
 }
 
 /**
- * Social login placeholder. expo-auth-session / expo-apple-authentication are
- * not installed, so this fabricates a verified account instead of running a
- * real OAuth flow. Replace wholesale once the provider apps exist.
+ * Social login placeholder: expo-auth-session / expo-apple-authentication
+ * aren't installed and no OAuth app is registered with Google/Apple yet, so
+ * this still fabricates a session rather than running a real OAuth flow.
+ * Swap this for `supabase.auth.signInWithOAuth` once those exist.
  */
 export async function signInWithProvider(
   provider: "google" | "apple",
 ): Promise<Session> {
-  await delay();
   const email = "demo." + provider + "@worldhair.app";
-  const users = await readUsers();
-  const existing = users.find((u) => u.email === email);
-  if (existing) return persistSession(existing);
-
-  const user: StoredUser = {
-    userId: "u_" + provider + "_demo",
+  const { error } = await supabase.auth.signInWithPassword({
     email,
-    password: "",
-    role: "particulier",
-    status: "profile_incomplete",
-    emailVerified: true,
-    profile: null,
-    application: null,
-    reviewMessage: null,
-    createdAt: new Date().toISOString(),
-  };
-  await writeUsers([...users, user]);
-  return persistSession(user);
+    password: DEMO_PASSWORD,
+  });
+  if (error) throw new AuthError("STORAGE", "Connexion impossible.");
+
+  const session = await buildSession();
+  if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
+  return session;
 }
 
 // ─── Email verification ──────────────────────────────────────────────────────
 
-export async function resendVerificationCode(): Promise<void> {
-  await delay(500);
-  await requireUser();
+export async function resendVerificationCode(email: string): Promise<void> {
+  const { error } = await supabase.auth.resend({ type: "signup", email: email.trim() });
+  if (error) throw new AuthError("STORAGE", error.message);
 }
 
-export async function verifyEmail(code: string): Promise<Session> {
-  await delay();
-  if (code.trim() !== DEMO_VERIFICATION_CODE)
-    throw new AuthError("INVALID_CODE", "Code incorrect ou expiré.");
+export async function verifyEmail(email: string, code: string): Promise<Session> {
+  const { error } = await supabase.auth.verifyOtp({
+    email: email.trim(),
+    token: code.trim(),
+    type: "signup",
+  });
+  if (error) throw new AuthError("INVALID_CODE", "Code incorrect ou expiré.");
 
-  const user = await requireUser();
-  return commit({ ...user, emailVerified: true, status: "profile_incomplete" });
+  const session = await buildSession();
+  if (!session) throw new AuthError("NO_SESSION", "Session introuvable après vérification.");
+  return session;
 }
 
 // ─── Particulier profile ─────────────────────────────────────────────────────
@@ -275,12 +353,28 @@ export async function verifyEmail(code: string): Promise<Session> {
 export async function saveParticulierProfile(
   profile: ParticulierProfile,
 ): Promise<Session> {
-  await delay();
-  const user = await requireUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new AuthError("NO_SESSION", "Aucune session active.");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      first_name: profile.firstName,
+      last_name: profile.lastName,
+      photo_url: profile.photoUri ?? null,
+    })
+    .eq("id", user.id);
+  if (error) throw new AuthError("STORAGE", error.message);
+
   // Demo build: a brand-new particulier gets a populated agenda rather than
   // three empty tabs. No-op once the account has any booking of its own.
   await seedDemoBookings();
-  return commit({ ...user, profile, status: "active" });
+
+  const session = await buildSession();
+  if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
+  return session;
 }
 
 // ─── Coiffeur application ────────────────────────────────────────────────────
@@ -288,43 +382,66 @@ export async function saveParticulierProfile(
 export async function submitProApplication(
   application: Omit<ProApplication, "submittedAt">,
 ): Promise<Session> {
-  await delay(900);
-  const user = await requireUser();
-  return commit({
-    ...user,
-    role: "coiffeur",
-    application: { ...application, submittedAt: new Date().toISOString() },
-    status: "pending_review",
-  });
+  const pathFor = (kind: ProDocumentKind) =>
+    application.documents.find((doc) => doc.kind === kind)?.storagePath ??
+    undefined;
+
+  const identityDocumentPath = pathFor("identity");
+  const diplomaDocumentPath = pathFor("diploma");
+  const kbisDocumentPath = pathFor("kbis");
+  const invoiceDocumentPath = pathFor("invoice");
+
+  if (!identityDocumentPath || !diplomaDocumentPath || !kbisDocumentPath) {
+    throw new AuthError("STORAGE", "Documents manquants.");
+  }
+
+  try {
+    await apiClient.post("/coiffeur/applications", {
+      firstName: application.firstName,
+      lastName: application.lastName,
+      phone: application.phone,
+      salonName: application.salonName,
+      description: application.description,
+      practiceZone: application.practiceZone,
+      addressLine: application.addressLine,
+      postalCode: application.postalCode,
+      city: application.city,
+      travelRadiusKm: application.travelRadiusKm,
+      identityDocumentPath,
+      diplomaDocumentPath,
+      kbisDocumentPath,
+      invoiceDocumentPath,
+    });
+  } catch (err) {
+    throw mapApiError(err);
+  }
+
+  const session = await buildSession();
+  if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
+  return session;
 }
 
-/** Dev-only shortcut so both review outcomes can be exercised without an API. */
-export async function simulateReviewOutcome(
-  outcome: "approved" | "rejected",
-  message?: string,
-): Promise<Session> {
-  await delay(400);
-  const user = await requireUser();
-  // An approved coiffeur walks straight into a workspace with data in it,
-  // but still owes the mandatory shop-profile screen (issue #7).
-  if (outcome === "approved") await seedProWorkspace();
-  return commit({
-    ...user,
-    status: outcome === "approved" ? "active" : "rejected",
-    shopProfileComplete: outcome === "approved" ? false : user.shopProfileComplete,
-    reviewMessage: message ?? null,
-  });
-}
-
-/** Marks the mandatory post-approval shop-profile screen as done (issue #7). */
+/** Issue #7: the mandatory post-approval shop-profile screen marks itself done here. */
 export async function completeShopProfile(): Promise<Session> {
-  const user = await requireUser();
-  return commit({ ...user, shopProfileComplete: true });
+  try {
+    await apiClient.patch("/coiffeur/applications/me/shop-profile");
+  } catch (err) {
+    throw mapApiError(err);
+  }
+
+  const session = await buildSession();
+  if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
+  return session;
 }
 
-// ─── Demo accounts ───────────────────────────────────────────────────────────
+// ─── Demo / preview accounts ─────────────────────────────────────────────────
 
-/** Ready-made accounts, one per state the app can land a user in. */
+/**
+ * Ready-made accounts, one per state the app can land a user in — seeded for
+ * real in Supabase (see docs/superpowers/specs or ask: same 4 personas as
+ * the old mock, now real rows) so the demo login bar keeps working without
+ * needing anyone to actually run the signup/review flow first.
+ */
 export type DemoPersona =
   "particulier" | "coiffeur_active" | "coiffeur_pending" | "coiffeur_rejected";
 
@@ -357,126 +474,31 @@ export const DEMO_PERSONAS: DemoPersonaInfo[] = [
   },
 ];
 
-function demoApplication(): ProApplication {
-  return {
-    firstName: "Sofia",
-    lastName: "Benali",
-    phone: "06 12 34 56 78",
-    salonName: "Studio W",
-    description: "Coupe, coloration et coiffure afro dans un salon lumineux.",
-    practiceZone: "salon",
-    addressLine: "12 rue des Lilas",
-    postalCode: "75011",
-    city: "Paris",
-    documents: [
-      {
-        kind: "identity",
-        name: "piece-identite.pdf",
-        uri: "demo://piece-identite.pdf",
-        mimeType: "application/pdf",
-        size: 248000,
-      },
-      {
-        kind: "diploma",
-        name: "cap-coiffure.pdf",
-        uri: "demo://cap-coiffure.pdf",
-        mimeType: "application/pdf",
-        size: 312000,
-      },
-      {
-        kind: "kbis",
-        name: "kbis.pdf",
-        uri: "demo://kbis.pdf",
-        mimeType: "application/pdf",
-        size: 198000,
-      },
-      {
-        kind: "invoice",
-        name: "facture-local.pdf",
-        uri: "demo://facture-local.pdf",
-        mimeType: "application/pdf",
-        size: 156000,
-      },
-    ],
-    submittedAt: new Date().toISOString(),
-  };
-}
+const DEMO_PASSWORD = "Demo1234!";
 
-function buildDemoUser(persona: DemoPersona): StoredUser {
-  const base = {
-    userId: "u_demo_" + persona,
-    email: "demo." + persona.replace("_", ".") + "@worldhair.app",
-    password: "Demo1234",
-    emailVerified: true,
-    createdAt: new Date().toISOString(),
-  };
+const DEMO_EMAILS: Record<DemoPersona, string> = {
+  particulier: "demo.particulier@worldhair.app",
+  coiffeur_active: "demo.coiffeur.active@worldhair.app",
+  coiffeur_pending: "demo.coiffeur.pending@worldhair.app",
+  coiffeur_rejected: "demo.coiffeur.rejected@worldhair.app",
+};
 
-  if (persona === "particulier")
-    return {
-      ...base,
-      role: "particulier",
-      status: "active",
-      profile: { firstName: "Camille", lastName: "Durand", photoUri: null },
-      application: null,
-      reviewMessage: null,
-    };
-
-  const application = demoApplication();
-
-  if (persona === "coiffeur_active")
-    return {
-      ...base,
-      role: "coiffeur",
-      status: "active",
-      profile: {
-        firstName: application.firstName,
-        lastName: application.lastName,
-        photoUri: null,
-      },
-      application,
-      reviewMessage: null,
-      // This persona is a shortcut into a populated workspace, not the real
-      // approval flow, so it skips the mandatory shop-profile screen.
-      shopProfileComplete: true,
-    };
-
-  if (persona === "coiffeur_pending")
-    return {
-      ...base,
-      role: "coiffeur",
-      status: "pending_review",
-      profile: null,
-      application,
-      reviewMessage: null,
-    };
-
-  return {
-    ...base,
-    role: "coiffeur",
-    status: "rejected",
-    profile: null,
-    application,
-    reviewMessage:
-      "Le diplôme envoyé est illisible. Merci de renvoyer une photo nette.",
-  };
-}
-
-/**
- * Dev shortcut: drops straight into a persona without going through the forms.
- * The account is rebuilt on every call so a persona always starts clean.
- */
+/** Signs into one of the seeded preview accounts above — a real sign-in, not a fabrication. */
 export async function signInAsDemo(persona: DemoPersona): Promise<Session> {
-  await delay(300);
-  const user = buildDemoUser(persona);
-  const users = await readUsers();
-  await writeUsers([...users.filter((u) => u.userId !== user.userId), user]);
-  // Demo accounts land on a populated space rather than empty states.
+  const { error } = await supabase.auth.signInWithPassword({
+    email: DEMO_EMAILS[persona],
+    password: DEMO_PASSWORD,
+  });
+  if (error)
+    throw new AuthError(
+      "UNKNOWN_EMAIL",
+      "Compte démo indisponible — a-t-il bien été seedé côté Supabase ?",
+    );
+
   if (persona === "particulier") await seedDemoBookings();
   if (persona === "coiffeur_active") await seedProWorkspace();
-  return persistSession(user);
-}
 
-/** Wipes every mock account — dev reset only. */
-export async function resetMockAuth(): Promise<void> {
-  await AsyncStorage.multiRemove([USERS_KEY, SESSION_KEY]);
+  const session = await buildSession();
+  if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
+  return session;
 }
