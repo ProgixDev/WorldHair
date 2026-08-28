@@ -9,6 +9,7 @@ export const ROUTES = {
   profileSetup: "/auth/profile-setup",
   proIdentity: "/auth/pro/identity",
   proSalon: "/auth/pro/salon",
+  proZone: "/auth/pro/zone",
   proDocuments: "/auth/pro/documents",
   pending: "/auth/pending",
   /** Particulier shell (map tab). */

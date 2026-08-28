@@ -30,7 +30,7 @@ export interface ParticulierProfile {
   photoUri?: string | null;
 }
 
-export type ProDocumentKind = "identity" | "diploma";
+export type ProDocumentKind = "identity" | "diploma" | "kbis" | "invoice";
 
 export interface ProDocument {
   kind: ProDocumentKind;
@@ -40,15 +40,21 @@ export interface ProDocument {
   size?: number | null;
 }
 
+export type PracticeZone = "salon" | "domicile";
+
 export interface ProApplication {
   firstName: string;
   lastName: string;
   phone: string;
   salonName: string;
   description?: string;
-  addressLine: string;
-  postalCode: string;
-  city: string;
+  practiceZone: PracticeZone;
+  /** Only set when practiceZone is "salon". */
+  addressLine?: string;
+  postalCode?: string;
+  city?: string;
+  /** Only set when practiceZone is "domicile". */
+  travelRadiusKm?: number;
   documents: ProDocument[];
   submittedAt: string;
 }
@@ -345,6 +351,7 @@ function demoApplication(): ProApplication {
     phone: "06 12 34 56 78",
     salonName: "Studio W",
     description: "Coupe, coloration et coiffure afro dans un salon lumineux.",
+    practiceZone: "salon",
     addressLine: "12 rue des Lilas",
     postalCode: "75011",
     city: "Paris",
@@ -362,6 +369,20 @@ function demoApplication(): ProApplication {
         uri: "demo://cap-coiffure.pdf",
         mimeType: "application/pdf",
         size: 312000,
+      },
+      {
+        kind: "kbis",
+        name: "kbis.pdf",
+        uri: "demo://kbis.pdf",
+        mimeType: "application/pdf",
+        size: 198000,
+      },
+      {
+        kind: "invoice",
+        name: "facture-local.pdf",
+        uri: "demo://facture-local.pdf",
+        mimeType: "application/pdf",
+        size: 156000,
       },
     ],
     submittedAt: new Date().toISOString(),

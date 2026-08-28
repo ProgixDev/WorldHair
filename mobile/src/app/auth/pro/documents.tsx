@@ -30,6 +30,7 @@ export default function ProDocuments() {
   const [errors, setErrors] = useState<{
     identity?: string;
     diploma?: string;
+    kbis?: string;
     certified?: string;
   }>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export default function ProDocuments() {
     const next: typeof errors = {};
     if (!draft.identity) next.identity = "Pièce d'identité requise.";
     if (!draft.diploma) next.diploma = "Diplôme ou certification requis.";
+    if (!draft.kbis) next.kbis = "KBIS ou extrait RNE requis.";
     if (!certified) next.certified = "Confirmez l'exactitude de vos documents.";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -52,10 +54,20 @@ export default function ProDocuments() {
         phone: draft.phone.trim(),
         salonName: draft.salonName.trim(),
         description: draft.description.trim(),
-        addressLine: draft.addressLine.trim(),
-        postalCode: draft.postalCode.trim(),
-        city: draft.city.trim(),
-        documents: [draft.identity!, draft.diploma!],
+        practiceZone: draft.practiceZone,
+        ...(draft.practiceZone === "salon"
+          ? {
+              addressLine: draft.addressLine.trim(),
+              postalCode: draft.postalCode.trim(),
+              city: draft.city.trim(),
+            }
+          : { travelRadiusKm: Number(draft.travelRadiusKm) }),
+        documents: [
+          draft.identity!,
+          draft.diploma!,
+          draft.kbis!,
+          ...(draft.practiceZone === "salon" ? [draft.invoice!] : []),
+        ],
       });
       reset();
       router.replace(ROUTES.pending as never);
@@ -83,8 +95,8 @@ export default function ProDocuments() {
       >
         <AuthHeader
           title="Vos justificatifs"
-          subtitle="Deux documents suffisent pour faire valider votre compte."
-          step={{ current: 3, total: PRO_WIZARD_STEPS }}
+          subtitle="Ces documents suffisent pour faire valider votre compte."
+          step={{ current: 4, total: PRO_WIZARD_STEPS }}
         />
 
         <View style={{ gap: spacing.lg }}>
@@ -111,6 +123,18 @@ export default function ProDocuments() {
               setErrors((e) => ({ ...e, diploma: undefined }));
             }}
             error={errors.diploma}
+          />
+          <UploadSlot
+            kind="kbis"
+            title="KBIS / extrait RNE"
+            description="Preuve d'activité déclarée, de moins de 3 mois — JPG, PNG ou PDF."
+            icon="file-certificate-outline"
+            document={draft.kbis}
+            onChange={(kbis) => {
+              update({ kbis });
+              setErrors((e) => ({ ...e, kbis: undefined }));
+            }}
+            error={errors.kbis}
           />
         </View>
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
-import type { ProDocument } from "../../services/auth";
+import type { PracticeZone, ProDocument } from "../../services/auth";
 
 export interface ProApplicationDraft {
   firstName: string;
@@ -7,11 +7,15 @@ export interface ProApplicationDraft {
   phone: string;
   salonName: string;
   description: string;
+  practiceZone: PracticeZone;
   addressLine: string;
   postalCode: string;
   city: string;
+  travelRadiusKm: string;
   identity: ProDocument | null;
   diploma: ProDocument | null;
+  kbis: ProDocument | null;
+  invoice: ProDocument | null;
 }
 
 const EMPTY_DRAFT: ProApplicationDraft = {
@@ -20,11 +24,15 @@ const EMPTY_DRAFT: ProApplicationDraft = {
   phone: "",
   salonName: "",
   description: "",
+  practiceZone: "salon",
   addressLine: "",
   postalCode: "",
   city: "",
+  travelRadiusKm: "",
   identity: null,
   diploma: null,
+  kbis: null,
+  invoice: null,
 };
 
 interface ProApplicationContextValue {
@@ -70,4 +78,4 @@ export function useProApplication(): ProApplicationContextValue {
   return context;
 }
 
-export const PRO_WIZARD_STEPS = 3;
+export const PRO_WIZARD_STEPS = 4;

@@ -160,16 +160,27 @@ export default function PendingReview() {
               DOSSIER
             </Text>
             <SummaryRow label="Salon" value={application.salonName} />
-            <SummaryRow
-              label="Adresse"
-              value={
-                application.addressLine +
-                ", " +
-                application.postalCode +
-                " " +
-                application.city
-              }
-            />
+            {application.practiceZone === "salon" ? (
+              <SummaryRow
+                label="Adresse"
+                value={
+                  application.addressLine +
+                  ", " +
+                  application.postalCode +
+                  " " +
+                  application.city
+                }
+              />
+            ) : (
+              <SummaryRow
+                label="Zone"
+                value={
+                  "À domicile — rayon de " +
+                  application.travelRadiusKm +
+                  " km"
+                }
+              />
+            )}
             <SummaryRow
               label="Documents"
               value={application.documents.length + " fichiers envoyés"}
