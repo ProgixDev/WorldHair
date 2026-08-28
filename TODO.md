@@ -16,9 +16,9 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Rôles & permissions: particulier / coiffeur / admin
 
 ### Profils
-- [ ] CRUD profil particulier (prénom, nom, photo)
-- [ ] CRUD profil coiffeur (photo, description salon, adresse, horaires)
-- [ ] CRUD prestations coiffeur (nom, tarif, durée)
+- [x] CRUD profil particulier (prénom, nom, photo)
+- [x] CRUD profil coiffeur (photo, description salon, adresse, horaires)
+- [x] CRUD prestations coiffeur (nom, tarif, durée)
 
 ### Recherche & géolocalisation
 - [ ] Endpoint recherche coiffeurs par géoloc (rayon, position)

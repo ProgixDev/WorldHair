@@ -1,6 +1,7 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
+import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
 import { seedDemoBookings } from "./booking";
 import { seedProWorkspace } from "./pro";
 
@@ -358,12 +359,21 @@ export async function saveParticulierProfile(
   } = await supabase.auth.getUser();
   if (!user) throw new AuthError("NO_SESSION", "Aucune session active.");
 
+  let photoUrl: string | null = profile.photoUri ?? null;
+  if (photoUrl && !isRemoteUrl(photoUrl)) {
+    try {
+      photoUrl = await uploadUserPhoto(user.id, "avatar", photoUrl);
+    } catch {
+      throw new AuthError("STORAGE", "Envoi de la photo impossible.");
+    }
+  }
+
   const { error } = await supabase
     .from("profiles")
     .update({
       first_name: profile.firstName,
       last_name: profile.lastName,
-      photo_url: profile.photoUri ?? null,
+      photo_url: photoUrl,
     })
     .eq("id", user.id);
   if (error) throw new AuthError("STORAGE", error.message);

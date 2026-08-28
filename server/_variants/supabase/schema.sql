@@ -192,3 +192,167 @@ create policy "Admins can view every coiffeur document"
     bucket_id = 'coiffeur-documents'
     and exists (select 1 from public.profiles where id = auth.uid () and role = 'admin')
   );
+
+-- ── Coiffeur workspace (TODO.md → Backend → "Profils") ──────────────────────
+--
+-- The coiffeur's ongoing "Mon salon" page, prestations and weekly hours —
+-- distinct from `coiffeur_applications` above, which is the one-time
+-- onboarding snapshot. Mirrors mobile's ProProfile/ProService/AvailabilityDay
+-- (see mobile/src/features/pro/types.ts) now that there's a real backend.
+--
+-- All three tables are readable by anyone (`using (true)`): a particulier
+-- will need this once search/discovery moves off its mock catalogue
+-- (TODO.md → Recherche & géolocalisation) — opened now rather than
+-- re-touching this RLS later for the same tables. Only the owning coiffeur
+-- may write.
+create table public.coiffeur_profiles (
+  profile_id uuid primary key references public.profiles (id) on delete cascade,
+  salon_name text not null default '',
+  tagline text not null default '',
+  description text not null default '',
+  address_line text not null default '',
+  postal_code text not null default '',
+  city text not null default '',
+  phone text not null default '',
+  specialties text[] not null default '{}',
+  cover_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint coiffeur_profiles_specialties_valid check (
+    specialties <@ array['coupe', 'coloration', 'afro', 'tresses', 'barbier', 'soins', 'mariage']::text[]
+  )
+);
+
+alter table public.coiffeur_profiles enable row level security;
+
+-- Split by action rather than one `for all` policy: a `for all` would also
+-- cover SELECT and duplicate the "anyone can view" policy just below on that
+-- action, which Postgres would then evaluate twice per read.
+create policy "Coiffeurs can insert their own salon profile"
+  on public.coiffeur_profiles for insert
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeurs can update their own salon profile"
+  on public.coiffeur_profiles for update
+  using ((select auth.uid ()) = profile_id)
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeurs can delete their own salon profile"
+  on public.coiffeur_profiles for delete
+  using ((select auth.uid ()) = profile_id);
+
+create policy "Anyone can view a salon profile"
+  on public.coiffeur_profiles for select
+  using (true);
+
+create trigger set_coiffeur_profiles_updated_at
+before update on public.coiffeur_profiles for each row
+execute procedure public.set_updated_at ();
+
+-- One row per weekday (0 = Sunday, matching JS Date#getDay, same as mobile's
+-- OpeningDay/AvailabilityDay). Lazily seeded (all closed) on first read by
+-- src/salon/salon.service.ts rather than via a trigger — there's no clean
+-- DB-level hook for "a coiffeur's application just got validated".
+create table public.coiffeur_availability (
+  profile_id uuid not null references public.profiles (id) on delete cascade,
+  weekday smallint not null check (weekday between 0 and 6),
+  is_open boolean not null default false,
+  opens_minute smallint not null default 540,
+  closes_minute smallint not null default 1140,
+  break_start_minute smallint,
+  break_end_minute smallint,
+  primary key (profile_id, weekday)
+);
+
+alter table public.coiffeur_availability enable row level security;
+
+create policy "Coiffeurs can insert their own availability"
+  on public.coiffeur_availability for insert
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeurs can update their own availability"
+  on public.coiffeur_availability for update
+  using ((select auth.uid ()) = profile_id)
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeurs can delete their own availability"
+  on public.coiffeur_availability for delete
+  using ((select auth.uid ()) = profile_id);
+
+create policy "Anyone can view availability"
+  on public.coiffeur_availability for select
+  using (true);
+
+create table public.coiffeur_services (
+  id uuid primary key default gen_random_uuid (),
+  profile_id uuid not null references public.profiles (id) on delete cascade,
+  name text not null,
+  description text,
+  price numeric(10, 2) not null check (price > 0),
+  duration_min integer not null check (duration_min > 0),
+  specialty text not null check (
+    specialty in ('coupe', 'coloration', 'afro', 'tresses', 'barbier', 'soins', 'mariage')
+  ),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.coiffeur_services enable row level security;
+
+create policy "Coiffeurs can insert their own services"
+  on public.coiffeur_services for insert
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeurs can update their own services"
+  on public.coiffeur_services for update
+  using ((select auth.uid ()) = profile_id)
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeurs can delete their own services"
+  on public.coiffeur_services for delete
+  using ((select auth.uid ()) = profile_id);
+
+create policy "Anyone can view services"
+  on public.coiffeur_services for select
+  using (true);
+
+create trigger set_coiffeur_services_updated_at
+before update on public.coiffeur_services for each row
+execute procedure public.set_updated_at ();
+
+-- Every write goes through WHERE profile_id = ..., so this index earns its
+-- keep despite the linter flagging it as unused on a brand-new, empty table.
+create index coiffeur_services_profile_id_idx on public.coiffeur_services (profile_id);
+
+-- ── Public photo storage ─────────────────────────────────────────────────────
+--
+-- Unlike coiffeur-documents, this bucket is PUBLIC: a particulier's avatar
+-- and a coiffeur's salon cover photo are meant to be visible to other users
+-- (reviews, salon cards, etc.), not just the owner. Path convention:
+-- `{uid}/avatar.<ext>` or `{uid}/salon-cover.<ext>`.
+insert into storage.buckets (id, name, public)
+values ('user-photos', 'user-photos', true);
+
+create policy "Users can upload their own photos"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'user-photos'
+    and (storage.foldername (name))[1] = auth.uid ()::text
+  );
+
+create policy "Users can replace or delete their own photos"
+  on storage.objects for update
+  using (
+    bucket_id = 'user-photos'
+    and (storage.foldername (name))[1] = auth.uid ()::text
+  );
+
+create policy "Users can delete their own photos"
+  on storage.objects for delete
+  using (
+    bucket_id = 'user-photos'
+    and (storage.foldername (name))[1] = auth.uid ()::text
+  );
+
+-- No SELECT policy needed: `public.buckets.public = true` serves reads
+-- through a public URL without going through Storage RLS at all.

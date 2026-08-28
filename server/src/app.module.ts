@@ -11,6 +11,7 @@ import { ConfigModule } from './config/config.module';
 import { EnvironmentVariables } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { SalonModule } from './salon/salon.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -33,6 +34,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuthModule,
     CoiffeurModule,
+    SalonModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

@@ -1,11 +1,5 @@
 import { getSalonById } from "../salons/data";
-import type {
-  AvailabilityDay,
-  ProAppointment,
-  ProProfile,
-  ProService,
-  Subscription,
-} from "./types";
+import type { ProAppointment, ProService, Subscription } from "./types";
 
 /**
  * Demo data for the coiffeur area. The pro account is attached to a catalogue
@@ -313,45 +307,12 @@ const SLOTS: Slot[] = [
   },
 ];
 
-export function seedProProfile(): ProProfile {
-  const salon = getSalonById(DEMO_PRO_SALON_ID);
-  return {
-    salonId: DEMO_PRO_SALON_ID,
-    name: salon?.name ?? "Mon salon",
-    stylist: salon?.stylist ?? "",
-    tagline: salon?.tagline ?? "",
-    description: salon?.description ?? "",
-    addressLine: salon?.addressLine ?? "",
-    postalCode: salon?.postalCode ?? "",
-    city: salon?.city ?? "",
-    phone: "06 12 34 56 78",
-    specialties: salon?.specialties ?? ["coupe"],
-    coverUri: null,
-  };
-}
-
 export function seedProServices(): ProService[] {
   return (
     getSalonById(DEMO_PRO_SALON_ID)?.services.map((service) => ({
       ...service,
     })) ?? []
   );
-}
-
-export function seedAvailability(): AvailabilityDay[] {
-  const salon = getSalonById(DEMO_PRO_SALON_ID);
-  return [0, 1, 2, 3, 4, 5, 6].map((weekday) => {
-    const day = salon?.hours.find((h) => h.weekday === weekday);
-    const open = Boolean(day && day.opens !== null);
-    return {
-      weekday,
-      open,
-      opens: day?.opens ?? 9 * 60,
-      closes: day?.closes ?? 19 * 60,
-      breakStart: open ? 13 * 60 : null,
-      breakEnd: open ? 14 * 60 : null,
-    };
-  });
 }
 
 export function seedAppointments(services: ProService[]): ProAppointment[] {

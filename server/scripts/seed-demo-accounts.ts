@@ -30,6 +30,13 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 
 const DEMO_PASSWORD = "Demo1234!";
 
+interface DemoService {
+  name: string;
+  price: number;
+  durationMin: number;
+  specialty: string;
+}
+
 interface DemoAccount {
   email: string;
   role: "particulier" | "coiffeur";
@@ -39,6 +46,19 @@ interface DemoAccount {
     status: "pending" | "validated" | "rejected";
     reviewMessage?: string;
     shopProfileComplete?: boolean;
+  };
+  /**
+   * Validated coiffeurs only — the ongoing "Mon salon" workspace (TODO.md →
+   * Profils), separate from the one-time application above. Content mirrors
+   * the mock catalogue's "Studio W" entry (mobile/src/features/salons/
+   * data.ts) so the demo persona looks the same as it always did, now backed
+   * by real coiffeur_profiles/coiffeur_availability/coiffeur_services rows.
+   */
+  salon?: {
+    tagline: string;
+    description: string;
+    specialties: string[];
+    services: DemoService[];
   };
 }
 
@@ -55,6 +75,18 @@ const ACCOUNTS: DemoAccount[] = [
     email: "demo.coiffeur.active@worldhair.app",
     role: "coiffeur",
     application: { status: "validated", shopProfileComplete: true },
+    salon: {
+      tagline: "Coupe sur-mesure & couleur douce",
+      description:
+        "Un atelier lumineux de deux fauteuils, pensé pour prendre le temps. Diagnostic complet avant chaque couleur, produits sans ammoniaque.",
+      specialties: ["coupe", "coloration", "soins"],
+      services: [
+        { name: "Coupe & brushing", price: 40, durationMin: 45, specialty: "coupe" },
+        { name: "Coupe homme", price: 28, durationMin: 30, specialty: "coupe" },
+        { name: "Coloration complète", price: 75, durationMin: 90, specialty: "coloration" },
+        { name: "Soin fondant", price: 35, durationMin: 30, specialty: "soins" },
+      ],
+    },
   },
   {
     email: "demo.coiffeur.pending@worldhair.app",
@@ -143,6 +175,68 @@ async function seedAccount(account: DemoAccount): Promise<void> {
     );
     if (applicationError) throw applicationError;
   }
+
+  if (account.salon) {
+    await seedSalonWorkspace(userId, account.salon);
+  }
+}
+
+async function seedSalonWorkspace(
+  userId: string,
+  salon: NonNullable<DemoAccount["salon"]>,
+): Promise<void> {
+  const { error: profileError } = await supabase.from("coiffeur_profiles").upsert(
+    {
+      profile_id: userId,
+      salon_name: "Studio W",
+      tagline: salon.tagline,
+      description: salon.description,
+      address_line: "12 rue des Lilas",
+      postal_code: "75011",
+      city: "Paris",
+      phone: "06 12 34 56 78",
+      specialties: salon.specialties,
+    },
+    { onConflict: "profile_id" },
+  );
+  if (profileError) throw profileError;
+
+  // Mon-Sat 9-19 with a lunch break, Sunday closed — same shape as
+  // SalonService's own defaultAvailability(), just persisted for real.
+  const week = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+    profile_id: userId,
+    weekday,
+    is_open: weekday !== 0,
+    opens_minute: 9 * 60,
+    closes_minute: 19 * 60,
+    break_start_minute: weekday === 0 ? null : 13 * 60,
+    break_end_minute: weekday === 0 ? null : 14 * 60,
+  }));
+  const { error: availabilityError } = await supabase
+    .from("coiffeur_availability")
+    .upsert(week, { onConflict: "profile_id,weekday" });
+  if (availabilityError) throw availabilityError;
+
+  // Replace rather than accumulate duplicates on re-run: no unique
+  // constraint on (profile_id, name) to upsert against, so clear first.
+  const { error: deleteError } = await supabase
+    .from("coiffeur_services")
+    .delete()
+    .eq("profile_id", userId);
+  if (deleteError) throw deleteError;
+
+  const { error: servicesError } = await supabase.from("coiffeur_services").insert(
+    salon.services.map((service) => ({
+      profile_id: userId,
+      name: service.name,
+      price: service.price,
+      duration_min: service.durationMin,
+      specialty: service.specialty,
+    })),
+  );
+  if (servicesError) throw servicesError;
+
+  console.log(`  ${userId}: salon workspace seeded (${salon.services.length} services)`);
 }
 
 async function main(): Promise<void> {
