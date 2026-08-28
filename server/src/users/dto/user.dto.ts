@@ -1,14 +1,15 @@
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { Role } from '../../common/types/role';
 import { Profile } from '../users.service';
 
 /**
  * The signed-in user's own account. Only ever returned to that user — auth
  * responses and `GET /users/me`.
  *
- * `id`/`email`/`emailVerified` come from Supabase Auth (`AuthenticatedUser`,
- * resolved by `JwtAuthGuard`); `username`/`displayName` come from the
- * `profiles` Postgres row this server manages — see `users.service.ts` and
- * `_variants/supabase/schema.sql`.
+ * `id`/`email`/`emailVerified`/`role` come from Supabase Auth + the
+ * `profiles` row (`AuthenticatedUser`, resolved by `JwtAuthGuard` — see
+ * `auth/strategies/supabase.strategy.ts`); `username`/`displayName` come from
+ * that same `profiles` Postgres row managed by `users.service.ts`.
  */
 export class UserDto {
   id!: string;
@@ -16,6 +17,7 @@ export class UserDto {
   username!: string;
   displayName!: string;
   emailVerified!: boolean;
+  role!: Role;
 }
 
 export function toUserDto(user: AuthenticatedUser, profile: Profile): UserDto {
@@ -25,5 +27,6 @@ export function toUserDto(user: AuthenticatedUser, profile: Profile): UserDto {
     username: profile.username ?? '',
     displayName: profile.displayName,
     emailVerified: user.emailVerified,
+    role: user.role,
   };
 }

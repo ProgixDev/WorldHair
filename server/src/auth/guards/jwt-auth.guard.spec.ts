@@ -16,7 +16,12 @@ function fakeReflector(isPublic: boolean): Reflector {
   return { getAllAndOverride: () => isPublic } as unknown as Reflector;
 }
 
-const user: AuthenticatedUser = { id: 'user-1', email: 'fan@example.com', emailVerified: true };
+const user: AuthenticatedUser = {
+  id: 'user-1',
+  email: 'fan@example.com',
+  emailVerified: true,
+  role: 'particulier',
+};
 
 describe('JwtAuthGuard (supabase)', () => {
   it('lets a @Public() route through without checking for a token', async () => {

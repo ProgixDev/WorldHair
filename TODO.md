@@ -5,15 +5,15 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 ## Backend
 
 ### Auth & comptes
-- [ ] Inscription particulier (email + mdp, ou social login)
-- [ ] Vérification email
-- [ ] Inscription coiffeur (infos perso, salon, adresse)
-- [ ] Upload pièce d'identité + diplôme (stockage sécurisé)
-- [ ] Upload KBIS ou extrait d'immatriculation RNE, obligatoire (issue #6 — preuve d'activité déclarée)
-- [ ] Choix zone de pratique coiffeur: salon (adresse exacte + facture société prouvant le local) ou domicile (rayon de déplacement en km) (issue #6)
-- [ ] Statut compte coiffeur: en attente / validé / rejeté
-- [ ] Flag "profil boutique incomplet" après validation admin, tant que les infos boutique (horaires, photos...) ne sont pas remplies (issue #7)
-- [ ] Rôles & permissions: particulier / coiffeur / admin
+- [ ] Inscription particulier (email + mdp, ou social login) — client-side against Supabase Auth directly, not this server; see `server/src/auth/auth.module.ts`. Left unchecked until the mobile app itself is switched over from its mocked `services/auth.ts`.
+- [ ] Vérification email — same as above, Supabase's hosted Auth sends this itself.
+- [x] Inscription coiffeur (infos perso, salon, adresse)
+- [x] Upload pièce d'identité + diplôme (stockage sécurisé)
+- [x] Upload KBIS ou extrait d'immatriculation RNE, obligatoire (issue #6 — preuve d'activité déclarée)
+- [x] Choix zone de pratique coiffeur: salon (adresse exacte + facture société prouvant le local) ou domicile (rayon de déplacement en km) (issue #6)
+- [x] Statut compte coiffeur: en attente / validé / rejeté
+- [x] Flag "profil boutique incomplet" après validation admin, tant que les infos boutique (horaires, photos...) ne sont pas remplies (issue #7)
+- [x] Rôles & permissions: particulier / coiffeur / admin
 
 ### Profils
 - [ ] CRUD profil particulier (prénom, nom, photo)

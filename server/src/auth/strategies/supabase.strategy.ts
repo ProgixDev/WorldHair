@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { Role } from '../../common/types/role';
 import { SupabaseService } from '../../database/supabase.service';
 
 /**
@@ -27,10 +28,28 @@ export class SupabaseStrategy {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
+    // `role` lives on the `profiles` row (see schema.sql), not in the
+    // Supabase Auth token itself — this is the one extra lookup that costs
+    // every authenticated request, in exchange for `RolesGuard` (and anything
+    // else reading `AuthenticatedUser.role`) never needing a query of its own.
+    const { data: profile, error: profileError } = await this.supabase.client
+      .from('profiles')
+      .select('role')
+      .eq('id', data.user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      throw new InternalServerErrorException(profileError.message);
+    }
+
     return {
       id: data.user.id,
       email: data.user.email ?? '',
       emailVerified: data.user.email_confirmed_at != null,
+      // A missing row would mean the handle_new_user() trigger hasn't fired
+      // yet for a brand-new signup; 'particulier' is the same default that
+      // row would get, so this is a safe fallback rather than a real gap.
+      role: (profile?.role as Role | undefined) ?? 'particulier',
     };
   }
 }

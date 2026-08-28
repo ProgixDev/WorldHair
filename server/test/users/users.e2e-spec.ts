@@ -50,6 +50,7 @@ describe('users (e2e)', () => {
       username: '',
       displayName: '',
       emailVerified: true,
+      role: 'particulier',
     });
   });
 
