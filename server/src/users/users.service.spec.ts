@@ -1,4 +1,4 @@
-import { ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { InternalServerErrorException } from '@nestjs/common';
 import { SupabaseService } from '../database/supabase.service';
 import { UsersService } from './users.service';
 
@@ -22,14 +22,15 @@ describe('UsersService', () => {
   it('getProfile() maps a found row', async () => {
     const service = new UsersService(
       fakeSupabase(
-        () => ({ data: { username: 'whale_fan', display_name: 'Fan' }, error: null }),
+        () => ({ data: { first_name: 'Camille', last_name: 'Durand', photo_url: null }, error: null }),
         () => ({ data: null, error: null }),
       ),
     );
 
     await expect(service.getProfile('user-1')).resolves.toEqual({
-      username: 'whale_fan',
-      displayName: 'Fan',
+      firstName: 'Camille',
+      lastName: 'Durand',
+      photoUrl: null,
     });
   });
 
@@ -51,25 +52,26 @@ describe('UsersService', () => {
     const service = new UsersService(
       fakeSupabase(
         () => ({ data: null, error: null }),
-        () => ({ data: { username: 'whale_fan', display_name: 'Fan' }, error: null }),
+        () => ({ data: { first_name: 'Camille', last_name: 'Durand', photo_url: 'https://example.com/a.jpg' }, error: null }),
       ),
     );
 
-    await expect(service.updateProfile('user-1', { username: 'whale_fan', displayName: 'Fan' })).resolves.toEqual({
-      username: 'whale_fan',
-      displayName: 'Fan',
-    });
+    await expect(
+      service.updateProfile('user-1', { firstName: 'Camille', lastName: 'Durand', photoUrl: 'https://example.com/a.jpg' }),
+    ).resolves.toEqual({ firstName: 'Camille', lastName: 'Durand', photoUrl: 'https://example.com/a.jpg' });
   });
 
-  it('updateProfile() surfaces a duplicate username as a 409', async () => {
+  it('updateProfile() surfaces a Supabase error', async () => {
     const service = new UsersService(
       fakeSupabase(
         () => ({ data: null, error: null }),
-        () => ({ data: null, error: { code: '23505', message: 'duplicate key value' } }),
+        () => ({ data: null, error: { message: 'connection lost' } }),
       ),
     );
 
-    await expect(service.updateProfile('user-1', { username: 'taken' })).rejects.toThrow(ConflictException);
+    await expect(service.updateProfile('user-1', { firstName: 'Camille' })).rejects.toThrow(
+      InternalServerErrorException,
+    );
   });
 
   it('updateProfile() returns null when the profile row does not exist', async () => {
@@ -77,6 +79,6 @@ describe('UsersService', () => {
       fakeSupabase(() => ({ data: null, error: null }), () => ({ data: null, error: null })),
     );
 
-    await expect(service.updateProfile('user-1', { displayName: 'Fan' })).resolves.toBeNull();
+    await expect(service.updateProfile('user-1', { lastName: 'Durand' })).resolves.toBeNull();
   });
 });

@@ -33,6 +33,8 @@ const DEMO_PASSWORD = "Demo1234!";
 interface DemoAccount {
   email: string;
   role: "particulier" | "coiffeur";
+  /** Particulier only — omitted entirely, status resolves to profile_incomplete. */
+  profile?: { firstName: string; lastName: string };
   application?: {
     status: "pending" | "validated" | "rejected";
     reviewMessage?: string;
@@ -41,7 +43,14 @@ interface DemoAccount {
 }
 
 const ACCOUNTS: DemoAccount[] = [
-  { email: "demo.particulier@worldhair.app", role: "particulier" },
+  {
+    email: "demo.particulier@worldhair.app",
+    role: "particulier",
+    // "Profil complet → accueil" (see mobile's DEMO_PERSONAS hint) — a
+    // blank profile would resolve to profile_incomplete and land on
+    // profile-setup instead of /discover.
+    profile: { firstName: "Camille", lastName: "Durand" },
+  },
   {
     email: "demo.coiffeur.active@worldhair.app",
     role: "coiffeur",
@@ -98,7 +107,12 @@ async function seedAccount(account: DemoAccount): Promise<void> {
 
   const { error: profileError } = await supabase
     .from("profiles")
-    .update({ role: account.role })
+    .update({
+      role: account.role,
+      ...(account.profile
+        ? { first_name: account.profile.firstName, last_name: account.profile.lastName }
+        : {}),
+    })
     .eq("id", userId);
   if (profileError) throw profileError;
 

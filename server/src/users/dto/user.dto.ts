@@ -8,14 +8,15 @@ import { Profile } from '../users.service';
  *
  * `id`/`email`/`emailVerified`/`role` come from Supabase Auth + the
  * `profiles` row (`AuthenticatedUser`, resolved by `JwtAuthGuard` — see
- * `auth/strategies/supabase.strategy.ts`); `username`/`displayName` come from
- * that same `profiles` Postgres row managed by `users.service.ts`.
+ * `auth/strategies/supabase.strategy.ts`); `firstName`/`lastName`/`photoUrl`
+ * come from that same `profiles` Postgres row managed by `users.service.ts`.
  */
 export class UserDto {
   id!: string;
   email!: string;
-  username!: string;
-  displayName!: string;
+  firstName!: string;
+  lastName!: string;
+  photoUrl!: string | null;
   emailVerified!: boolean;
   role!: Role;
 }
@@ -24,8 +25,9 @@ export function toUserDto(user: AuthenticatedUser, profile: Profile): UserDto {
   return {
     id: user.id,
     email: user.email,
-    username: profile.username ?? '',
-    displayName: profile.displayName,
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    photoUrl: profile.photoUrl,
     emailVerified: user.emailVerified,
     role: user.role,
   };

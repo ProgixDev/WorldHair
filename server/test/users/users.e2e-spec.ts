@@ -47,8 +47,9 @@ describe('users (e2e)', () => {
     expect(response.body).toEqual({
       id: user.id,
       email: user.email,
-      username: '',
-      displayName: '',
+      firstName: '',
+      lastName: '',
+      photoUrl: null,
       emailVerified: true,
       role: 'particulier',
     });
@@ -58,28 +59,11 @@ describe('users (e2e)', () => {
     const response = await request(server)
       .patch('/users/me')
       .set('Authorization', `Bearer ${token}`)
-      .send({ username: 'whale_fan', displayName: 'Fan' })
+      .send({ firstName: 'Camille', lastName: 'Durand' })
       .expect(200);
 
     expect(response.body).toEqual(
-      expect.objectContaining({ username: 'whale_fan', displayName: 'Fan' }),
+      expect.objectContaining({ firstName: 'Camille', lastName: 'Durand' }),
     );
-  });
-
-  it('rejects a username already taken by another user with 409', async () => {
-    const otherToken = 'fake-access-token-2';
-    harness.supabase.addUser(otherToken, { id: 'user-2', email: 'other@example.com', email_confirmed_at: null });
-
-    await request(server)
-      .patch('/users/me')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ username: 'whale_fan' })
-      .expect(200);
-
-    await request(server)
-      .patch('/users/me')
-      .set('Authorization', `Bearer ${otherToken}`)
-      .send({ username: 'whale_fan' })
-      .expect(409);
   });
 });

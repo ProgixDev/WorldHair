@@ -8,8 +8,9 @@ export interface FakeAuthUser {
 
 interface ProfileRow {
   id: string;
-  username: string | null;
-  display_name: string;
+  first_name: string;
+  last_name: string;
+  photo_url: string | null;
   role: string;
 }
 
@@ -149,7 +150,7 @@ export class FakeSupabaseService {
   addUser(token: string, user: FakeAuthUser, role: string = 'particulier'): void {
     this.authUsersByToken.set(token, user);
     if (!this.profiles.has(user.id)) {
-      this.profiles.set(user.id, { id: user.id, username: null, display_name: '', role });
+      this.profiles.set(user.id, { id: user.id, first_name: '', last_name: '', photo_url: null, role });
     }
   }
 
@@ -179,15 +180,6 @@ export class FakeSupabaseService {
               const existing = profiles.get(id);
               if (!existing) {
                 return { data: null, error: null };
-              }
-              if (
-                patch.username != null &&
-                [...profiles.values()].some((row) => row.id !== id && row.username === patch.username)
-              ) {
-                return {
-                  data: null,
-                  error: { code: '23505', message: 'duplicate key value violates unique constraint' },
-                };
               }
               const updated = { ...existing, ...patch };
               profiles.set(id, updated);
