@@ -1,8 +1,10 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { elevation } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
@@ -12,11 +14,14 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { getSalonById } from "../../features/salons/data";
 import { openDays, slotsForDay, slotToDate } from "../../features/salons/slots";
 import type { Service } from "../../features/salons/types";
+import { getAdSlot, type AdSlot } from "../../services/ads";
 import {
   bookAppointment,
   listAppointments,
+  payForAppointment,
   rescheduleAppointment,
   type Appointment,
+  type PaymentReceipt,
 } from "../../services/booking";
 import {
   dayAndMonth,
@@ -28,10 +33,11 @@ import {
   weekdayShort,
 } from "../../utils/date";
 
-type Step = "service" | "slot" | "confirm";
+type Step = "service" | "slot" | "payment" | "confirm";
 const STEPS: { id: Step; label: string }[] = [
   { id: "service", label: "Prestation" },
   { id: "slot", label: "Créneau" },
+  { id: "payment", label: "Paiement" },
   { id: "confirm", label: "Confirmation" },
 ];
 
@@ -66,9 +72,22 @@ export default function BookingFlow() {
   const [day, setDay] = useState<Date | null>(null);
   const [slotMinutes, setSlotMinutes] = useState<number | null>(null);
   const [taken, setTaken] = useState<string[]>([]);
+  const [confirmationAd, setConfirmationAd] = useState<AdSlot | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [paid, setPaid] = useState<PaymentReceipt | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<Appointment | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAdSlot("booking_confirmation").then((slot) => {
+      if (!cancelled) setConfirmationAd(slot);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Existing bookings block their own slots, minus the one being moved.
   useEffect(() => {
@@ -130,6 +149,21 @@ export default function BookingFlow() {
   const startsAt =
     day && slotMinutes !== null ? slotToDate(day, slotMinutes) : null;
 
+  const handlePay = async () => {
+    if (!selectedService) return;
+    setError(null);
+    setPaying(true);
+    try {
+      const receipt = await payForAppointment(selectedService.price);
+      setPaid(receipt);
+      setStep("confirm");
+    } catch {
+      setError("Paiement impossible. Réessayez.");
+    } finally {
+      setPaying(false);
+    }
+  };
+
   const handleConfirm = async () => {
     if (!selectedService || !startsAt) return;
     setError(null);
@@ -161,6 +195,7 @@ export default function BookingFlow() {
         service={selectedService}
         startsAt={new Date(booked.startsAt)}
         isReschedule={isReschedule}
+        adSlot={confirmationAd}
         onAppointments={() => router.replace("/appointments" as never)}
         onHome={() => router.replace("/discover" as never)}
       />
@@ -173,14 +208,19 @@ export default function BookingFlow() {
         ? slotMinutes !== null
         : true;
 
+  // A reschedule only moves the time of an already-paid appointment, so it
+  // skips the payment step entirely.
   const goNext = () => {
     if (step === "service") return setStep("slot");
-    if (step === "slot") return setStep("confirm");
+    if (step === "slot")
+      return isReschedule ? setStep("confirm") : setStep("payment");
+    if (step === "payment") return void handlePay();
     void handleConfirm();
   };
 
   const goBack = () => {
-    if (step === "confirm") return setStep("slot");
+    if (step === "confirm") return setStep(isReschedule ? "slot" : "payment");
+    if (step === "payment") return setStep("slot");
     if (step === "slot" && !isReschedule && !serviceId)
       return setStep("service");
     router.back();
@@ -544,6 +584,79 @@ export default function BookingFlow() {
           </View>
         ) : null}
 
+        {step === "payment" && selectedService ? (
+          <View style={{ gap: spacing.lg }}>
+            <Text style={[typography.h1, { color: theme.foreground.white }]}>
+              Réglez pour envoyer la demande.
+            </Text>
+            <Text
+              style={[typography.bodySmall, { color: theme.foreground.gray }]}
+            >
+              Le montant est prélevé maintenant, avant que le coiffeur ne
+              reçoive votre demande.
+            </Text>
+
+            <View
+              style={[
+                {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.md,
+                  padding: spacing.lg,
+                  borderRadius: radius.xl,
+                  borderWidth: 1.5,
+                  borderColor: theme.primary.main,
+                  backgroundColor: theme.surface.raised,
+                },
+                elevation(1, theme.shadow),
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="credit-card-outline"
+                size={28}
+                color={theme.primary.main}
+              />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={[
+                    typography.bodyMedium,
+                    { color: theme.foreground.white },
+                  ]}
+                >
+                  Carte bancaire
+                </Text>
+                <Text
+                  style={[
+                    typography.caption,
+                    { color: theme.foreground.gray },
+                  ]}
+                >
+                  •••• •••• •••• 4242
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between" }}
+            >
+              <Text
+                style={[typography.label, { color: theme.foreground.gray }]}
+              >
+                Montant à régler
+              </Text>
+              <Text style={[typography.h2, { color: theme.primary.main }]}>
+                {formatPrice(selectedService.price)}
+              </Text>
+            </View>
+
+            {error ? (
+              <Text style={[typography.bodySmall, { color: theme.danger }]}>
+                {error}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         {step === "confirm" && selectedService && startsAt ? (
           <View style={{ gap: spacing.lg }}>
             <Text style={[typography.h1, { color: theme.foreground.white }]}>
@@ -565,6 +678,12 @@ export default function BookingFlow() {
             >
               Annulation gratuite jusqu&apos;à 24 h avant le rendez-vous.
             </Text>
+
+            {paid ? (
+              <Text style={[typography.caption, { color: theme.success }]}>
+                {"Paiement de " + formatPrice(paid.amount) + " effectué."}
+              </Text>
+            ) : null}
 
             {error ? (
               <Text style={[typography.bodySmall, { color: theme.danger }]}>
@@ -615,15 +734,17 @@ export default function BookingFlow() {
 
         <Button
           label={
-            step === "confirm"
-              ? isReschedule
-                ? "Confirmer le changement"
-                : "Confirmer la réservation"
-              : "Continuer"
+            step === "payment"
+              ? "Payer " + formatPrice(selectedService?.price ?? 0)
+              : step === "confirm"
+                ? isReschedule
+                  ? "Confirmer le changement"
+                  : "Confirmer la réservation"
+                : "Continuer"
           }
           onPress={goNext}
           disabled={!canContinue}
-          loading={submitting}
+          loading={submitting || paying}
         />
       </View>
     </View>
@@ -764,6 +885,7 @@ function BookingSuccess({
   service,
   startsAt,
   isReschedule,
+  adSlot,
   onAppointments,
   onHome,
 }: {
@@ -771,12 +893,14 @@ function BookingSuccess({
   service: Service | null;
   startsAt: Date;
   isReschedule: boolean;
+  adSlot: AdSlot | null;
   onAppointments: () => void;
   onHome: () => void;
 }) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
+  const [popupVisible, setPopupVisible] = useState(Boolean(adSlot?.active));
 
   return (
     <View
@@ -843,6 +967,61 @@ function BookingSuccess({
         <Button label="Voir mes rendez-vous" onPress={onAppointments} />
         <Button label="Retour à l'accueil" variant="ghost" onPress={onHome} />
       </View>
+
+      {adSlot ? (
+        <BottomSheet
+          visible={popupVisible}
+          title={adSlot.headline}
+          onClose={() => setPopupVisible(false)}
+          footer={
+            <Button
+              label="Fermer"
+              variant="ghost"
+              onPress={() => setPopupVisible(false)}
+              style={{ flex: 1 }}
+            />
+          }
+        >
+          <View
+            style={{ height: 140, borderRadius: radius.lg, overflow: "hidden" }}
+          >
+            {adSlot.imageUri ? (
+              <Image
+                source={{ uri: adSlot.imageUri }}
+                style={{ flex: 1 }}
+                contentFit="cover"
+              />
+            ) : (
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: theme.accent.warmSoft,
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="tag-heart-outline"
+                  size={40}
+                  color={theme.accent.warm}
+                />
+              </View>
+            )}
+          </View>
+
+          {adSlot.linkUrl ? (
+            <Pressable
+              onPress={() => void Linking.openURL(adSlot.linkUrl!)}
+              accessibilityRole="link"
+              hitSlop={8}
+            >
+              <Text style={[typography.label, { color: theme.primary.main }]}>
+                En savoir plus
+              </Text>
+            </Pressable>
+          ) : null}
+        </BottomSheet>
+      ) : null}
     </View>
   );
 }

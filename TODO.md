@@ -94,7 +94,7 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Recherche + filtres (localisation, prestation, distance, tri)
 - [x] Fiche coiffeur (présentation, avis étoilés, prestations, bouton réservation)
 - [x] Flow prise de RDV (prestation → créneau → confirmation)
-- [ ] Étape paiement de la prestation avant envoi de la demande au coiffeur (issue #2)
+- [x] Étape paiement de la prestation avant envoi de la demande au coiffeur (issue #2)
 - [x] Gestion RDV (modifier / annuler)
 - [x] Écran laisser avis + note après prestation
 - [ ] Emplacements publicitaires — propositions à valider avec le client (issue #5):

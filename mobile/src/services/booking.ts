@@ -154,6 +154,25 @@ export async function rescheduleAppointment(
   return updated;
 }
 
+// ─── Payment ─────────────────────────────────────────────────────────────────
+
+export interface PaymentReceipt {
+  amount: number;
+  /** ISO timestamp. */
+  paidAt: string;
+}
+
+/**
+ * Mocked pre-authorization: the amount is taken before the request even
+ * reaches the coiffeur (issue #2 — pay-before-request, not pay-on-accept).
+ * Real billing needs a provider decision (Apple/Google IAP vs a card
+ * processor — see TODO.md); this only simulates latency and always succeeds.
+ */
+export async function payForAppointment(amount: number): Promise<PaymentReceipt> {
+  await delay(900);
+  return { amount, paidAt: new Date().toISOString() };
+}
+
 // ─── Reviews ─────────────────────────────────────────────────────────────────
 
 export async function listUserReviews(): Promise<UserReview[]> {
