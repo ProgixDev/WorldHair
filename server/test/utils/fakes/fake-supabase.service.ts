@@ -106,6 +106,22 @@ interface AppointmentRow {
   created_at: string;
 }
 
+interface ReviewRow {
+  id: string;
+  appointment_id: string;
+  particulier_id: string;
+  coiffeur_id: string;
+  rating: number;
+  tags: string[];
+  comment: string;
+  coiffeur_reply: string | null;
+  replied_at: string | null;
+  status: string;
+  report_reason: string | null;
+  reported_at: string | null;
+  created_at: string;
+}
+
 function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknown][]): boolean {
   return filters.every(([column, value]) => row[column] === value);
 }
@@ -232,6 +248,7 @@ export class FakeSupabaseService {
   private readonly availability = new Map<string, AvailabilityRow>();
   private readonly services = new Map<string, ServiceRow>();
   private readonly appointments = new Map<string, AppointmentRow>();
+  private readonly reviews = new Map<string, ReviewRow>();
 
   readonly client = {
     auth: {
@@ -261,6 +278,9 @@ export class FakeSupabaseService {
       }
       if (table === 'appointments') {
         return this.appointmentsTable();
+      }
+      if (table === 'reviews') {
+        return this.reviewsTable();
       }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
@@ -299,6 +319,41 @@ export class FakeSupabaseService {
     this.availability.clear();
     this.services.clear();
     this.appointments.clear();
+    this.reviews.clear();
+  }
+
+  /**
+   * Test convenience for reviews.service.spec.ts: seeds an appointment row
+   * directly, bypassing AppointmentsService's own create/decide flow — lets
+   * a test construct a "done" (confirmed + past `startsAt`) appointment
+   * without waiting for real time to pass.
+   */
+  seedAppointment(params: {
+    id?: string;
+    particulierId: string;
+    coiffeurId: string;
+    serviceId?: string | null;
+    serviceName?: string;
+    price?: number;
+    durationMin?: number;
+    startsAt: string;
+    status?: string;
+  }): string {
+    const id = params.id ?? randomUUID();
+    this.appointments.set(id, {
+      id,
+      particulier_id: params.particulierId,
+      coiffeur_id: params.coiffeurId,
+      service_id: params.serviceId ?? null,
+      service_name: params.serviceName ?? 'Coupe',
+      price: params.price ?? 40,
+      duration_min: params.durationMin ?? 45,
+      starts_at: params.startsAt,
+      status: params.status ?? 'confirmed',
+      client_note: null,
+      created_at: new Date().toISOString(),
+    });
+    return id;
   }
 
   /**
@@ -673,6 +728,45 @@ export class FakeSupabaseService {
 
       update: (patch: Record<string, unknown>) =>
         new FakeMutationQuery<AppointmentRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          const updated = { ...existing, ...patch };
+          rows.set(existing.id, updated);
+          return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private reviewsTable() {
+    const rows = this.reviews;
+
+    return {
+      select: () => new FakeSelectQuery<ReviewRow>(() => [...rows.values()]),
+
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async (): Promise<QueryResult> => {
+            const id = randomUUID();
+            const created = {
+              status: 'visible',
+              coiffeur_reply: null,
+              replied_at: null,
+              report_reason: null,
+              reported_at: null,
+              ...row,
+              id,
+              created_at: new Date().toISOString(),
+            } as ReviewRow;
+            rows.set(id, created);
+            return { data: created, error: null };
+          },
+        }),
+      }),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<ReviewRow>((matches) => {
           const existing = [...rows.values()].find(matches);
           if (!existing) {
             return { data: null, count: 0 };

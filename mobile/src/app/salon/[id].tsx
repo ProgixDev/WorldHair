@@ -25,7 +25,7 @@ import { fetchSalonById } from "../../features/salons/api";
 import { formatDistance, haversineKm } from "../../features/salons/geo";
 import { specialtyLabel } from "../../features/salons/types";
 import type { Review, Salon } from "../../features/salons/types";
-import { listUserReviews, type UserReview } from "../../services/booking";
+import { listUserReviews } from "../../services/booking";
 import {
   formatDuration,
   formatPrice,
@@ -57,20 +57,22 @@ export default function SalonDetail() {
   const { coords } = useLocation();
 
   const scrollY = useRef(new Animated.Value(0)).current;
-  const [userReviews, setUserReviews] = useState<UserReview[]>([]);
+  const [myReviewIds, setMyReviewIds] = useState<Set<string>>(new Set());
   const [salon, setSalon] = useState<Salon | null | undefined>(undefined);
 
+  // Reviews are real and shared (server/src/reviews/) — the particulier's
+  // own submitted review already comes back in salon.reviews below, this
+  // just labels it "Vous" instead of its real (privacy-trimmed) author name.
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      listUserReviews().then((all) => {
-        if (!cancelled)
-          setUserReviews(all.filter((review) => review.salonId === String(id)));
+      listUserReviews().then((mine) => {
+        if (!cancelled) setMyReviewIds(new Set(mine.map((review) => review.id)));
       });
       return () => {
         cancelled = true;
       };
-    }, [id]),
+    }, []),
   );
 
   useEffect(() => {
@@ -86,18 +88,10 @@ export default function SalonDetail() {
 
   const reviews = useMemo<Review[]>(() => {
     if (!salon) return [];
-    const mine: Review[] = userReviews.map((review) => ({
-      id: review.id,
-      author: "Vous",
-      rating: review.rating,
-      date: review.createdAt,
-      comment:
-        review.comment.length > 0
-          ? review.comment
-          : review.tags.join(" · ") || "Avis laissé sans commentaire.",
-    }));
-    return [...mine, ...salon.reviews];
-  }, [salon, userReviews]);
+    return salon.reviews.map((review) =>
+      myReviewIds.has(review.id) ? { ...review, author: "Vous" } : review,
+    );
+  }, [salon, myReviewIds]);
 
   const breakdown = useMemo(() => {
     const counts = [0, 0, 0, 0, 0];

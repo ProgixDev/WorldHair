@@ -36,19 +36,14 @@ export default function ProReviews() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
-  const { replies, saveReply, deleteReply } = usePro();
+  const { reviews, saveReply, deleteReply } = usePro();
 
   const [filter, setFilter] = useState<Filter>("all");
   const [answering, setAnswering] = useState<Review | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // No reviews backend yet ("Avis" — a separate, un-built TODO.md section) —
-  // an honest empty state until then, same as the particulier-side salon page.
-  const reviews = useMemo<Review[]>(() => [], []);
-
   const replyFor = (reviewId: string) =>
-    replies.find((reply) => reply.reviewId === reviewId)?.text ??
     reviews.find((review) => review.id === reviewId)?.reply;
 
   const unanswered = reviews.filter((review) => !replyFor(review.id));
@@ -69,7 +64,7 @@ export default function ProReviews() {
   }, [reviews]);
 
   const openAnswer = (review: Review) => {
-    setDraft(replies.find((reply) => reply.reviewId === review.id)?.text ?? "");
+    setDraft(review.reply ?? "");
     setAnswering(review);
   };
 
@@ -200,7 +195,9 @@ export default function ProReviews() {
         ) : (
           visible.map((review) => {
             const reply = replyFor(review.id);
-            const isMine = replies.some((item) => item.reviewId === review.id);
+            // /reviews/salon/mine only ever returns this coiffeur's own
+            // reviews, so any reply present here is always theirs to edit.
+            const isMine = Boolean(reply);
 
             return (
               <View key={review.id} style={{ gap: spacing.sm }}>

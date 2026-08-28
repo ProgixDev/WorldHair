@@ -51,7 +51,7 @@ export interface CreateAppointmentInput {
   note?: string;
 }
 
-interface AppointmentRow {
+export interface AppointmentRow {
   id: string;
   particulier_id: string;
   coiffeur_id: string;
@@ -69,7 +69,8 @@ function endTimeMs(row: { starts_at: string; duration_min: number }): number {
   return new Date(row.starts_at).getTime() + row.duration_min * 60000;
 }
 
-function derivedStatus(row: AppointmentRow, now: Date): AppointmentStatus {
+/** Exported for ReviewsService — a review may only be left once its appointment shows as "done". */
+export function derivedStatus(row: AppointmentRow, now: Date = new Date()): AppointmentStatus {
   if (row.status === 'confirmed' && endTimeMs(row) < now.getTime()) return 'done';
   return row.status as AppointmentStatus;
 }

@@ -30,7 +30,6 @@ import {
   isUpcoming,
   listAppointments,
   listUserReviews,
-  resetReviewData,
   type Appointment,
 } from "../../services/booking";
 import {
@@ -146,28 +145,10 @@ export default function Profile() {
     ]);
   };
 
-  const handleResetDemo = () => {
-    Alert.alert(
-      "Réinitialiser les données démo ?",
-      "Les avis enregistrés sur cet appareil seront effacés.",
-      [
-        { text: "Annuler", style: "cancel" },
-        {
-          text: "Effacer",
-          style: "destructive",
-          onPress: async () => {
-            await resetReviewData();
-            setReviewCount(0);
-          },
-        },
-      ],
-    );
-  };
-
   const handleReplayOnboarding = () => {
     Alert.alert(
       "Rejouer l'onboarding ?",
-      "La session et les avis locaux seront effacés.",
+      "La session sera effacée.",
       [
         { text: "Annuler", style: "cancel" },
         {
@@ -175,7 +156,7 @@ export default function Profile() {
           style: "destructive",
           onPress: async () => {
             await signOut();
-            await Promise.all([resetReviewData(), clearPreferences()]);
+            await clearPreferences();
             router.replace(ROUTES.onboarding as never);
           },
         },
@@ -564,13 +545,6 @@ export default function Profile() {
             label="Rejouer l'onboarding"
             value="Efface la session et les comptes de test"
             onPress={handleReplayOnboarding}
-          />
-          <Row
-            icon="restore"
-            label="Réinitialiser les données démo"
-            value="RDV et avis locaux"
-            tone="danger"
-            onPress={handleResetDemo}
             isLast
           />
         </Group>

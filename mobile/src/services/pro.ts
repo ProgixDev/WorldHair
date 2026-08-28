@@ -10,27 +10,25 @@ import type {
   ProAppointmentStatus,
   ProProfile,
   ProService,
-  ReviewReply,
   Subscription,
 } from "../features/pro/types";
+import type { Review } from "../features/salons/types";
 
 /**
  * The coiffeur area's data layer, split by how real it is:
- *  - Profile, prestations, weekly hours, and appointments all go straight to
- *    the NestJS server (`/salon/me/*`, `/appointments/*` — see
- *    server/src/salon/ and server/src/appointments/) — real, persisted in
- *    Supabase.
- *  - Subscription and review replies stay mocked in AsyncStorage —
- *    "Paiements/Abonnements" and "Avis" don't have a backend yet (separate
- *    TODO.md sections).
+ *  - Profile, prestations, weekly hours, appointments and reviews all go
+ *    straight to the NestJS server (`/salon/me/*`, `/appointments/*`,
+ *    `/reviews/*` — see server/src/salon/, server/src/appointments/,
+ *    server/src/reviews/) — real, persisted in Supabase.
+ *  - Subscription stays mocked in AsyncStorage — "Paiements/Abonnements"
+ *    doesn't have a backend yet (separate TODO.md section).
  * `seedProWorkspace()` only seeds that mock part now; everything else's
  * defaults come from the server itself (an empty profile, a sensible
- * default week, no services or appointments yet).
+ * default week, no services/appointments/reviews yet).
  */
 
 const KEYS = {
   subscription: "@worldhair/pro_subscription",
-  replies: "@worldhair/pro_replies",
 } as const;
 
 function delay(ms = 350): Promise<void> {
@@ -70,10 +68,7 @@ export async function seedProWorkspace(): Promise<void> {
   const existing = await AsyncStorage.getItem(KEYS.subscription);
   if (existing) return;
 
-  await Promise.all([
-    write(KEYS.subscription, seedSubscription()),
-    write(KEYS.replies, [] as ReviewReply[]),
-  ]);
+  await write(KEYS.subscription, seedSubscription());
 }
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -347,38 +342,45 @@ export async function debugSetSubscriptionEnd(
   return next;
 }
 
-// ─── Review replies (still mock) ───────────────────────────────────────────────
+// ─── Reviews ─────────────────────────────────────────────────────────────────
 
-export async function listReplies(): Promise<ReviewReply[]> {
-  await seedProWorkspace();
-  return read(KEYS.replies, []);
+interface ReviewApiResponse {
+  id: string;
+  authorName: string;
+  rating: number;
+  comment: string;
+  reply?: string;
+  createdAt: string;
 }
 
-export async function saveReply(
-  reviewId: string,
-  text: string,
-): Promise<ReviewReply[]> {
-  await delay(400);
-  const replies = await listReplies();
-  const reply: ReviewReply = {
-    reviewId,
-    text: text.trim(),
-    createdAt: new Date().toISOString(),
+function toReview(review: ReviewApiResponse): Review {
+  return {
+    id: review.id,
+    author: review.authorName,
+    rating: review.rating,
+    date: review.createdAt,
+    comment: review.comment,
+    reply: review.reply,
   };
-  const next = [...replies.filter((item) => item.reviewId !== reviewId), reply];
-  await write(KEYS.replies, next);
-  return next;
 }
 
-export async function deleteReply(reviewId: string): Promise<ReviewReply[]> {
-  await delay(200);
-  const replies = await listReplies();
-  const next = replies.filter((item) => item.reviewId !== reviewId);
-  await write(KEYS.replies, next);
-  return next;
+/** Every review of this coiffeur, any status — the management view (unlike the public salon page, which only sees non-hidden ones). */
+export async function listProReviews(): Promise<Review[]> {
+  const { data } = await apiClient.get<ReviewApiResponse[]>("/reviews/salon/mine");
+  return data.map(toReview);
 }
 
-/** Dev reset — wipes the mock-only part of the pro workspace (appointments/subscription/replies), not the real profile/services/availability. */
+export async function saveReply(reviewId: string, text: string): Promise<Review[]> {
+  await apiClient.patch(`/reviews/${reviewId}/reply`, { text: text.trim() });
+  return listProReviews();
+}
+
+export async function deleteReply(reviewId: string): Promise<Review[]> {
+  await apiClient.delete(`/reviews/${reviewId}/reply`);
+  return listProReviews();
+}
+
+/** Dev reset — wipes the mock-only part of the pro workspace (subscription), not the real profile/services/availability/appointments/reviews. */
 export async function resetProWorkspace(): Promise<void> {
   await AsyncStorage.multiRemove(Object.values(KEYS));
 }

@@ -92,7 +92,6 @@ export default function LeaveReview() {
     try {
       await submitReview({
         appointmentId: appointment.id,
-        salonId: appointment.salonId,
         rating,
         tags,
         comment,

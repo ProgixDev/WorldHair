@@ -87,11 +87,4 @@ export const PLANS: {
   },
 ];
 
-/** A published answer to a client review. */
-export interface ReviewReply {
-  reviewId: string;
-  text: string;
-  createdAt: string;
-}
-
 export type ProService = Service;

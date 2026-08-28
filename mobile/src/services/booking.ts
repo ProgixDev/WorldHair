@@ -1,16 +1,11 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isAxiosError } from "axios";
 import { apiClient } from "../lib/apiClient";
 
 /**
- * "Rendez-vous / Agenda" is real (see server/src/appointments/) — every
- * function below except the review ones calls the NestJS server. Reviews
- * stay mocked in AsyncStorage ("Avis" — a separate, un-built TODO.md
- * section): submitting one only updates this device's own local list,
- * cross-referenced against a real appointment by id.
+ * "Rendez-vous / Agenda" and "Avis" are both real now (see
+ * server/src/appointments/ and server/src/reviews/) — every function below
+ * calls the NestJS server.
  */
-
-const REVIEWS_KEY = "@worldhair/reviews";
 
 export type AppointmentStatus = "pending" | "confirmed" | "refused" | "cancelled" | "done";
 
@@ -31,7 +26,6 @@ export interface Appointment {
 export interface UserReview {
   id: string;
   appointmentId: string;
-  salonId: string;
   rating: number;
   /** Praise tags picked as chips. */
   tags: string[];
@@ -73,28 +67,6 @@ function mapBookingError(err: unknown): never {
 
 function delay(ms = 500): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function newId(prefix: string): string {
-  return (
-    prefix +
-    "_" +
-    Date.now().toString(36) +
-    Math.random().toString(36).slice(2, 7)
-  );
-}
-
-async function readList<T>(key: string): Promise<T[]> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function writeList<T>(key: string, value: T[]): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(value));
 }
 
 // ─── Appointments ────────────────────────────────────────────────────────────
@@ -170,36 +142,44 @@ export async function payForAppointment(amount: number): Promise<PaymentReceipt>
   return { amount, paidAt: new Date().toISOString() };
 }
 
-// ─── Reviews (still mock) ──────────────────────────────────────────────────
+// ─── Reviews ─────────────────────────────────────────────────────────────────
+
+interface ReviewApiResponse {
+  id: string;
+  appointmentId: string;
+  rating: number;
+  tags: string[];
+  comment: string;
+  createdAt: string;
+}
+
+function toUserReview(review: ReviewApiResponse): UserReview {
+  return {
+    id: review.id,
+    appointmentId: review.appointmentId,
+    rating: review.rating,
+    tags: review.tags,
+    comment: review.comment,
+    createdAt: review.createdAt,
+  };
+}
 
 export async function listUserReviews(): Promise<UserReview[]> {
-  return readList<UserReview>(REVIEWS_KEY);
+  const { data } = await apiClient.get<ReviewApiResponse[]>("/reviews/me");
+  return data.map(toUserReview);
 }
 
 export async function submitReview(params: {
   appointmentId: string;
-  salonId: string;
   rating: number;
   tags: string[];
   comment: string;
 }): Promise<UserReview> {
-  await delay(600);
-  const review: UserReview = {
-    id: newId("rev"),
+  const { data } = await apiClient.post<ReviewApiResponse>("/reviews", {
     appointmentId: params.appointmentId,
-    salonId: params.salonId,
     rating: params.rating,
     tags: params.tags,
     comment: params.comment.trim(),
-    createdAt: new Date().toISOString(),
-  };
-
-  const reviews = await listUserReviews();
-  await writeList(REVIEWS_KEY, [...reviews, review]);
-  return review;
-}
-
-/** Dev reset — wipes locally-tracked reviews (appointments are real now, nothing to reset client-side). */
-export async function resetReviewData(): Promise<void> {
-  await AsyncStorage.removeItem(REVIEWS_KEY);
+  });
+  return toUserReview(data);
 }

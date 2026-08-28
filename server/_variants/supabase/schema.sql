@@ -498,6 +498,67 @@ create trigger set_appointments_updated_at
 before update on public.appointments for each row
 execute procedure public.set_updated_at ();
 
+-- "Avis" (TODO.md). One row per appointment (unique), so "Création avis" is
+-- naturally capped at one review per booking. Deliberately does NOT feed
+-- back into coiffeur_profiles.rating/review_count — those stay independent
+-- seed/display numbers, same decoupling the original mock catalogue always
+-- had (reviewCount was never == len(reviews) there either).
+create table public.reviews (
+  id uuid primary key default gen_random_uuid (),
+  appointment_id uuid not null unique references public.appointments (id) on delete cascade,
+  particulier_id uuid not null references public.profiles (id) on delete cascade,
+  coiffeur_id uuid not null references public.profiles (id) on delete cascade,
+  rating smallint not null check (rating between 1 and 5),
+  tags text[] not null default '{}',
+  comment text not null default '',
+  coiffeur_reply text,
+  replied_at timestamptz,
+  -- "Signalement / modération avis (admin)" — no back-office UI exists yet
+  -- (separate TODO.md section), but the data model + API are built now,
+  -- same as coiffeur_applications' admin review queue was.
+  status text not null default 'visible' check (status in ('visible', 'reported', 'hidden')),
+  report_reason text,
+  reported_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index reviews_coiffeur_id_idx on public.reviews (coiffeur_id);
+create index reviews_particulier_id_idx on public.reviews (particulier_id);
+
+alter table public.reviews enable row level security;
+
+create policy "Particuliers can create their own review"
+  on public.reviews for insert
+  with check ((select auth.uid ()) = particulier_id);
+
+create policy "Visible to anyone, or its owner/admin regardless of status"
+  on public.reviews for select
+  using (
+    status = 'visible'
+    or (select auth.uid ()) = particulier_id
+    or (select auth.uid ()) = coiffeur_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
+
+-- Server-side "signaler" (any authenticated caller) is enforced in
+-- ReviewsService via the service-role key, not here — this policy only
+-- covers the coiffeur's own reply + admin moderation.
+create policy "Coiffeur or admin can update a review"
+  on public.reviews for update
+  using (
+    (select auth.uid ()) = coiffeur_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  )
+  with check (
+    (select auth.uid ()) = coiffeur_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
+
+create trigger set_reviews_updated_at
+before update on public.reviews for each row
+execute procedure public.set_updated_at ();
+
 -- ── Public photo storage ─────────────────────────────────────────────────────
 --
 -- Unlike coiffeur-documents, this bucket is PUBLIC: a particulier's avatar

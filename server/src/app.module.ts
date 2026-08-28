@@ -13,6 +13,7 @@ import { EnvironmentVariables } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { HealthModule } from './health/health.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { SalonModule } from './salon/salon.module';
 import { UsersModule } from './users/users.module';
 
@@ -39,6 +40,7 @@ import { UsersModule } from './users/users.module';
     SalonModule,
     DiscoveryModule,
     AppointmentsModule,
+    ReviewsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

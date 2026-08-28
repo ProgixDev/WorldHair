@@ -38,9 +38,9 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [ ] Remboursement si le coiffeur refuse la demande
 
 ### Avis
-- [ ] Création avis + note après prestation
-- [ ] Réponse coiffeur à un avis
-- [ ] Signalement / modération avis (admin)
+- [x] Création avis + note après prestation — POST /reviews, only once the appointment shows as "done", one review per appointment
+- [x] Réponse coiffeur à un avis — PATCH/DELETE /reviews/:id/reply, @Roles('coiffeur')
+- [x] Signalement / modération avis (admin) — POST /reviews/:id/report + GET/PATCH /admin/reviews (@Roles('admin')); no back-office UI yet (separate TODO.md section), API-first like the coiffeur applications review queue
 
 ### Notifications
 - [ ] Infra push (FCM/APNs) + email (transactionnel)

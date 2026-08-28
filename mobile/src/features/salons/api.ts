@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../lib/apiClient";
-import type { OpeningDay, Salon, Service, SpecialtyId } from "./types";
+import type { OpeningDay, Review, Salon, Service, SpecialtyId } from "./types";
 
 /**
  * Real search/detail (server/src/discovery/) replacing the old mock
- * catalogue (`./data`, deleted). The server doesn't have reviews yet
- * ("Avis" — a separate, un-built TODO.md section), so every salon shows an
- * empty review list until then — the same "honest gap" as pro/reviews.tsx.
+ * catalogue (`./data`, deleted). Reviews are real too (server/src/reviews/)
+ * — fetched alongside the detail call and embedded into the returned Salon.
  */
 
 interface SalonSummaryResponse {
@@ -73,7 +72,30 @@ function toHours(availability: AvailabilityResponse[]): OpeningDay[] {
   }));
 }
 
-function toSalon(summary: SalonSummaryResponse, extra?: { services: Service[]; hours: OpeningDay[] }): Salon {
+interface ReviewResponse {
+  id: string;
+  authorName: string;
+  rating: number;
+  comment: string;
+  reply?: string;
+  createdAt: string;
+}
+
+function toReview(review: ReviewResponse): Review {
+  return {
+    id: review.id,
+    author: review.authorName,
+    rating: review.rating,
+    date: review.createdAt,
+    comment: review.comment,
+    reply: review.reply,
+  };
+}
+
+function toSalon(
+  summary: SalonSummaryResponse,
+  extra?: { services: Service[]; hours: OpeningDay[]; reviews: Review[] },
+): Salon {
   return {
     id: summary.id,
     name: summary.salonName,
@@ -93,7 +115,7 @@ function toSalon(summary: SalonSummaryResponse, extra?: { services: Service[]; h
     priceFrom: summary.priceFrom ?? 0,
     specialties: summary.specialties,
     services: extra?.services ?? [],
-    reviews: [],
+    reviews: extra?.reviews ?? [],
     hours: extra?.hours ?? [],
   };
 }
@@ -111,11 +133,20 @@ export async function fetchSalons(): Promise<Salon[]> {
 
 export async function fetchSalonById(id: string): Promise<Salon | undefined> {
   try {
-    const { data } = await apiClient.get<SalonDetailResponse>(`/salons/${id}`);
-    return toSalon(data, { services: data.services.map(toService), hours: toHours(data.availability) });
+    const [{ data }, reviews] = await Promise.all([
+      apiClient.get<SalonDetailResponse>(`/salons/${id}`),
+      fetchSalonReviews(id),
+    ]);
+    return toSalon(data, { services: data.services.map(toService), hours: toHours(data.availability), reviews });
   } catch {
     return undefined;
   }
+}
+
+/** A salon's public reviews — also embedded into fetchSalonById's result, exported separately for pro/reviews.tsx's own mapping (same server shape, coiffeur-facing endpoint). */
+export async function fetchSalonReviews(salonId: string): Promise<Review[]> {
+  const { data } = await apiClient.get<ReviewResponse[]>(`/reviews/salon/${salonId}`);
+  return data.map(toReview);
 }
 
 /** Feeds the manual "choisir une ville" fallback picker's result count / empty states, if ever needed — distinct cities among currently-visible salons. */

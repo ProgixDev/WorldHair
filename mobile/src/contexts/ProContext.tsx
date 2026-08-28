@@ -13,9 +13,9 @@ import type {
   ProAppointmentStatus,
   ProProfile,
   ProService,
-  ReviewReply,
   Subscription,
 } from "../features/pro/types";
+import type { Review } from "../features/salons/types";
 import * as pro from "../services/pro";
 
 interface ProContextValue {
@@ -24,7 +24,7 @@ interface ProContextValue {
   availability: AvailabilityDay[];
   appointments: ProAppointment[];
   subscription: Subscription | null;
-  replies: ReviewReply[];
+  reviews: Review[];
   isLoading: boolean;
   refresh: () => Promise<void>;
   saveProfile: (profile: ProProfile) => Promise<void>;
@@ -54,7 +54,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
   const [availability, setAvailability] = useState<AvailabilityDay[]>([]);
   const [appointments, setAppointments] = useState<ProAppointment[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [replies, setReplies] = useState<ReviewReply[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -64,14 +64,14 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       nextAvailability,
       nextAppointments,
       nextSubscription,
-      nextReplies,
+      nextReviews,
     ] = await Promise.all([
       pro.getProProfile(),
       pro.listProServices(),
       pro.getAvailability(),
       pro.listProAppointments(),
       pro.getSubscription(),
-      pro.listReplies(),
+      pro.listProReviews(),
     ]);
 
     setProfile(nextProfile);
@@ -79,7 +79,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     setAvailability(nextAvailability);
     setAppointments(nextAppointments);
     setSubscription(nextSubscription);
-    setReplies(nextReplies);
+    setReviews(nextReviews);
     setIsLoading(false);
   }, []);
 
@@ -94,7 +94,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       availability,
       appointments,
       subscription,
-      replies,
+      reviews,
       isLoading,
       refresh,
       saveProfile: async (next) => setProfile(await pro.saveProProfile(next)),
@@ -112,9 +112,9 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       reactivateSubscription: async () =>
         setSubscription(await pro.reactivateSubscription()),
       saveReply: async (reviewId, text) =>
-        setReplies(await pro.saveReply(reviewId, text)),
+        setReviews(await pro.saveReply(reviewId, text)),
       deleteReply: async (reviewId) =>
-        setReplies(await pro.deleteReply(reviewId)),
+        setReviews(await pro.deleteReply(reviewId)),
     }),
     [
       profile,
@@ -122,7 +122,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       availability,
       appointments,
       subscription,
-      replies,
+      reviews,
       isLoading,
       refresh,
     ],
