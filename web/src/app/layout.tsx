@@ -2,31 +2,94 @@ import "./globals.css";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 
-// Same font files mobile bundles (mobile/assets/fonts/), copied into
-// public/fonts/ — not Google's hosted versions, the exact same .ttf.
-const roboto = localFont({
-  variable: "--font-roboto",
-  src: [
-    { path: "../../public/fonts/Roboto/Roboto-Regular.ttf", weight: "400" },
-    { path: "../../public/fonts/Roboto/Roboto-Medium.ttf", weight: "500" },
-    { path: "../../public/fonts/Roboto/Roboto-Bold.ttf", weight: "700" },
-  ],
-});
-
-const playfairDisplay = localFont({
-  variable: "--font-playfair",
+// One typeface drives the whole site — Helvetica Neue, per the reference
+// design's own typography (not a Google-hosted lookalike, the real family,
+// provided as local files). Weights beyond what any component currently
+// uses (Thin/UltraLight/Heavy/Black + italics) are still registered since
+// the full family was provided — no cost to including them, and it means
+// future weight/style choices don't need a new font drop.
+const helveticaNeue = localFont({
+  variable: "--font-helvetica-neue",
   src: [
     {
-      path: "../../public/fonts/PlayfairDisplay/PlayfairDisplay-Regular.ttf",
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueThin.otf",
+      weight: "100",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueThinItalic.otf",
+      weight: "100",
+      style: "italic",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueUltraLight.otf",
+      weight: "200",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueUltraLightItalic.otf",
+      weight: "200",
+      style: "italic",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueLight.otf",
+      weight: "300",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueLightItalic.otf",
+      weight: "300",
+      style: "italic",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueRoman.otf",
       weight: "400",
+      style: "normal",
     },
     {
-      path: "../../public/fonts/PlayfairDisplay/PlayfairDisplay-Medium.ttf",
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueItalic.ttf",
+      weight: "400",
+      style: "italic",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueMedium.otf",
       weight: "500",
+      style: "normal",
     },
     {
-      path: "../../public/fonts/PlayfairDisplay/PlayfairDisplay-Bold.ttf",
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueMediumItalic.otf",
+      weight: "500",
+      style: "italic",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueBold.otf",
       weight: "700",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueBoldItalic.otf",
+      weight: "700",
+      style: "italic",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueHeavy.otf",
+      weight: "800",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueHeavyItalic.otf",
+      weight: "800",
+      style: "italic",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueBlack.otf",
+      weight: "900",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/HelveticaNeue/HelveticaNeueBlackItalic.otf",
+      weight: "900",
+      style: "italic",
     },
   ],
 });
@@ -43,10 +106,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="fr"
-      className={`${roboto.variable} ${playfairDisplay.variable} h-full antialiased`}
-    >
+    <html lang="fr" className={`${helveticaNeue.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
