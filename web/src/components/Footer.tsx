@@ -30,8 +30,8 @@ export function Footer() {
           above — same overlap layering as HeroSection's product shot. */}
       <div className="relative z-10 mx-auto -mt-16 flex max-w-4xl justify-center sm:-mt-24">
         <Image
-          src="/images/worldhair-product-on-obsidian-v1.png"
-          alt=""
+          src="/images/FooterStylingTools.png"
+          alt="Outils de coiffure : ciseaux, brosse et peigne"
           width={1536}
           height={1024}
           className="w-full max-w-2xl object-contain object-bottom"

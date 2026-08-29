@@ -22,8 +22,8 @@ export function TestimonialSection() {
 
       <div className="mx-auto flex max-w-[1680px] justify-center px-4 pt-12 sm:px-6">
         <Image
-          src="/images/worldhair-product-on-obsidian-v1.png"
-          alt=""
+          src="/images/TestimonialSectionMainPicture.png"
+          alt="Icônes de témoignage cinq étoiles"
           width={1536}
           height={1024}
           className="w-full max-w-xl object-contain sm:max-w-3xl lg:max-w-4xl"

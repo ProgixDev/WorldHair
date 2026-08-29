@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { ArrowRight, Star } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 export function HeroSection() {
@@ -9,7 +9,7 @@ export function HeroSection() {
       className="relative isolate min-h-screen overflow-hidden bg-[#020405] text-white"
     >
       <Image
-        src="/images/worldhair-navy-campaign-bg-v1.png"
+        src="/images/HeroSectionBackground.png"
         alt=""
         fill
         priority
@@ -53,21 +53,18 @@ export function HeroSection() {
           </p>
         </div>
 
-        <article className="absolute right-5 bottom-9 w-48 overflow-hidden rounded-2xl border-4 border-white bg-white text-[#0c2340] shadow-2xl shadow-black/45 sm:right-8 sm:w-52 lg:right-12 lg:bottom-10">
-          <Image
-            src="/images/worldhair-stylist-card-v1.png"
-            alt="Portrait de la coiffeuse de Maison Amara"
-            width={416}
-            height={520}
-            className="h-32 w-full object-cover object-[44%_38%] sm:h-36"
-          />
-          <div className="p-3">
-            <h2 className="text-sm font-bold">Maison Amara</h2>
-            <p className="mt-1 text-xs text-[#607084]">Coloriste · Paris 11e</p>
-            <div className="mt-2 flex items-center gap-1 text-xs font-medium text-[#a8703c]">
-              <Star className="size-3 fill-current" aria-hidden="true" />
-              <span>4,9</span>
-              <span className="text-[#607084]">(128 avis)</span>
+        <article className="absolute right-5 bottom-9 w-48 overflow-hidden rounded-2xl border-4 border-white shadow-2xl shadow-black/45 sm:right-8 sm:w-52 lg:right-12 lg:bottom-10">
+          <div className="relative aspect-3/4">
+            <Image
+              src="/images/HeroSectionSmallPicture.png"
+              alt=""
+              fill
+              className="object-cover object-[35%_35%]"
+            />
+            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 to-transparent p-3 pt-10">
+              <p className="font-heading text-sm text-pretty text-white italic">
+                Chaque coupe raconte une histoire.
+              </p>
             </div>
           </div>
         </article>
@@ -76,19 +73,19 @@ export function HeroSection() {
       {/* A sibling of the padded content wrapper above, not a child of it —
           so `bottom-0` here means the section's true edge, not the wrapper's
           own bottom padding. Still painted last, so it layers on top of
-          every text element above; the jar breaks the plane of the
+          every text element above; the phone breaks the plane of the
           wordmark, on purpose. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center"
       >
         <Image
-          src="/images/worldhair-product-on-obsidian-v1.png"
+          src="/images/HeroSectionMainPicture.png"
           alt=""
-          width={1536}
-          height={1024}
+          width={1448}
+          height={1086}
           priority
-          className="w-full max-w-xl object-contain object-bottom sm:max-w-3xl lg:max-w-4xl"
+          className="w-full max-w-lg object-contain object-bottom sm:max-w-2xl lg:max-w-3xl"
         />
       </div>
     </section>

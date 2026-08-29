@@ -1,6 +1,10 @@
+"use client";
+
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
 import { Search, User } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const NAV_LINKS = [
   { href: "#fonctionnalites", label: "Fonctionnalités" },
@@ -10,8 +14,22 @@ const NAV_LINKS = [
 ];
 
 export function Header() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <header className="fixed inset-x-0 top-0 z-40 bg-[#0c2340] text-white">
+    <header
+      className={cn(
+        "fixed inset-x-0 top-0 z-40 text-white transition-colors duration-300",
+        scrolled ? "bg-[#0c2340]" : "bg-transparent",
+      )}
+    >
       <div className="mx-auto grid max-w-[1680px] grid-cols-3 items-center px-4 py-4 sm:px-6">
         <nav className="hidden items-center gap-7 sm:flex">
           {NAV_LINKS.map((link) => (

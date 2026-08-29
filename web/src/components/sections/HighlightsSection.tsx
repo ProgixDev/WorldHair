@@ -1,9 +1,22 @@
-import { Image as ImageIcon, Star } from "lucide-react";
+import { Star } from "lucide-react";
+import Image from "next/image";
 
 const PRESTATIONS = [
-  { name: "Coupe & brushing", rating: 5 },
-  { name: "Coloration", rating: 5 },
-  { name: "Soin capillaire", rating: 4 },
+  {
+    name: "Coupe & brushing",
+    rating: 5,
+    image: "/images/HighlightsSectionCoupeBrushing.png",
+  },
+  {
+    name: "Coloration",
+    rating: 5,
+    image: "/images/HighlightsSectionColoration.png",
+  },
+  {
+    name: "Soin capillaire",
+    rating: 4,
+    image: "/images/HighlightsSectionSoinCapillaire.png",
+  },
 ] as const;
 
 export function HighlightsSection() {
@@ -26,16 +39,16 @@ export function HighlightsSection() {
               key={prestation.name}
               className="border-border flex flex-col gap-4 border-t p-6 first:border-t-0 sm:border-t-0"
             >
-              <div className="bg-muted flex aspect-square items-center justify-center rounded-xl">
-                <ImageIcon className="text-muted-foreground/40 size-10" />
+              <div className="relative aspect-square overflow-hidden rounded-xl">
+                <Image
+                  src={prestation.image}
+                  alt={prestation.name}
+                  fill
+                  className="object-cover"
+                />
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{prestation.name}</span>
-                <a href="#" className="text-primary text-sm font-medium hover:underline">
-                  Voir plus
-                </a>
-              </div>
+              <span className="font-medium">{prestation.name}</span>
 
               <div className="flex items-center gap-0.5">
                 {Array.from({ length: 5 }).map((_, i) => (
