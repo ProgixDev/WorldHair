@@ -5,6 +5,8 @@ import Link from "next/link";
 const NAV_LINKS = [
   { href: "#fonctionnalites", label: "Fonctionnalités" },
   { href: "#coiffeurs", label: "Coiffeurs" },
+  { href: "#parcours", label: "Comment ça marche" },
+  { href: "#avis", label: "Avis" },
 ];
 
 export function Header() {

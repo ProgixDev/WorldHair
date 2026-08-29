@@ -20,7 +20,7 @@ const STEPS = [
 
 export function RitualSection() {
   return (
-    <section className="bg-background mt-16 sm:mt-24">
+    <section id="parcours" className="bg-background mt-16 scroll-mt-5 sm:mt-24">
       <div className="mx-auto max-w-[1680px] px-4 py-20 sm:px-6">
         <div>
           <h2 className="text-primary text-2xl font-thin tracking-tight whitespace-nowrap uppercase sm:text-5xl lg:text-6xl">

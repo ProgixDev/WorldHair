@@ -7,7 +7,7 @@ import { ArrowRight, Image as ImageIcon } from "lucide-react";
  */
 export function SpotlightSection() {
   return (
-    <section id="coiffeurs" className="bg-[#080f1a] text-[#f2f6fb]">
+    <section id="coiffeurs" className="scroll-mt-16 bg-[#080f1a] text-[#f2f6fb]">
       <div className="mx-auto grid max-w-[1680px] sm:grid-cols-2 sm:min-h-[38rem] lg:min-h-[46rem]">
         <div className="flex aspect-4/3 items-center justify-center bg-[#0c1524] sm:aspect-auto">
           <ImageIcon className="size-16 text-[#93a6bc]/40" />

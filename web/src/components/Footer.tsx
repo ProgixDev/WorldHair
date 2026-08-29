@@ -3,8 +3,8 @@ import Image from "next/image";
 const FOOTER_LINKS = [
   { href: "#fonctionnalites", label: "Fonctionnalités" },
   { href: "#coiffeurs", label: "Coiffeurs" },
-  { href: "#", label: "À propos" },
-  { href: "#", label: "Contact" },
+  { href: "#parcours", label: "Comment ça marche" },
+  { href: "#avis", label: "Avis" },
 ];
 
 export function Footer() {

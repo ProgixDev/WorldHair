@@ -3,7 +3,7 @@ import Image from "next/image";
 
 export function TestimonialSection() {
   return (
-    <section className="bg-background">
+    <section id="avis" className="scroll-mt-8 bg-background">
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 px-4 pt-20 text-center sm:px-6">
         <p className="font-heading text-xl text-balance sm:text-2xl">
           &ldquo;J&apos;ai trouvé un coiffeur à deux rues de chez moi et

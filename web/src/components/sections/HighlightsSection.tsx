@@ -8,7 +8,7 @@ const PRESTATIONS = [
 
 export function HighlightsSection() {
   return (
-    <section id="fonctionnalites" className="bg-background mt-16 sm:mt-24">
+    <section id="fonctionnalites" className="bg-background mt-16 scroll-mt-10 sm:mt-24">
       <div className="mx-auto max-w-[1680px] px-4 py-20 sm:px-6">
         <div>
           <h2 className="text-primary text-2xl font-thin tracking-tight whitespace-nowrap uppercase sm:text-5xl lg:text-6xl">
