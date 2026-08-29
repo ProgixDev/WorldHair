@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonService } from '../salon/salon.service';
@@ -14,7 +15,7 @@ describe('DiscoveryService', () => {
 
   beforeEach(() => {
     supabase = new FakeSupabaseService();
-    const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService);
+    const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, new EventEmitter2());
     const salon = new SalonService(supabase as unknown as SupabaseService);
     discovery = new DiscoveryService(supabase as unknown as SupabaseService, applications, salon);
   });

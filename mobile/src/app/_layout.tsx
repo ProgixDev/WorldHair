@@ -13,6 +13,8 @@ import {
 import { AuthProvider } from "../contexts/AuthContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { ThemeProvider, useTheme } from "../contexts/ThemeContext";
+import { useNotificationRouting } from "../features/notifications/useNotificationRouting";
+import { usePushTokenSync } from "../features/notifications/usePushRegistration";
 import { queryClient } from "../lib/queryClient";
 
 NativeSplash.preventAutoHideAsync();
@@ -64,6 +66,9 @@ function RootLayoutWithTheme() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
+
+  usePushTokenSync();
+  useNotificationRouting();
 
   const [fontsLoaded] = useFonts({
     "PlayfairDisplay-Regular": require("../../assets/fonts/PlayfairDisplay/PlayfairDisplay-Regular.ttf"),

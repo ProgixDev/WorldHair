@@ -122,6 +122,34 @@ interface ReviewRow {
   created_at: string;
 }
 
+interface PushTokenRow {
+  id: string;
+  user_id: string;
+  token: string;
+  platform: string;
+  timezone: string;
+  last_seen_at: string;
+  invalidated_at: string | null;
+  created_at: string;
+}
+
+interface NotificationPreferencesRow {
+  user_id: string;
+  reminder_day_before: boolean;
+  reminder_hour_before: boolean;
+  updated_at: string;
+}
+
+interface NotificationLogRow {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string;
+  dedupe_key: string;
+  created_at: string;
+}
+
 function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknown][]): boolean {
   return filters.every(([column, value]) => row[column] === value);
 }
@@ -136,6 +164,9 @@ function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknow
 class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   private readonly eqFilters: [keyof TRow, unknown][] = [];
   private readonly inFilters: [keyof TRow, unknown[]][] = [];
+  private readonly isFilters: [keyof TRow, null][] = [];
+  private readonly gteFilters: [keyof TRow, unknown][] = [];
+  private readonly lteFilters: [keyof TRow, unknown][] = [];
   private rangeFrom = 0;
   private rangeTo = Number.MAX_SAFE_INTEGER;
 
@@ -148,6 +179,22 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
 
   in(column: keyof TRow, values: unknown[]): this {
     this.inFilters.push([column, values]);
+    return this;
+  }
+
+  /** Only `.is(column, null)` is used anywhere in this codebase — that's all this fakes. */
+  is(column: keyof TRow, value: null): this {
+    this.isFilters.push([column, value]);
+    return this;
+  }
+
+  gte(column: keyof TRow, value: unknown): this {
+    this.gteFilters.push([column, value]);
+    return this;
+  }
+
+  lte(column: keyof TRow, value: unknown): this {
+    this.lteFilters.push([column, value]);
     return this;
   }
 
@@ -164,8 +211,21 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   private filtered(): TRow[] {
     const rows = this.rows()
       .filter((row) => matchesAll(row, this.eqFilters))
-      .filter((row) => this.inFilters.every(([column, values]) => values.includes(row[column])));
+      .filter((row) => this.inFilters.every(([column, values]) => values.includes(row[column])))
+      .filter((row) => this.isFilters.every(([column]) => row[column] === null))
+      .filter((row) => this.gteFilters.every(([column, value]) => this.compare(row[column], value) >= 0))
+      .filter((row) => this.lteFilters.every(([column, value]) => this.compare(row[column], value) <= 0));
     return rows.slice(this.rangeFrom, this.rangeTo + 1);
+  }
+
+  /** Compares as dates when both sides parse as one (ISO timestamp columns), otherwise falls back to `<`/`>`. */
+  private compare(a: unknown, b: unknown): number {
+    const aDate = new Date(a as string).getTime();
+    const bDate = new Date(b as string).getTime();
+    if (!Number.isNaN(aDate) && !Number.isNaN(bDate)) return aDate - bDate;
+    if ((a as number) < (b as number)) return -1;
+    if ((a as number) > (b as number)) return 1;
+    return 0;
   }
 
   async maybeSingle(): Promise<QueryResult> {
@@ -249,6 +309,9 @@ export class FakeSupabaseService {
   private readonly services = new Map<string, ServiceRow>();
   private readonly appointments = new Map<string, AppointmentRow>();
   private readonly reviews = new Map<string, ReviewRow>();
+  private readonly pushTokens = new Map<string, PushTokenRow>();
+  private readonly notificationPreferences = new Map<string, NotificationPreferencesRow>();
+  private readonly notificationsLog = new Map<string, NotificationLogRow>();
 
   readonly client = {
     auth: {
@@ -258,6 +321,16 @@ export class FakeSupabaseService {
           return { data: { user: null }, error: { message: 'invalid token' } };
         }
         return { data: { user }, error: null };
+      },
+      admin: {
+        /** Only used by CoiffeurApplicationNotificationsListener to resolve an email for a decision email. */
+        getUserById: async (id: string) => {
+          const user = [...this.authUsersByToken.values()].find((candidate) => candidate.id === id);
+          if (!user) {
+            return { data: { user: null }, error: { message: 'user not found' } };
+          }
+          return { data: { user }, error: null };
+        },
       },
     },
     from: (table: string) => {
@@ -281,6 +354,15 @@ export class FakeSupabaseService {
       }
       if (table === 'reviews') {
         return this.reviewsTable();
+      }
+      if (table === 'push_tokens') {
+        return this.pushTokensTable();
+      }
+      if (table === 'notification_preferences') {
+        return this.notificationPreferencesTable();
+      }
+      if (table === 'notifications_log') {
+        return this.notificationsLogTable();
       }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
@@ -320,6 +402,9 @@ export class FakeSupabaseService {
     this.services.clear();
     this.appointments.clear();
     this.reviews.clear();
+    this.pushTokens.clear();
+    this.notificationPreferences.clear();
+    this.notificationsLog.clear();
   }
 
   /**
@@ -354,6 +439,11 @@ export class FakeSupabaseService {
       created_at: new Date().toISOString(),
     });
     return id;
+  }
+
+  /** Test convenience: reads back what notifications/ actually recorded for a user, for assertions. */
+  notifyLogFor(userId: string): NotificationLogRow[] {
+    return [...this.notificationsLog.values()].filter((row) => row.user_id === userId);
   }
 
   /**
@@ -775,6 +865,103 @@ export class FakeSupabaseService {
           rows.set(existing.id, updated);
           return { data: updated, count: 1 };
         }),
+    };
+  }
+
+  private pushTokensTable() {
+    const rows = this.pushTokens;
+
+    return {
+      select: () => new FakeSelectQuery<PushTokenRow>(() => [...rows.values()]),
+
+      /** No `.select()` is ever chained after this in real code — resolves directly, like the real client does when nothing reads the result. */
+      upsert: (row: Record<string, unknown>, options: { onConflict: string }) => {
+        const conflictColumn = options.onConflict as keyof PushTokenRow;
+        const existing = [...rows.values()].find((r) => r[conflictColumn] === row[conflictColumn]);
+        const id = existing?.id ?? randomUUID();
+        const merged = {
+          ...existing,
+          ...row,
+          id,
+          created_at: existing?.created_at ?? new Date().toISOString(),
+        } as PushTokenRow;
+        rows.set(id, merged);
+        return Promise.resolve({ data: merged, error: null });
+      },
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<PushTokenRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          const updated = { ...existing, ...patch };
+          rows.set(existing.id, updated);
+          return { data: updated, count: 1 };
+        }),
+
+      delete: () =>
+        new FakeMutationQuery<PushTokenRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          rows.delete(existing.id);
+          return { data: existing, count: 1 };
+        }),
+    };
+  }
+
+  private notificationPreferencesTable() {
+    const rows = this.notificationPreferences;
+
+    return {
+      select: () => new FakeSelectQuery<NotificationPreferencesRow>(() => [...rows.values()]),
+
+      upsert: (row: Record<string, unknown>) => {
+        const userId = row.user_id as string;
+        const merged = {
+          reminder_day_before: true,
+          reminder_hour_before: true,
+          ...rows.get(userId),
+          ...row,
+          updated_at: new Date().toISOString(),
+        } as NotificationPreferencesRow;
+        rows.set(userId, merged);
+        return {
+          select: () => ({
+            single: async (): Promise<QueryResult> => ({ data: merged, error: null }),
+          }),
+        };
+      },
+    };
+  }
+
+  private notificationsLogTable() {
+    const rows = this.notificationsLog;
+
+    return {
+      select: () => new FakeSelectQuery<NotificationLogRow>(() => [...rows.values()]),
+
+      /** Emulates the real unique index on (user_id, type, dedupe_key) — the actual duplicate guard, per notifications_log's schema comment. */
+      insert: (row: Record<string, unknown>) => {
+        const duplicate = [...rows.values()].some(
+          (existing) =>
+            existing.user_id === row.user_id &&
+            existing.type === row.type &&
+            existing.dedupe_key === row.dedupe_key,
+        );
+        if (duplicate) {
+          return Promise.resolve({
+            data: null,
+            error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+          });
+        }
+        const id = randomUUID();
+        const created = { ...row, id, created_at: new Date().toISOString() } as NotificationLogRow;
+        rows.set(id, created);
+        return Promise.resolve({ data: created, error: null });
+      },
     };
   }
 }

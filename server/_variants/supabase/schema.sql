@@ -591,3 +591,74 @@ create policy "Users can delete their own photos"
 
 -- No SELECT policy needed: `public.buckets.public = true` serves reads
 -- through a public URL without going through Storage RLS at all.
+
+-- ── Notifications (TODO.md) ──────────────────────────────────────────────────
+--
+-- Same shape as the WhaleTime project's approach (D:\Others\WhaleTime),
+-- ported from Mongoose to Postgres: Expo push tokens, per-user reminder
+-- preferences (only the two "désactivable" reminders get a toggle — the
+-- other four notification types are mandatory, so they don't need one), and
+-- a dedupe log keyed by a caller-chosen `dedupe_key` rather than a
+-- pre-check read — a retried/overlapping cron run can't double-send.
+
+create table public.push_tokens (
+  id uuid primary key default gen_random_uuid (),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  token text not null unique,
+  platform text not null check (platform in ('ios', 'android')),
+  timezone text not null default 'UTC',
+  last_seen_at timestamptz not null default now(),
+  invalidated_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- Partial: only rows that would actually be sent to are ever looked up.
+create index push_tokens_user_id_active_idx on public.push_tokens (user_id) where invalidated_at is null;
+
+alter table public.push_tokens enable row level security;
+
+-- One `for all` policy is fine here (no separate public-read policy exists
+-- on this table to double up with, unlike coiffeur_profiles etc.).
+create policy "Users manage their own push tokens"
+  on public.push_tokens for all
+  using ((select auth.uid ()) = user_id)
+  with check ((select auth.uid ()) = user_id);
+
+create table public.notification_preferences (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  reminder_day_before boolean not null default true,
+  reminder_hour_before boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.notification_preferences enable row level security;
+
+create policy "Users manage their own notification preferences"
+  on public.notification_preferences for all
+  using ((select auth.uid ()) = user_id)
+  with check ((select auth.uid ()) = user_id);
+
+create trigger set_notification_preferences_updated_at
+before update on public.notification_preferences for each row
+execute procedure public.set_updated_at ();
+
+create table public.notifications_log (
+  id uuid primary key default gen_random_uuid (),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  type text not null,
+  title text not null,
+  body text not null,
+  -- Caller-chosen, e.g. an appointment id for a reminder/RDV event, or
+  -- "<applicationId>:<status>" for a coiffeur-application decision (so a
+  -- later re-decision after resubmission still notifies again).
+  dedupe_key text not null,
+  created_at timestamptz not null default now()
+);
+
+create unique index notifications_log_dedupe_idx on public.notifications_log (user_id, type, dedupe_key);
+
+alter table public.notifications_log enable row level security;
+
+create policy "Users can view their own notification history"
+  on public.notifications_log for select
+  using ((select auth.uid ()) = user_id);

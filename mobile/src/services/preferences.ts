@@ -1,9 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { apiClient } from "../lib/apiClient";
 
 const KEYS = {
   onboardingSeen: "@worldhair/onboarding_seen",
   locationIntent: "@worldhair/location_intent",
-  notifications: "@worldhair/notifications",
   signupIntent: "@worldhair/signup_intent",
 } as const;
 
@@ -45,7 +45,8 @@ export async function setLocationIntent(intent: LocationIntent): Promise<void> {
 
 /**
  * Reminder switches. The cahier des charges makes the J-1 and H-1 reminders
- * optional and everything else mandatory, so only these two are stored.
+ * optional and everything else mandatory, so only these two are stored —
+ * real now (server/src/notifications/), same shape as the request/response.
  */
 export interface NotificationPrefs {
   reminderDayBefore: boolean;
@@ -58,23 +59,14 @@ export const DEFAULT_NOTIFICATIONS: NotificationPrefs = {
 };
 
 export async function getNotificationPrefs(): Promise<NotificationPrefs> {
-  try {
-    const raw = await AsyncStorage.getItem(KEYS.notifications);
-    if (!raw) return DEFAULT_NOTIFICATIONS;
-    return { ...DEFAULT_NOTIFICATIONS, ...(JSON.parse(raw) as object) };
-  } catch {
-    return DEFAULT_NOTIFICATIONS;
-  }
+  const { data } = await apiClient.get<NotificationPrefs>("/notifications/preferences");
+  return data;
 }
 
 export async function setNotificationPrefs(
   prefs: NotificationPrefs,
 ): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEYS.notifications, JSON.stringify(prefs));
-  } catch {
-    // ignore
-  }
+  await apiClient.patch("/notifications/preferences", prefs);
 }
 
 /**
@@ -118,7 +110,6 @@ export async function clearPreferences(): Promise<void> {
     await AsyncStorage.multiRemove([
       KEYS.onboardingSeen,
       KEYS.locationIntent,
-      KEYS.notifications,
       KEYS.signupIntent,
     ]);
   } catch {

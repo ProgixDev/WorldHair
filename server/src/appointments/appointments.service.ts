@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonService } from '../salon/salon.service';
@@ -93,6 +94,7 @@ export class AppointmentsService {
     private readonly supabase: SupabaseService,
     private readonly applications: CoiffeurApplicationsService,
     private readonly salon: SalonService,
+    private readonly events: EventEmitter2,
   ) {}
 
   // ─── Create (particulier) ────────────────────────────────────────────────
@@ -132,7 +134,14 @@ export class AppointmentsService {
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
-    return this.mapParticulier(data as AppointmentRow, profile.salonName);
+    const created = data as AppointmentRow;
+    this.events.emit('appointment.created', {
+      appointmentId: created.id,
+      coiffeurId: input.coiffeurId,
+      serviceName: service.name,
+      startsAt: created.starts_at,
+    });
+    return this.mapParticulier(created, profile.salonName);
   }
 
   // ─── Particulier: list / reschedule / cancel ────────────────────────────
@@ -170,6 +179,13 @@ export class AppointmentsService {
     }
     this.assertStillActive(row);
     await this.updateRow(id, { status: 'cancelled' });
+    this.events.emit('appointment.cancelled', {
+      appointmentId: id,
+      coiffeurId: row.coiffeur_id,
+      cancelledByUserId: currentUserId,
+      serviceName: row.service_name,
+      startsAt: row.starts_at,
+    });
   }
 
   // ─── Public: busy slots for the booking-flow slot picker ────────────────
@@ -214,6 +230,14 @@ export class AppointmentsService {
       throw new BadRequestException('This request has already been decided');
     }
     await this.updateRow(id, { status: decision });
+    if (decision === 'confirmed') {
+      this.events.emit('appointment.confirmed', {
+        appointmentId: id,
+        particulierId: row.particulier_id,
+        serviceName: row.service_name,
+        startsAt: row.starts_at,
+      });
+    }
   }
 
   // ─── Shared helpers ──────────────────────────────────────────────────────

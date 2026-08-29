@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PaginationOptions } from '../common/dto/pagination-query.dto';
 import { SupabaseService } from '../database/supabase.service';
 import { PracticeZone, SubmitCoiffeurApplicationDto } from './dto/submit-application.dto';
@@ -92,7 +93,10 @@ function mapRow(row: CoiffeurApplicationRow): CoiffeurApplication {
  */
 @Injectable()
 export class CoiffeurApplicationsService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   async getMine(userId: string): Promise<CoiffeurApplication | null> {
     const { data, error } = await this.supabase.client
@@ -242,7 +246,14 @@ export class CoiffeurApplicationsService {
     if (!data) {
       throw new NotFoundException('Application not found');
     }
-    return mapRow(data as CoiffeurApplicationRow);
+    const application = mapRow(data as CoiffeurApplicationRow);
+    this.events.emit('coiffeur-application.decided', {
+      applicationId: application.id,
+      profileId: application.profileId,
+      status: application.status as 'validated' | 'rejected',
+      reviewMessage: application.reviewMessage,
+    });
+    return application;
   }
 
   /**

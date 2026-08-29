@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonService } from '../salon/salon.service';
@@ -29,9 +30,10 @@ describe('AppointmentsService', () => {
 
   beforeEach(async () => {
     supabase = new FakeSupabaseService();
-    const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService);
+    const events = new EventEmitter2();
+    const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, events);
     const salon = new SalonService(supabase as unknown as SupabaseService);
-    service = new AppointmentsService(supabase as unknown as SupabaseService, applications, salon);
+    service = new AppointmentsService(supabase as unknown as SupabaseService, applications, salon, events);
 
     supabase.seedValidatedSalon({
       profileId: COIFFEUR_ID,

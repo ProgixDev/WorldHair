@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
@@ -13,6 +15,7 @@ import { EnvironmentVariables } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { HealthModule } from './health/health.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalonModule } from './salon/salon.module';
 import { UsersModule } from './users/users.module';
@@ -20,6 +23,8 @@ import { UsersModule } from './users/users.module';
 @Module({
   imports: [
     ConfigModule,
+    ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
     ThrottlerModule.forRootAsync({
       imports: [NestConfigModule],
       inject: [ConfigService],
@@ -41,6 +46,7 @@ import { UsersModule } from './users/users.module';
     DiscoveryModule,
     AppointmentsModule,
     ReviewsModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

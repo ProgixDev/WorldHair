@@ -36,3 +36,37 @@ export function passwordResetMail(code: string, ttlMinutes: number): RenderedMai
     ),
   };
 }
+
+function layout(title: string, body: string): string {
+  return `<!doctype html>
+<html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#111">
+  <h1 style="font-size:20px">${title}</h1>
+  ${body}
+</body></html>`;
+}
+
+/** "Validation/refus compte coiffeur" (TODO.md → Notifications) — the one notification type that also goes by email, alongside push, since it's an account-lifecycle decision. */
+export function coiffeurApplicationDecidedMail(
+  status: 'validated' | 'rejected',
+  reviewMessage?: string | null,
+): RenderedMail {
+  if (status === 'validated') {
+    return {
+      subject: 'Votre compte coiffeur a été validé',
+      text: 'Bonne nouvelle : votre dossier coiffeur a été validé. Vous pouvez maintenant compléter votre fiche boutique dans l\'application.',
+      html: layout(
+        'Compte validé',
+        '<p>Bonne nouvelle : votre dossier coiffeur a été validé. Vous pouvez maintenant compléter votre fiche boutique dans l\'application.</p>',
+      ),
+    };
+  }
+  const reasonText = reviewMessage ? ` Motif : ${reviewMessage}` : '';
+  return {
+    subject: 'Votre dossier coiffeur a été refusé',
+    text: `Votre dossier coiffeur n'a pas été validé.${reasonText} Vous pouvez le corriger et le soumettre à nouveau depuis l'application.`,
+    html: layout(
+      'Dossier refusé',
+      `<p>Votre dossier coiffeur n'a pas été validé.${reviewMessage ? ` Motif : ${reviewMessage}` : ''}</p><p>Vous pouvez le corriger et le soumettre à nouveau depuis l'application.</p>`,
+    ),
+  };
+}

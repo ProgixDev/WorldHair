@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { SupabaseService } from '../database/supabase.service';
 import { CoiffeurApplicationsService } from './coiffeur-applications.service';
@@ -31,10 +32,12 @@ function salonDto(
 describe('CoiffeurApplicationsService', () => {
   let supabase: FakeSupabaseService;
   let service: CoiffeurApplicationsService;
+  let events: EventEmitter2;
 
   beforeEach(() => {
     supabase = new FakeSupabaseService();
-    service = new CoiffeurApplicationsService(supabase as unknown as SupabaseService);
+    events = new EventEmitter2();
+    service = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, events);
   });
 
   it('getMine() returns null before any application exists', async () => {
@@ -143,5 +146,22 @@ describe('CoiffeurApplicationsService', () => {
     await expect(
       service.decide('00000000-0000-0000-0000-000000000000', ReviewDecision.Validated),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  it('decide() emits coiffeur-application.decided for notifications/ to pick up', async () => {
+    const application = await service.submit(USER_ID, salonDto());
+    const handler = jest.fn();
+    events.on('coiffeur-application.decided', handler);
+
+    await service.decide(application.id, ReviewDecision.Rejected, 'Photo floue');
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        applicationId: application.id,
+        profileId: USER_ID,
+        status: 'rejected',
+        reviewMessage: 'Photo floue',
+      }),
+    );
   });
 });

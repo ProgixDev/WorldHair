@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
 import { EnvironmentVariables } from '../config/env.validation';
-import { passwordResetMail, verificationMail } from './mail.templates';
+import { coiffeurApplicationDecidedMail, passwordResetMail, verificationMail } from './mail.templates';
 import { buildMailTransport } from './mail.transport';
 
 /**
@@ -62,6 +62,14 @@ export class MailService implements OnModuleDestroy {
     const ttlMinutes = this.config.get('RESET_TOKEN_TTL_MINUTES', { infer: true });
 
     await this.send(to, passwordResetMail(token, ttlMinutes));
+  }
+
+  async sendCoiffeurApplicationDecidedEmail(
+    to: string,
+    status: 'validated' | 'rejected',
+    reviewMessage?: string | null,
+  ): Promise<void> {
+    await this.send(to, coiffeurApplicationDecidedMail(status, reviewMessage));
   }
 
   onModuleDestroy(): void {

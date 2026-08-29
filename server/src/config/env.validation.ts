@@ -120,6 +120,11 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   RESET_TOKEN_TTL_MINUTES = 60;
+
+  /** Optional — only needed if this Expo project has enhanced push security enabled. See notifications/push.service.ts. */
+  @IsString()
+  @IsOptional()
+  EXPO_ACCESS_TOKEN = '';
 }
 
 /**

@@ -43,13 +43,13 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Signalement / modération avis (admin) — POST /reviews/:id/report + GET/PATCH /admin/reviews (@Roles('admin')); no back-office UI yet (separate TODO.md section), API-first like the coiffeur applications review queue
 
 ### Notifications
-- [ ] Infra push (FCM/APNs) + email (transactionnel)
-- [ ] Rappel RDV J-1 (désactivable)
-- [ ] Rappel RDV H-1 (désactivable)
-- [ ] Nouveau RDV → coiffeur (non désactivable)
-- [ ] Annulation RDV → coiffeur (non désactivable)
-- [ ] Confirmation RDV → particulier (non désactivable)
-- [ ] Validation/refus compte coiffeur → coiffeur (non désactivable)
+- [x] Infra push (FCM/APNs) + email (transactionnel) — expo-server-sdk push via `push_tokens`/`notifications_log` (server/src/notifications/), email via existing mail/ module; event-driven (EventEmitter2) so appointments/coiffeur modules stay decoupled
+- [x] Rappel RDV J-1 (désactivable) — AppointmentRemindersJob cron, gated by notification_preferences.reminder_day_before
+- [x] Rappel RDV H-1 (désactivable) — same job, gated by reminder_hour_before
+- [x] Nouveau RDV → coiffeur (non désactivable) — appointment.created event
+- [x] Annulation RDV → coiffeur (non désactivable) — appointment.cancelled event (skipped if the coiffeur is the one who cancelled)
+- [x] Confirmation RDV → particulier (non désactivable) — appointment.confirmed event
+- [x] Validation/refus compte coiffeur → coiffeur (non désactivable) — coiffeur-application.decided event, push + email
 
 ### Paiements / Abonnements (coiffeurs)
 - [ ] Intégration Apple In-App Purchase
@@ -119,8 +119,9 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 
 ### Notifications (in-app)
 - [x] Réglages notifications (désactiver rappels J-1 / H-1) — switches dans
-      l'onglet Profil, préférences stockées en local (pas encore d'infra push)
-- [ ] Réception push (RDV, annulation, validation compte)
+      l'onglet Profil, préférences stockées serveur (GET/PATCH /notifications/preferences)
+- [x] Réception push (RDV, annulation, validation compte) — expo-notifications
+      (permission + token registration + tap routing), features/notifications/
 
 ### Design system
 - [ ] Intégration logo client
