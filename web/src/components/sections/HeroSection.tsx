@@ -28,7 +28,7 @@ export function HeroSection() {
           >
             <a href="#telecharger">
               TÉLÉCHARGER L&apos;APP
-              <span className="grid size-7 place-items-center rounded-full bg-[#38b6ff] text-base">
+              <span className="grid size-7 place-items-center rounded-full bg-[#0c2340] text-base text-white">
                 <ArrowRight className="size-4" aria-hidden="true" />
               </span>
             </a>
@@ -38,7 +38,7 @@ export function HeroSection() {
         <h1
           id="worldhair-hero-heading"
           aria-label="WorldHair"
-          className="pointer-events-none absolute left-3 top-28 text-[clamp(5.9rem,16vw,13.5rem)] leading-[0.7] font-medium tracking-[-0.105em] text-white sm:left-7 sm:top-32 lg:left-10 lg:top-32"
+          className="pointer-events-none absolute left-3 top-28 text-[clamp(5.9rem,16vw,13.5rem)] leading-[0.7] font-normal text-white sm:left-7 sm:top-32 lg:left-10 lg:top-32"
         >
           WorldHair
         </h1>

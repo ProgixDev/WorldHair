@@ -14,7 +14,7 @@ export function SpotlightSection() {
         </div>
 
         <div className="flex flex-col justify-center gap-12 px-4 py-20 sm:px-10 sm:py-28">
-          <h2 className="text-4xl font-bold tracking-tight text-balance uppercase sm:text-5xl">
+          <h2 className="text-4xl font-normal text-balance uppercase sm:text-5xl">
             Développez votre clientèle, sans effort administratif.
           </h2>
           <div className="flex flex-col gap-4 text-sm">
@@ -50,7 +50,7 @@ export function SpotlightSection() {
           >
             <a href="#telecharger">
               Rejoindre WorldHair
-              <span className="grid size-7 place-items-center rounded-full bg-[#38b6ff] text-base">
+              <span className="grid size-7 place-items-center rounded-full bg-[#0c2340] text-base text-white">
                 <ArrowRight className="size-4" aria-hidden="true" />
               </span>
             </a>

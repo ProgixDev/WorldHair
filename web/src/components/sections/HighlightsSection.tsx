@@ -11,7 +11,7 @@ export function HighlightsSection() {
     <section id="fonctionnalites" className="bg-background mt-16 sm:mt-24">
       <div className="mx-auto max-w-[1680px] px-4 py-20 sm:px-6">
         <div>
-          <h2 className="text-primary text-2xl font-bold tracking-tight whitespace-nowrap uppercase sm:text-5xl lg:text-6xl">
+          <h2 className="text-primary text-2xl font-thin tracking-tight whitespace-nowrap uppercase sm:text-5xl lg:text-6xl">
             Vos cheveux, notre priorité.
           </h2>
           <p className="text-muted-foreground mt-3 max-w-xl text-sm text-pretty">

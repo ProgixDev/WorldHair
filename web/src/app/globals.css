@@ -79,7 +79,7 @@ html {
   --destructive: #b3261e;
   --border: #dbe3ee;
   --input: #dbe3ee;
-  --ring: #38b6ff;
+  --ring: #0c2340;
   --chart-1: #0c2340;
   --chart-2: #38b6ff;
   --chart-3: #a8703c;
@@ -92,7 +92,7 @@ html {
   --sidebar-accent: #eef2f8;
   --sidebar-accent-foreground: #0c1b2e;
   --sidebar-border: #dbe3ee;
-  --sidebar-ring: #38b6ff;
+  --sidebar-ring: #0c2340;
 }
 
 @layer base {
