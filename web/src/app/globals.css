@@ -6,13 +6,12 @@ html {
   scroll-behavior: smooth;
 }
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-roboto);
+  --font-heading: var(--font-playfair);
+  --font-mono: ui-monospace, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,443 +51,48 @@ html {
 }
 
 /*
- * Six variants, each with its own light/dark pair — ported from mobile's
- * constants/themes.ts (same hex values for background/foreground/primary).
- * Selected via a `data-theme="<id>"` attribute on <html> (src/components/
- * variant-provider.tsx), independent of next-themes' `.dark` class for
- * light/dark mode — the two axes combine freely (any variant, either mode).
- *
- * shadcn's extra roles mobile's theme shape doesn't have (card/popover/
- * secondary/muted/border/input/ring/chart/sidebar) are derived per variant:
- * card/popover/secondary/muted/accent/border/input all reuse the variant's
- * `background.accent` (mobile's own "elevated surface" shade — see
- * Skeleton's use of it); muted-foreground reuses `foreground.gray` (mobile's
- * own de-emphasized-text shade — an exact match, not a derivation); ring
- * and chart colors reuse the variant's primary swatches; sidebar mirrors the
- * main tokens with `background.darker` as its base (a recessed surface).
- * `primary-foreground` has no mobile source at all (a mobile UI never needed
- * to put text ON TOP of a filled primary color) — picked per swatch via
- * standard relative-luminance contrast (dark text above ~0.5, else white).
- *
- * `:root`/`.dark` with no `data-theme` set (before hydration, or if
- * variant-provider fails to load) fall back to the "default" variant below.
+ * WorldHair's one fixed palette — values traced directly from
+ * mobile/src/constants/themes.ts' `defaultVariant` ("WorldHair") light mode,
+ * not invented here. No light/dark switching on this site — the hero and
+ * spotlight bands are deliberately always-dark, a fixed design choice per
+ * section, not a user-toggleable mode (see HeroSection.tsx/
+ * SpotlightSection.tsx, styled directly rather than through a theme axis).
+ * Replaces the previous 6-variant scaffold (nord/sapphire/etc — leftover
+ * starter-template palettes, confirmed unrelated to any real mobile theme).
  */
-
-/* Default */
-:root,
-[data-theme="default"] {
-  --radius: 0.625rem;
-  --background: #ffffff;
-  --foreground: #0b0d0e;
-  --card: #e8e8e8;
-  --card-foreground: #0b0d0e;
-  --popover: #e8e8e8;
-  --popover-foreground: #0b0d0e;
-  --primary: #a4e600;
-  --primary-foreground: #0b0d0e;
-  --secondary: #e8e8e8;
-  --secondary-foreground: #0b0d0e;
-  --muted: #e8e8e8;
-  --muted-foreground: #5a5f66;
-  --accent: #e8e8e8;
-  --accent-foreground: #0b0d0e;
-  --destructive: #dc2626;
-  --border: #e8e8e8;
-  --input: #e8e8e8;
-  --ring: #a4e600;
-  --chart-1: #a4e600;
-  --chart-2: #c8f14a;
-  --chart-3: #8acc00;
-  --chart-4: #e8e8e8;
-  --chart-5: #5a5f66;
-  --sidebar: #f5f5f5;
-  --sidebar-foreground: #0b0d0e;
-  --sidebar-primary: #a4e600;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #e8e8e8;
-  --sidebar-accent-foreground: #0b0d0e;
-  --sidebar-border: #e8e8e8;
-  --sidebar-ring: #a4e600;
-}
-
-.dark,
-.dark[data-theme="default"] {
-  --background: #0b0d0e;
-  --foreground: #ffffff;
-  --card: #1b1f24;
-  --card-foreground: #ffffff;
-  --popover: #1b1f24;
-  --popover-foreground: #ffffff;
-  --primary: #c8f14a;
-  --primary-foreground: #0b0d0e;
-  --secondary: #1b1f24;
-  --secondary-foreground: #ffffff;
-  --muted: #1b1f24;
-  --muted-foreground: #bfc3c7;
-  --accent: #1b1f24;
-  --accent-foreground: #ffffff;
-  --destructive: #f87171;
-  --border: #1b1f24;
-  --input: #1b1f24;
-  --ring: #c8f14a;
-  --chart-1: #c8f14a;
-  --chart-2: #d6f45f;
-  --chart-3: #a4e600;
-  --chart-4: #1b1f24;
-  --chart-5: #bfc3c7;
-  --sidebar: #121417;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #c8f14a;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #1b1f24;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #1b1f24;
-  --sidebar-ring: #c8f14a;
-}
-
-/* Nord */
-[data-theme="nord"] {
-  --background: #eceff4;
-  --foreground: #2e3440;
-  --card: #d8dee9;
-  --card-foreground: #2e3440;
-  --popover: #d8dee9;
-  --popover-foreground: #2e3440;
-  --primary: #5e81ac;
+:root {
+  --radius: 0.75rem;
+  --background: #f7f9fc;
+  --foreground: #0c1b2e;
+  --card: #ffffff;
+  --card-foreground: #0c1b2e;
+  --popover: #ffffff;
+  --popover-foreground: #0c1b2e;
+  --primary: #0c2340;
   --primary-foreground: #ffffff;
-  --secondary: #d8dee9;
-  --secondary-foreground: #2e3440;
-  --muted: #d8dee9;
-  --muted-foreground: #4c566a;
-  --accent: #d8dee9;
-  --accent-foreground: #2e3440;
-  --destructive: #dc2626;
-  --border: #d8dee9;
-  --input: #d8dee9;
-  --ring: #5e81ac;
-  --chart-1: #5e81ac;
-  --chart-2: #81a1c1;
-  --chart-3: #4c6a94;
-  --chart-4: #d8dee9;
-  --chart-5: #4c566a;
-  --sidebar: #e5e9f0;
-  --sidebar-foreground: #2e3440;
-  --sidebar-primary: #5e81ac;
+  --secondary: #eef2f8;
+  --secondary-foreground: #0c1b2e;
+  --muted: #eef2f8;
+  --muted-foreground: #5b7186;
+  --accent: #eef2f8;
+  --accent-foreground: #0c1b2e;
+  --destructive: #b3261e;
+  --border: #dbe3ee;
+  --input: #dbe3ee;
+  --ring: #38b6ff;
+  --chart-1: #0c2340;
+  --chart-2: #38b6ff;
+  --chart-3: #a8703c;
+  --chart-4: #1f9d55;
+  --chart-5: #b3261e;
+  --sidebar: #eef2f8;
+  --sidebar-foreground: #0c1b2e;
+  --sidebar-primary: #0c2340;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #d8dee9;
-  --sidebar-accent-foreground: #2e3440;
-  --sidebar-border: #d8dee9;
-  --sidebar-ring: #5e81ac;
-}
-
-.dark[data-theme="nord"] {
-  --background: #2e3440;
-  --foreground: #eceff4;
-  --card: #434c5e;
-  --card-foreground: #eceff4;
-  --popover: #434c5e;
-  --popover-foreground: #eceff4;
-  --primary: #88c0d0;
-  --primary-foreground: #0b0d0e;
-  --secondary: #434c5e;
-  --secondary-foreground: #eceff4;
-  --muted: #434c5e;
-  --muted-foreground: #d8dee9;
-  --accent: #434c5e;
-  --accent-foreground: #eceff4;
-  --destructive: #f87171;
-  --border: #434c5e;
-  --input: #434c5e;
-  --ring: #88c0d0;
-  --chart-1: #88c0d0;
-  --chart-2: #8fbcbb;
-  --chart-3: #5e81ac;
-  --chart-4: #434c5e;
-  --chart-5: #d8dee9;
-  --sidebar: #3b4252;
-  --sidebar-foreground: #eceff4;
-  --sidebar-primary: #88c0d0;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #434c5e;
-  --sidebar-accent-foreground: #eceff4;
-  --sidebar-border: #434c5e;
-  --sidebar-ring: #88c0d0;
-}
-
-/* Sapphire */
-[data-theme="sapphire"] {
-  --background: #d5d6db;
-  --foreground: #3760bf;
-  --card: #c4c8da;
-  --card-foreground: #3760bf;
-  --popover: #c4c8da;
-  --popover-foreground: #3760bf;
-  --primary: #2e7de9;
-  --primary-foreground: #ffffff;
-  --secondary: #c4c8da;
-  --secondary-foreground: #3760bf;
-  --muted: #c4c8da;
-  --muted-foreground: #565a6e;
-  --accent: #c4c8da;
-  --accent-foreground: #3760bf;
-  --destructive: #dc2626;
-  --border: #c4c8da;
-  --input: #c4c8da;
-  --ring: #2e7de9;
-  --chart-1: #2e7de9;
-  --chart-2: #5a9bf7;
-  --chart-3: #2563d1;
-  --chart-4: #c4c8da;
-  --chart-5: #565a6e;
-  --sidebar: #e1e2e7;
-  --sidebar-foreground: #3760bf;
-  --sidebar-primary: #2e7de9;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #c4c8da;
-  --sidebar-accent-foreground: #3760bf;
-  --sidebar-border: #c4c8da;
-  --sidebar-ring: #2e7de9;
-}
-
-.dark[data-theme="sapphire"] {
-  --background: #1a1b26;
-  --foreground: #c0caf5;
-  --card: #24283b;
-  --card-foreground: #c0caf5;
-  --popover: #24283b;
-  --popover-foreground: #c0caf5;
-  --primary: #7aa2f7;
-  --primary-foreground: #0b0d0e;
-  --secondary: #24283b;
-  --secondary-foreground: #c0caf5;
-  --muted: #24283b;
-  --muted-foreground: #a9b1d6;
-  --accent: #24283b;
-  --accent-foreground: #c0caf5;
-  --destructive: #f87171;
-  --border: #24283b;
-  --input: #24283b;
-  --ring: #7aa2f7;
-  --chart-1: #7aa2f7;
-  --chart-2: #9ebbff;
-  --chart-3: #5a8ae5;
-  --chart-4: #24283b;
-  --chart-5: #a9b1d6;
-  --sidebar: #16161e;
-  --sidebar-foreground: #c0caf5;
-  --sidebar-primary: #7aa2f7;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #24283b;
-  --sidebar-accent-foreground: #c0caf5;
-  --sidebar-border: #24283b;
-  --sidebar-ring: #7aa2f7;
-}
-
-/* Strawberry Daiquiri */
-[data-theme="strawberry"] {
-  --background: #faf4ed;
-  --foreground: #575279;
-  --card: #f2e9de;
-  --card-foreground: #575279;
-  --popover: #f2e9de;
-  --popover-foreground: #575279;
-  --primary: #e05482;
-  --primary-foreground: #ffffff;
-  --secondary: #f2e9de;
-  --secondary-foreground: #575279;
-  --muted: #f2e9de;
-  --muted-foreground: #797593;
-  --accent: #f2e9de;
-  --accent-foreground: #575279;
-  --destructive: #dc2626;
-  --border: #f2e9de;
-  --input: #f2e9de;
-  --ring: #e05482;
-  --chart-1: #e05482;
-  --chart-2: #ff6b9d;
-  --chart-3: #c93f6b;
-  --chart-4: #f2e9de;
-  --chart-5: #797593;
-  --sidebar: #fffaf3;
-  --sidebar-foreground: #575279;
-  --sidebar-primary: #e05482;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f2e9de;
-  --sidebar-accent-foreground: #575279;
-  --sidebar-border: #f2e9de;
-  --sidebar-ring: #e05482;
-}
-
-.dark[data-theme="strawberry"] {
-  --background: #1c1825;
-  --foreground: #e0def4;
-  --card: #2d2639;
-  --card-foreground: #e0def4;
-  --popover: #2d2639;
-  --popover-foreground: #e0def4;
-  --primary: #ff6b9d;
-  --primary-foreground: #0b0d0e;
-  --secondary: #2d2639;
-  --secondary-foreground: #e0def4;
-  --muted: #2d2639;
-  --muted-foreground: #c4b5fd;
-  --accent: #2d2639;
-  --accent-foreground: #e0def4;
-  --destructive: #f87171;
-  --border: #2d2639;
-  --input: #2d2639;
-  --ring: #ff6b9d;
-  --chart-1: #ff6b9d;
-  --chart-2: #ff8fb8;
-  --chart-3: #e05482;
-  --chart-4: #2d2639;
-  --chart-5: #c4b5fd;
-  --sidebar: #231d2f;
-  --sidebar-foreground: #e0def4;
-  --sidebar-primary: #ff6b9d;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #2d2639;
-  --sidebar-accent-foreground: #e0def4;
-  --sidebar-border: #2d2639;
-  --sidebar-ring: #ff6b9d;
-}
-
-/* Ocean */
-[data-theme="ocean"] {
-  --background: #f0f9ff;
-  --foreground: #164e63;
-  --card: #bae6fd;
-  --card-foreground: #164e63;
-  --popover: #bae6fd;
-  --popover-foreground: #164e63;
-  --primary: #0891b2;
-  --primary-foreground: #ffffff;
-  --secondary: #bae6fd;
-  --secondary-foreground: #164e63;
-  --muted: #bae6fd;
-  --muted-foreground: #0e7490;
-  --accent: #bae6fd;
-  --accent-foreground: #164e63;
-  --destructive: #dc2626;
-  --border: #bae6fd;
-  --input: #bae6fd;
-  --ring: #0891b2;
-  --chart-1: #0891b2;
-  --chart-2: #22d3ee;
-  --chart-3: #0e7490;
-  --chart-4: #bae6fd;
-  --chart-5: #0e7490;
-  --sidebar: #e0f2fe;
-  --sidebar-foreground: #164e63;
-  --sidebar-primary: #0891b2;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #bae6fd;
-  --sidebar-accent-foreground: #164e63;
-  --sidebar-border: #bae6fd;
-  --sidebar-ring: #0891b2;
-}
-
-.dark[data-theme="ocean"] {
-  --background: #0a1f2e;
-  --foreground: #e8f4f8;
-  --card: #1b2b3a;
-  --card-foreground: #e8f4f8;
-  --popover: #1b2b3a;
-  --popover-foreground: #e8f4f8;
-  --primary: #56c6e8;
-  --primary-foreground: #0b0d0e;
-  --secondary: #1b2b3a;
-  --secondary-foreground: #e8f4f8;
-  --muted: #1b2b3a;
-  --muted-foreground: #b8d4e0;
-  --accent: #1b2b3a;
-  --accent-foreground: #e8f4f8;
-  --destructive: #f87171;
-  --border: #1b2b3a;
-  --input: #1b2b3a;
-  --ring: #56c6e8;
-  --chart-1: #56c6e8;
-  --chart-2: #7dd6f3;
-  --chart-3: #3ba5c7;
-  --chart-4: #1b2b3a;
-  --chart-5: #b8d4e0;
-  --sidebar: #0d1b2a;
-  --sidebar-foreground: #e8f4f8;
-  --sidebar-primary: #56c6e8;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #1b2b3a;
-  --sidebar-accent-foreground: #e8f4f8;
-  --sidebar-border: #1b2b3a;
-  --sidebar-ring: #56c6e8;
-}
-
-/* Amber */
-[data-theme="amber"] {
-  --background: #fffbeb;
-  --foreground: #78350f;
-  --card: #fde68a;
-  --card-foreground: #78350f;
-  --popover: #fde68a;
-  --popover-foreground: #78350f;
-  --primary: #f59e0b;
-  --primary-foreground: #0b0d0e;
-  --secondary: #fde68a;
-  --secondary-foreground: #78350f;
-  --muted: #fde68a;
-  --muted-foreground: #92400e;
-  --accent: #fde68a;
-  --accent-foreground: #78350f;
-  --destructive: #dc2626;
-  --border: #fde68a;
-  --input: #fde68a;
-  --ring: #f59e0b;
-  --chart-1: #f59e0b;
-  --chart-2: #fdb813;
-  --chart-3: #d97706;
-  --chart-4: #fde68a;
-  --chart-5: #92400e;
-  --sidebar: #fef3c7;
-  --sidebar-foreground: #78350f;
-  --sidebar-primary: #f59e0b;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #fde68a;
-  --sidebar-accent-foreground: #78350f;
-  --sidebar-border: #fde68a;
-  --sidebar-ring: #f59e0b;
-}
-
-.dark[data-theme="amber"] {
-  --background: #1c1917;
-  --foreground: #fafaf9;
-  --card: #44403c;
-  --card-foreground: #fafaf9;
-  --popover: #44403c;
-  --popover-foreground: #fafaf9;
-  --primary: #fdb813;
-  --primary-foreground: #0b0d0e;
-  --secondary: #44403c;
-  --secondary-foreground: #fafaf9;
-  --muted: #44403c;
-  --muted-foreground: #d6d3d1;
-  --accent: #44403c;
-  --accent-foreground: #fafaf9;
-  --destructive: #f87171;
-  --border: #44403c;
-  --input: #44403c;
-  --ring: #fdb813;
-  --chart-1: #fdb813;
-  --chart-2: #fdcb3d;
-  --chart-3: #e59f00;
-  --chart-4: #44403c;
-  --chart-5: #d6d3d1;
-  --sidebar: #292524;
-  --sidebar-foreground: #fafaf9;
-  --sidebar-primary: #fdb813;
-  --sidebar-primary-foreground: #0b0d0e;
-  --sidebar-accent: #44403c;
-  --sidebar-accent-foreground: #fafaf9;
-  --sidebar-border: #44403c;
-  --sidebar-ring: #fdb813;
+  --sidebar-accent: #eef2f8;
+  --sidebar-accent-foreground: #0c1b2e;
+  --sidebar-border: #dbe3ee;
+  --sidebar-ring: #38b6ff;
 }
 
 @layer base {
@@ -496,6 +100,6 @@ html {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
   }
 }

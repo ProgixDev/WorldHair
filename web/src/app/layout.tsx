@@ -1,16 +1,17 @@
 import "./globals.css";
-import { ThemeProvider } from "@/contexts/ThemeContext";
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Playfair_Display, Roboto } from "next/font/google";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const roboto = Roboto({
+  variable: "--font-roboto",
   subsets: ["latin"],
+  weight: ["400", "500", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const playfairDisplay = Playfair_Display({
+  variable: "--font-playfair",
   subsets: ["latin"],
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -18,23 +19,18 @@ export const metadata: Metadata = {
   // it Next falls back to localhost even in production. Set
   // NEXT_PUBLIC_SITE_URL once this is actually deployed somewhere.
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  title: "App",
-  description: "App",
+  title: "WorldHair",
+  description:
+    "WorldHair met en relation particuliers et coiffeurs professionnels : trouvez, réservez et recevez votre prestation en toute confiance.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      // next-themes sets the .dark class client-side, before hydration
-      // finishes, so the class it applies never matches the server-rendered
-      // markup — that mismatch is expected here, not a real bug.
-      suppressHydrationWarning
+      lang="fr"
+      className={`${roboto.variable} ${playfairDisplay.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <ThemeProvider>{children}</ThemeProvider>
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }
