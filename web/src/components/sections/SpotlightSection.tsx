@@ -1,4 +1,5 @@
-import { Image as ImageIcon } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { ArrowRight, Image as ImageIcon } from "lucide-react";
 
 /**
  * Always dark, same fixed-per-section approach as HeroSection.tsx — see its
@@ -7,20 +8,53 @@ import { Image as ImageIcon } from "lucide-react";
 export function SpotlightSection() {
   return (
     <section id="coiffeurs" className="bg-[#080f1a] text-[#f2f6fb]">
-      <div className="mx-auto grid max-w-6xl sm:grid-cols-2">
+      <div className="mx-auto grid max-w-[1680px] sm:grid-cols-2 sm:min-h-[38rem] lg:min-h-[46rem]">
         <div className="flex aspect-4/3 items-center justify-center bg-[#0c1524] sm:aspect-auto">
           <ImageIcon className="size-16 text-[#93a6bc]/40" />
         </div>
 
-        <div className="flex flex-col justify-center gap-5 px-4 py-14 sm:px-10 sm:py-20">
-          <h2 className="font-heading text-3xl font-semibold text-balance sm:text-4xl">
-            Développez votre clientèle sans effort administratif
+        <div className="flex flex-col justify-center gap-12 px-4 py-20 sm:px-10 sm:py-28">
+          <h2 className="text-4xl font-bold tracking-tight text-balance uppercase sm:text-5xl">
+            Développez votre clientèle, sans effort administratif.
           </h2>
-          <p className="text-pretty text-[#93a6bc]">
-            Votre salon, vos prestations et vos horaires centralisés dans un
-            seul espace pro — WorldHair s&apos;occupe de la mise en relation,
-            des demandes de rendez-vous jusqu&apos;aux avis clients.
-          </p>
+          <div className="flex flex-col gap-4 text-sm">
+            <p className="text-pretty text-[#93a6bc]">
+              Votre salon, vos prestations et vos horaires centralisés dans un
+              seul espace pro — WorldHair s&apos;occupe de la mise en
+              relation, des demandes de rendez-vous jusqu&apos;aux avis
+              clients.
+            </p>
+            <p className="text-pretty text-[#93a6bc]">
+              Chaque nouvelle demande, confirmation ou annulation vous est
+              signalée en temps réel, et vos clients reçoivent leurs rappels
+              automatiquement — pour vous concentrer sur ce qui compte :
+              votre travail.
+            </p>
+            <p className="text-pretty text-[#93a6bc]">
+              Une fois votre dossier validé, votre profil devient visible aux
+              particuliers autour de vous — photos, prestations, horaires et
+              avis vérifiés, le tout mis à jour depuis votre espace pro,
+              sans jamais passer par un tiers.
+            </p>
+            <p className="text-pretty text-[#93a6bc]">
+              Chaque avis publié provient d&apos;un rendez-vous réellement
+              effectué : une réputation qui se construit sur des preuves,
+              pas sur des promesses.
+            </p>
+          </div>
+
+          <Button
+            asChild
+            size="lg"
+            className="h-auto w-fit rounded-full bg-white px-3 py-2 pl-5 text-[11px] font-bold tracking-[0.08em] text-[#0c2340] uppercase hover:bg-white/90"
+          >
+            <a href="#telecharger">
+              Rejoindre WorldHair
+              <span className="grid size-7 place-items-center rounded-full bg-[#38b6ff] text-base">
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </span>
+            </a>
+          </Button>
         </div>
       </div>
     </section>

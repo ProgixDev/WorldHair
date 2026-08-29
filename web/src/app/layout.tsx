@@ -1,17 +1,34 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Playfair_Display, Roboto } from "next/font/google";
+import localFont from "next/font/local";
 
-const roboto = Roboto({
+// Same font files mobile bundles (mobile/assets/fonts/), copied into
+// public/fonts/ — not Google's hosted versions, the exact same .ttf.
+const roboto = localFont({
   variable: "--font-roboto",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  src: [
+    { path: "../../public/fonts/Roboto/Roboto-Regular.ttf", weight: "400" },
+    { path: "../../public/fonts/Roboto/Roboto-Medium.ttf", weight: "500" },
+    { path: "../../public/fonts/Roboto/Roboto-Bold.ttf", weight: "700" },
+  ],
 });
 
-const playfairDisplay = Playfair_Display({
+const playfairDisplay = localFont({
   variable: "--font-playfair",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  src: [
+    {
+      path: "../../public/fonts/PlayfairDisplay/PlayfairDisplay-Regular.ttf",
+      weight: "400",
+    },
+    {
+      path: "../../public/fonts/PlayfairDisplay/PlayfairDisplay-Medium.ttf",
+      weight: "500",
+    },
+    {
+      path: "../../public/fonts/PlayfairDisplay/PlayfairDisplay-Bold.ttf",
+      weight: "700",
+    },
+  ],
 });
 
 export const metadata: Metadata = {
