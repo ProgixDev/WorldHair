@@ -17,7 +17,6 @@ import { ContentModule } from './content/content.module';
 import { DatabaseModule } from './database/database.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { HealthModule } from './health/health.module';
-import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalonModule } from './salon/salon.module';
@@ -51,7 +50,6 @@ import { UsersModule } from './users/users.module';
     AppointmentsModule,
     ReviewsModule,
     NotificationsModule,
-    MessagesModule,
     AdSlotsModule,
     ContentModule,
     SubscriptionsModule,

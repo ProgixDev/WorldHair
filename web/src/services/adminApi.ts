@@ -141,47 +141,6 @@ export async function getCoiffeurApplicationByProfileId(
   return data;
 }
 
-/** Mirrors server/src/messages/dto/message.dto.ts. */
-export interface ThreadSummary {
-  coiffeurId: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  lastMessage: string | null;
-  lastMessageAt: string | null;
-  unreadForAdmin: number;
-}
-
-export interface CoiffeurMessage {
-  id: string;
-  coiffeurId: string;
-  senderRole: "admin" | "coiffeur";
-  senderId: string;
-  body: string;
-  createdAt: string;
-  readAt: string | null;
-}
-
-export async function listMessageThreads(): Promise<ThreadSummary[]> {
-  const { data } = await apiClient.get<ThreadSummary[]>("/admin/messages/threads");
-  return data;
-}
-
-export async function getMessageThread(coiffeurId: string): Promise<CoiffeurMessage[]> {
-  const { data } = await apiClient.get<CoiffeurMessage[]>(
-    `/admin/messages/threads/${coiffeurId}`,
-  );
-  return data;
-}
-
-export async function sendAdminMessage(coiffeurId: string, body: string): Promise<CoiffeurMessage> {
-  const { data } = await apiClient.post<CoiffeurMessage>(
-    `/admin/messages/threads/${coiffeurId}`,
-    { body },
-  );
-  return data;
-}
-
 /** Mirrors server/src/ad-slots/dto/ad-slot.dto.ts. */
 export interface AdSlot {
   id: "home_banner" | "search_results" | "booking_confirmation";

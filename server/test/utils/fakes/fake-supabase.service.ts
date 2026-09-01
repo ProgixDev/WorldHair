@@ -151,16 +151,6 @@ interface NotificationLogRow {
   created_at: string;
 }
 
-interface CoiffeurMessageRow {
-  id: string;
-  coiffeur_id: string;
-  sender_role: string;
-  sender_id: string;
-  body: string;
-  read_at: string | null;
-  created_at: string;
-}
-
 interface SubscriptionRow {
   profile_id: string;
   plan: string;
@@ -382,7 +372,6 @@ export class FakeSupabaseService {
   private readonly pushTokens = new Map<string, PushTokenRow>();
   private readonly notificationPreferences = new Map<string, NotificationPreferencesRow>();
   private readonly notificationsLog = new Map<string, NotificationLogRow>();
-  private readonly coiffeurMessages = new Map<string, CoiffeurMessageRow>();
   private readonly adSlots = new Map<string, AdSlotRow>(defaultAdSlots());
   private readonly appContent = new Map<string, AppContentRow>(defaultAppContent());
   private readonly subscriptions = new Map<string, SubscriptionRow>();
@@ -442,9 +431,6 @@ export class FakeSupabaseService {
       }
       if (table === 'notifications_log') {
         return this.notificationsLogTable();
-      }
-      if (table === 'coiffeur_messages') {
-        return this.coiffeurMessagesTable();
       }
       if (table === 'ad_slots') {
         return this.adSlotsTable();
@@ -509,7 +495,6 @@ export class FakeSupabaseService {
     this.pushTokens.clear();
     this.notificationPreferences.clear();
     this.notificationsLog.clear();
-    this.coiffeurMessages.clear();
     this.adSlots.clear();
     for (const [id, row] of defaultAdSlots()) this.adSlots.set(id, row);
     this.appContent.clear();
@@ -1081,41 +1066,6 @@ export class FakeSupabaseService {
         rows.set(id, created);
         return Promise.resolve({ data: created, error: null });
       },
-    };
-  }
-
-  private coiffeurMessagesTable() {
-    const rows = this.coiffeurMessages;
-
-    return {
-      select: () => new FakeSelectQuery<CoiffeurMessageRow>(() => [...rows.values()]),
-
-      insert: (row: Record<string, unknown>) => ({
-        select: () => ({
-          single: async (): Promise<QueryResult> => {
-            const id = randomUUID();
-            const created = {
-              read_at: null,
-              ...row,
-              id,
-              created_at: new Date().toISOString(),
-            } as CoiffeurMessageRow;
-            rows.set(id, created);
-            return { data: created, error: null };
-          },
-        }),
-      }),
-
-      update: (patch: Record<string, unknown>) =>
-        new FakeMutationQuery<CoiffeurMessageRow>((matches) => {
-          const existing = [...rows.values()].find(matches);
-          if (!existing) {
-            return { data: null, count: 0 };
-          }
-          const updated = { ...existing, ...patch };
-          rows.set(existing.id, updated);
-          return { data: updated, count: 1 };
-        }),
     };
   }
 

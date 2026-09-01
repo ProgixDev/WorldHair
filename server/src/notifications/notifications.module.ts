@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../mail/mail.module';
 import { AppointmentRemindersJob } from './jobs/appointment-reminders.job';
-import { AdminMessageNotificationsListener } from './listeners/admin-message-notifications.listener';
 import { AppointmentNotificationsListener } from './listeners/appointment-notifications.listener';
 import { CoiffeurApplicationNotificationsListener } from './listeners/coiffeur-application-notifications.listener';
 import { NotificationsController } from './notifications.controller';
@@ -22,7 +21,6 @@ import { PushService } from './push.service';
     AppointmentRemindersJob,
     AppointmentNotificationsListener,
     CoiffeurApplicationNotificationsListener,
-    AdminMessageNotificationsListener,
   ],
   exports: [NotificationsService],
 })

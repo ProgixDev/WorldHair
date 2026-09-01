@@ -64,7 +64,6 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [x] Auth sécurisée back-office
 - [x] Liste + validation/rejet dossiers coiffeurs (pièce ID + diplôme) avec message
 - [x] Suspension / bannissement compte (particulier ou coiffeur)
-- [x] Messagerie interne admin ↔ coiffeur (litige avant bannissement) — coiffeur notifié par push ; pas encore d'écran mobile pour lire/répondre
 - [x] Gestion de contenu / pages — 4e slide onboarding uniquement pour l'instant
 - [x] Modération avis signalés
 - [x] CRUD zones publicitaires: image, lien, période d'activation, par emplacement (issue #5 — voir "## Admin" et propositions d'emplacements sous "Particulier")
@@ -159,7 +158,7 @@ de routes `(admin)` séparé — il n'héritera donc pas du header/footer market
 - [x] Auth admin sécurisée — Supabase Auth (`profiles.role === 'admin'`), lien depuis le bouton "Compte" de la landing, `/login`
 - [x] Liste + validation/rejet dossiers coiffeurs (pièce ID, diplôme, KBIS/RNE) avec message de refus — `/admin/dossiers`
 - [x] Suspension / bannissement compte (particulier ou coiffeur) — `/admin/comptes`, enforcé côté serveur dans `SupabaseStrategy`
-- [x] Messagerie interne admin ↔ coiffeur — `/admin/messagerie`, notification push au coiffeur ; pas d'écran mobile encore côté coiffeur pour répondre depuis l'app
+- [ ] Messagerie interne admin ↔ coiffeur — construite puis retirée (jugée pas utile), voir git history
 - [x] Modération avis signalés — `/admin/avis`
 - [x] Gestion des zones publicitaires: upload image, lien, activation par emplacement (issue #5) — `/admin/publicites`, `mobile/src/services/ads.ts` branché sur l'API réelle ; pas de popups à fréquence limitée pour l'instant, seulement les 3 emplacements bandeau/bannière/pop-up existants
 - [x] Gestion de contenu / pages (dont contenu de la 4e slide onboarding, issue #5) — `/admin/contenu`, `mobile/src/services/content.ts` branché sur l'API réelle ; une seule page de contenu gérée pour l'instant
