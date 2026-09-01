@@ -141,6 +141,20 @@ export async function getCoiffeurApplicationByProfileId(
   return data;
 }
 
+/**
+ * Uploads through the server (service-role) rather than straight to Supabase
+ * Storage — this project's Storage service doesn't resolve `auth.uid()`
+ * inside RLS policy checks the way PostgREST does, so a direct authenticated
+ * browser upload is rejected regardless of policy. See
+ * server/src/admin-media/admin-media.controller.ts.
+ */
+export async function uploadAdminMedia(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.post<{ url: string }>("/admin/media", formData);
+  return data.url;
+}
+
 /** Mirrors server/src/ad-slots/dto/ad-slot.dto.ts. */
 export interface AdSlot {
   id: "home_banner" | "search_results" | "booking_confirmation";

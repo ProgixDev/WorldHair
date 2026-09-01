@@ -94,6 +94,24 @@ create trigger set_profiles_updated_at
 before update on public.profiles for each row
 execute procedure public.set_updated_at ();
 
+-- Shared "is the caller an admin" check for any RLS policy that needs it
+-- (storage.objects policies below, and any future one) — SECURITY DEFINER so
+-- it doesn't depend on the calling role's own grant on public.profiles.
+create or replace function public.is_admin ()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.profiles where id = auth.uid () and role = 'admin'
+  );
+$$;
+
+revoke all on function public.is_admin () from public;
+grant execute on function public.is_admin () to authenticated, anon;
+
 -- ── Coiffeur onboarding (TODO.md → Backend → "Auth & comptes") ──────────────
 --
 -- One row per coiffeur, covering their whole onboarding lifecycle: the
@@ -590,8 +608,14 @@ create policy "Users can delete their own photos"
     and (storage.foldername (name))[1] = auth.uid ()::text
   );
 
--- No SELECT policy needed: `public.buckets.public = true` serves reads
--- through a public URL without going through Storage RLS at all.
+-- A SELECT policy IS needed even though this bucket is public: the public
+-- read path (`public.buckets.public = true`) only covers anonymous fetches
+-- of the public URL — an authenticated client's own upload (upsert checks
+-- for an existing row first) is denied with a generic RLS error without one.
+-- Confirmed by hand: uploads here failed until this policy was added.
+create policy "Anyone can view user photos"
+  on storage.objects for select
+  using (bucket_id = 'user-photos');
 
 -- ── Notifications (TODO.md) ──────────────────────────────────────────────────
 --
@@ -726,30 +750,31 @@ execute procedure public.set_updated_at ();
 insert into public.app_content (key, heading, body) values
   ('onboarding_products_slide', 'Des produits de qualité', 'Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.');
 
--- Shared public bucket for both ad-slot and content images — admin-only writes.
+-- Shared public bucket for both ad-slot and content images — admin-only
+-- writes. In practice the admin web app uploads through the server
+-- (service-role, bypasses RLS entirely — see
+-- src/admin-media/admin-media.controller.ts), not straight from the browser;
+-- these policies exist for correctness/any future direct-client path.
 insert into storage.buckets (id, name, public)
 values ('admin-media', 'admin-media', true);
 
 create policy "Admin can upload admin media"
   on storage.objects for insert
-  with check (
-    bucket_id = 'admin-media'
-    and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
-  );
+  with check (bucket_id = 'admin-media' and public.is_admin ());
 
 create policy "Admin can replace or delete admin media"
   on storage.objects for update
-  using (
-    bucket_id = 'admin-media'
-    and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
-  );
+  using (bucket_id = 'admin-media' and public.is_admin ());
 
 create policy "Admin can delete admin media"
   on storage.objects for delete
-  using (
-    bucket_id = 'admin-media'
-    and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
-  );
+  using (bucket_id = 'admin-media' and public.is_admin ());
+
+-- Same real gap as user-photos above: a SELECT policy is needed even on a
+-- public bucket for an authenticated client's own upload/upsert to succeed.
+create policy "Anyone can view admin media"
+  on storage.objects for select
+  using (bucket_id = 'admin-media');
 
 -- "Vue abonnements coiffeurs (statut, échéance)" (TODO.md → Back-office
 -- admin) + mobile's "Écran abonnement" (mobile/src/features/pro/types.ts's

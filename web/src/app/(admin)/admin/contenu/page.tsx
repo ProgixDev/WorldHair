@@ -1,8 +1,12 @@
 "use client";
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
-import { supabase } from "@/lib/supabase";
-import { type AppContent, getAppContent, updateAppContent } from "@/services/adminApi";
+import {
+  type AppContent,
+  getAppContent,
+  updateAppContent,
+  uploadAdminMedia,
+} from "@/services/adminApi";
 import { useCallback, useEffect, useState } from "react";
 
 const CONTENT_KEY = "onboarding_products_slide";
@@ -45,15 +49,8 @@ export default function AdminContenuPage() {
   const handleImageChange = async (file: File) => {
     setUploading(true);
     try {
-      const extension = file.name.split(".").pop() ?? "jpg";
-      const path = `app-content/${CONTENT_KEY}-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from("admin-media")
-        .upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from("admin-media").getPublicUrl(path);
-      const updated = await updateAppContent(CONTENT_KEY, { imageUrl: data.publicUrl });
+      const url = await uploadAdminMedia(file);
+      const updated = await updateAppContent(CONTENT_KEY, { imageUrl: url });
       setContent(updated);
     } finally {
       setUploading(false);

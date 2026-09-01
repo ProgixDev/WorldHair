@@ -1,8 +1,8 @@
 "use client";
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
-import { supabase } from "@/lib/supabase";
-import { type AdSlot, listAdSlots, updateAdSlot } from "@/services/adminApi";
+import { cn } from "@/lib/utils";
+import { type AdSlot, listAdSlots, updateAdSlot, uploadAdminMedia } from "@/services/adminApi";
 import { useCallback, useEffect, useState } from "react";
 
 const PLACEMENT_LABELS: Record<AdSlot["id"], string> = {
@@ -62,15 +62,8 @@ export default function AdminPublicitesPage() {
   const handleImageChange = async (id: AdSlot["id"], file: File) => {
     setUploadingId(id);
     try {
-      const extension = file.name.split(".").pop() ?? "jpg";
-      const path = `ad-slots/${id}-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from("admin-media")
-        .upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from("admin-media").getPublicUrl(path);
-      const updated = await updateAdSlot(id, { imageUrl: data.publicUrl });
+      const url = await uploadAdminMedia(file);
+      const updated = await updateAdSlot(id, { imageUrl: url });
       setSlots((prev) => prev.map((slot) => (slot.id === id ? updated : slot)));
     } finally {
       setUploadingId(null);
@@ -95,7 +88,7 @@ export default function AdminPublicitesPage() {
                 const uploading = uploadingId === slot.id;
 
                 return (
-                  <div key={slot.id} className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-4">
+                  <div key={slot.id} className="flex flex-col gap-4 rounded-2xl bg-[#111c2e] p-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-medium text-[#f2f6fb]">
                         {PLACEMENT_LABELS[slot.id]}
@@ -116,68 +109,75 @@ export default function AdminPublicitesPage() {
                       </label>
                     </div>
 
-                    <div className="flex flex-wrap items-start gap-3">
-                      {slot.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- external Storage URL, not a local asset
-                        <img
-                          src={slot.imageUrl}
-                          alt=""
-                          className="h-16 w-28 shrink-0 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="grid h-16 w-28 shrink-0 place-items-center rounded-lg bg-[#1e2e45] text-[10px] text-[#5b7186]">
-                          Aucune image
-                        </div>
-                      )}
-                      <label className="rounded-full bg-white/10 px-3 py-2 text-xs text-[#93a6bc] hover:text-white">
-                        {uploading ? "Envoi…" : "Changer l'image"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          disabled={uploading}
-                          className="hidden"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) void handleImageChange(slot.id, file);
-                            event.target.value = "";
-                          }}
-                        />
-                      </label>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="group relative h-20 w-36 shrink-0 overflow-hidden rounded-xl bg-[#1e2e45]">
+                        {slot.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- external Storage URL, not a local asset
+                          <img
+                            src={slot.imageUrl}
+                            alt=""
+                            className="size-full object-cover"
+                          />
+                        ) : (
+                          <p className="grid size-full place-items-center text-[10px] text-[#5b7186]">
+                            Aucune image
+                          </p>
+                        )}
+                        <label
+                          className={cn(
+                            "absolute inset-0 flex cursor-pointer items-center justify-center bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100",
+                            uploading && "opacity-100",
+                          )}
+                        >
+                          {uploading ? "Envoi…" : "Changer"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={uploading}
+                            className="hidden"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) void handleImageChange(slot.id, file);
+                              event.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <input
+                        type="text"
+                        value={draft.headline}
+                        onChange={(event) =>
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [slot.id]: { ...draft, headline: event.target.value },
+                          }))
+                        }
+                        placeholder="Titre affiché"
+                        className="min-w-[160px] flex-1 rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
+                      />
+                      <input
+                        type="text"
+                        value={draft.linkUrl}
+                        onChange={(event) =>
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [slot.id]: { ...draft, linkUrl: event.target.value },
+                          }))
+                        }
+                        placeholder="Lien (https://…)"
+                        className="min-w-[200px] flex-1 rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
+                      />
+
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void handleSave(slot.id)}
+                        className="shrink-0 rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
+                      >
+                        {busy ? "Enregistrement…" : "Enregistrer"}
+                      </button>
                     </div>
-
-                    <input
-                      type="text"
-                      value={draft.headline}
-                      onChange={(event) =>
-                        setDrafts((prev) => ({
-                          ...prev,
-                          [slot.id]: { ...draft, headline: event.target.value },
-                        }))
-                      }
-                      placeholder="Titre affiché"
-                      className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
-                    />
-                    <input
-                      type="text"
-                      value={draft.linkUrl}
-                      onChange={(event) =>
-                        setDrafts((prev) => ({
-                          ...prev,
-                          [slot.id]: { ...draft, linkUrl: event.target.value },
-                        }))
-                      }
-                      placeholder="Lien (https://…)"
-                      className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
-                    />
-
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void handleSave(slot.id)}
-                      className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
-                    >
-                      {busy ? "Enregistrement…" : "Enregistrer"}
-                    </button>
                   </div>
                 );
               })}
