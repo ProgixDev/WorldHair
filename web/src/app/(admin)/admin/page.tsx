@@ -22,8 +22,8 @@ export default function AdminDashboardPage() {
               #080f1a is mobile's own base "background" token (constants/
               themes.ts) — a real elevation step, not a value picked to taste. */}
           <div className="flex flex-col gap-6 rounded-3xl bg-[#080f1a] p-5 sm:p-6">
-            <AdminCapabilityCards />
             <BookingsChart />
+            <AdminCapabilityCards />
           </div>
         </div>
 

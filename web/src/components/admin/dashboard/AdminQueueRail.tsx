@@ -23,10 +23,16 @@ function daysSince(iso: string): number {
 export function AdminQueueRail() {
   const [applications, setApplications] = useState<CoiffeurApplication[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [applicationsError, setApplicationsError] = useState(false);
+  const [reviewsError, setReviewsError] = useState(false);
 
   useEffect(() => {
-    void listCoiffeurApplications("pending").then((all) => setApplications(all.slice(0, 3)));
-    void listReportedReviews().then((all) => setReviews(all.slice(0, 2)));
+    listCoiffeurApplications("pending")
+      .then((all) => setApplications(all.slice(0, 3)))
+      .catch(() => setApplicationsError(true));
+    listReportedReviews()
+      .then((all) => setReviews(all.slice(0, 2)))
+      .catch(() => setReviewsError(true));
   }, []);
 
   return (
@@ -45,7 +51,10 @@ export function AdminQueueRail() {
         </div>
 
         <ul className="mt-3 flex flex-col gap-2">
-          {applications.length === 0 && (
+          {applicationsError && (
+            <li className="p-3 text-xs text-[#ff7a70]">Impossible de charger les dossiers.</li>
+          )}
+          {!applicationsError && applications.length === 0 && (
             <li className="p-3 text-xs text-[#5b7186]">Aucun dossier en attente.</li>
           )}
           {applications.map((application) => (
@@ -93,7 +102,10 @@ export function AdminQueueRail() {
         </div>
 
         <ul className="mt-3 flex flex-col gap-2">
-          {reviews.length === 0 && (
+          {reviewsError && (
+            <li className="p-3 text-xs text-[#ff7a70]">Impossible de charger les avis.</li>
+          )}
+          {!reviewsError && reviews.length === 0 && (
             <li className="p-3 text-xs text-[#5b7186]">Aucun avis signalé.</li>
           )}
           {reviews.map((review) => (

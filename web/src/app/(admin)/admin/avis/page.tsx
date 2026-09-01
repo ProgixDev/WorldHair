@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
+import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import { type Review, listReportedReviews, moderateReview } from "@/services/adminApi";
 import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -10,6 +11,7 @@ export default function AdminAvisPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   // A plain function that starts a `.then()` chain — not an async function
   // awaited directly in the effect — is what actually satisfies
@@ -62,7 +64,9 @@ export default function AdminAvisPage() {
               </p>
             )}
 
-            {reviews.map((review) => (
+            {!loading &&
+              !error &&
+              pageSlice(reviews, page).map((review) => (
               <div key={review.id} className="rounded-2xl bg-[#111c2e] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -120,6 +124,10 @@ export default function AdminAvisPage() {
                 </div>
               </div>
             ))}
+
+            {!loading && !error && (
+              <Pagination page={page} total={reviews.length} onPageChange={setPage} />
+            )}
           </div>
         </div>
       </div>

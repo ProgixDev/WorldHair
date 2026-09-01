@@ -32,12 +32,19 @@ export interface DocumentUrls {
   invoice: string | null;
 }
 
+/**
+ * `limit` is explicit: this endpoint defaults to 20 rows
+ * (server/src/common/dto/pagination-query.dto.ts), which silently hid every
+ * dossier past the 20th from the admin queue. 100 is that DTO's ceiling —
+ * past it this list has to move to real server-side paging rather than the
+ * client-side paging `components/admin/Pagination.tsx` does.
+ */
 export async function listCoiffeurApplications(
   status?: CoiffeurApplication["status"],
 ): Promise<CoiffeurApplication[]> {
   const { data } = await apiClient.get<CoiffeurApplication[]>(
     "/admin/coiffeur-applications",
-    { params: status ? { status } : undefined },
+    { params: { status, limit: 100 } },
   );
   return data;
 }

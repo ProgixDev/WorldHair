@@ -32,16 +32,23 @@ const NAV_ITEMS = [
 export function AdminSidebar() {
   const pathname = usePathname();
 
+  // sticky + h-screen + self-start: the rail is tied to the viewport, not to
+  // the page's height — a long list page must not stretch it (and drag the
+  // centred nav off-screen with it).
   return (
-    <aside className="flex w-20 shrink-0 flex-col items-center gap-8 py-6">
-      <Link href="/" className="flex flex-col items-center gap-1.5">
-        <Image src="/Logo.png" alt="WorldHair" width={28} height={28} />
-        <span className="text-[8px] font-bold tracking-[0.18em] text-white/70 uppercase">
-          WorldHair
-        </span>
-      </Link>
+    <aside className="sticky top-0 flex h-screen w-20 shrink-0 flex-col items-center self-start">
+      {/* Mirrors AdminTopBar's header box exactly — same pt-7/pb-2, and an
+          h-11 row (the height its search input gives that row) — so the logo
+          and the page title share a vertical centre. */}
+      <div className="flex justify-center pt-7 pb-2">
+        <Link href="/admin" aria-label="Tableau de bord" className="flex h-11 items-center">
+          <Image src="/Logo.png" alt="" width={44} height={44} />
+        </Link>
+      </div>
 
-      <nav className="flex flex-col items-center gap-3">
+      {/* Taken out of the flow so the logo slot above doesn't push it down —
+          the rail centres on the page, not on the space left under the logo. */}
+      <nav className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center gap-3">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
           return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
+import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import { cn } from "@/lib/utils";
 import { type AdminSubscriptionSummary, listSubscriptions } from "@/services/adminApi";
 import { useCallback, useEffect, useState } from "react";
@@ -30,6 +31,7 @@ export default function AdminAbonnementsPage() {
   const [subscriptions, setSubscriptions] = useState<AdminSubscriptionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(() => {
     listSubscriptions()
@@ -62,7 +64,9 @@ export default function AdminAbonnementsPage() {
               <p className="py-8 text-center text-sm text-[#93a6bc]">Aucun coiffeur.</p>
             )}
 
-            {subscriptions.map((subscription) => {
+            {!loading &&
+              !error &&
+              pageSlice(subscriptions, page).map((subscription) => {
               const fullName = `${subscription.firstName} ${subscription.lastName}`.trim();
               const echeance =
                 subscription.status === "trial"
@@ -102,6 +106,10 @@ export default function AdminAbonnementsPage() {
                 </div>
               );
             })}
+
+            {!loading && !error && (
+              <Pagination page={page} total={subscriptions.length} onPageChange={setPage} />
+            )}
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
+import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import { cn } from "@/lib/utils";
 import {
   type CoiffeurApplication,
@@ -35,6 +36,7 @@ export default function AdminDossiersPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectMessage, setRejectMessage] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const load = useCallback((nextStatus: CoiffeurApplication["status"]) => {
     listCoiffeurApplications(nextStatus)
@@ -52,6 +54,7 @@ export default function AdminDossiersPage() {
 
   const handleStatusChange = (next: CoiffeurApplication["status"]) => {
     setLoading(true);
+    setPage(1);
     setStatus(next);
   };
 
@@ -125,7 +128,9 @@ export default function AdminDossiersPage() {
               </p>
             )}
 
-            {applications.map((application) => {
+            {!loading &&
+              !error &&
+              pageSlice(applications, page).map((application) => {
               const expanded = expandedId === application.id;
               const urls = documentUrls[application.id];
 
@@ -265,6 +270,10 @@ export default function AdminDossiersPage() {
                 </div>
               );
             })}
+
+            {!loading && !error && (
+              <Pagination page={page} total={applications.length} onPageChange={setPage} />
+            )}
           </div>
         </div>
       </div>

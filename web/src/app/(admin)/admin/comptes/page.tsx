@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
+import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import { cn } from "@/lib/utils";
 import { type AdminAccount, listAccounts, setAccountStatus } from "@/services/adminApi";
 import { Search } from "lucide-react";
@@ -34,12 +35,15 @@ export default function AdminComptesPage() {
 
 function AdminComptesPageContent() {
   const searchParams = useSearchParams();
-  const [role, setRole] = useState<AdminAccount["role"]>("particulier");
+  const [role, setRole] = useState<AdminAccount["role"]>(
+    () => (searchParams.get("role") === "coiffeur" ? "coiffeur" : "particulier"),
+  );
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const load = useCallback((nextRole: AdminAccount["role"], nextSearch: string) => {
     listAccounts(nextRole, nextSearch.trim() || undefined)
@@ -55,13 +59,17 @@ function AdminComptesPageContent() {
     load(role, search);
   }, [role, search, load]);
 
+  // Changing tab or query re-pages from the top — otherwise you can land on
+  // page 3 of a one-page result and see nothing.
   const handleRoleChange = (next: AdminAccount["role"]) => {
     setLoading(true);
+    setPage(1);
     setRole(next);
   };
 
   const handleSearchChange = (value: string) => {
     setLoading(true);
+    setPage(1);
     setSearch(value);
   };
 
@@ -125,7 +133,9 @@ function AdminComptesPageContent() {
               </p>
             )}
 
-            {accounts.map((account) => {
+            {!loading &&
+              !error &&
+              pageSlice(accounts, page).map((account) => {
               const fullName = `${account.firstName} ${account.lastName}`.trim();
               const displayName = fullName || account.email;
               const initial = (fullName || account.email)[0]?.toUpperCase() ?? "?";
@@ -194,6 +204,10 @@ function AdminComptesPageContent() {
                 </div>
               );
             })}
+
+            {!loading && !error && (
+              <Pagination page={page} total={accounts.length} onPageChange={setPage} />
+            )}
           </div>
         </div>
       </div>
