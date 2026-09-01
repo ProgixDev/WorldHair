@@ -1,8 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
-import { seedSubscription } from "../features/pro/seed";
 import type {
   AvailabilityDay,
   PlanId,
@@ -15,38 +13,14 @@ import type {
 import type { Review } from "../features/salons/types";
 
 /**
- * The coiffeur area's data layer, split by how real it is:
- *  - Profile, prestations, weekly hours, appointments and reviews all go
- *    straight to the NestJS server (`/salon/me/*`, `/appointments/*`,
- *    `/reviews/*` — see server/src/salon/, server/src/appointments/,
- *    server/src/reviews/) — real, persisted in Supabase.
- *  - Subscription stays mocked in AsyncStorage — "Paiements/Abonnements"
- *    doesn't have a backend yet (separate TODO.md section).
- * `seedProWorkspace()` only seeds that mock part now; everything else's
- * defaults come from the server itself (an empty profile, a sensible
- * default week, no services/appointments/reviews yet).
+ * The coiffeur area's data layer — profile, prestations, weekly hours,
+ * appointments, reviews and subscription all go straight to the NestJS
+ * server (`/salon/me/*`, `/appointments/*`, `/reviews/*`, `/subscriptions/*`
+ * — see server/src/salon/, server/src/appointments/, server/src/reviews/,
+ * server/src/subscriptions/) — real, persisted in Supabase. Real billing
+ * itself (Apple IAP / Google Play Billing, separate TODO.md section) isn't
+ * wired up — only plan/status/dates are.
  */
-
-const KEYS = {
-  subscription: "@worldhair/pro_subscription",
-} as const;
-
-function delay(ms = 350): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function read<T>(key: string, fallback: T): Promise<T> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-async function write<T>(key: string, value: T): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(value));
-}
 
 async function currentUserId(): Promise<string> {
   const {
@@ -56,19 +30,14 @@ async function currentUserId(): Promise<string> {
   return user.id;
 }
 
-// ─── Seeding (mock extras only) ───────────────────────────────────────────────
+// ─── Seeding ─────────────────────────────────────────────────────────────────
 
 /**
- * Fills the mock-only part of the pro store (subscription, replies) so the
- * account/reviews tabs have numbers to show. Idempotent, and independent of
- * whether the real profile/services/availability/appointments have been
- * filled in yet.
+ * Ensures a subscription row exists — the server lazily creates a 30-day
+ * trial on first read (`getOrCreateMine`), so this just triggers that.
  */
 export async function seedProWorkspace(): Promise<void> {
-  const existing = await AsyncStorage.getItem(KEYS.subscription);
-  if (existing) return;
-
-  await write(KEYS.subscription, seedSubscription());
+  await getSubscription();
 }
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -267,79 +236,67 @@ export async function setAppointmentStatus(
   return listProAppointments();
 }
 
-// ─── Subscription (still mock) ────────────────────────────────────────────────
+// ─── Subscription ────────────────────────────────────────────────────────────
 
-export async function getSubscription(): Promise<Subscription> {
-  await seedProWorkspace();
-  return read(KEYS.subscription, {
-    plan: "monthly" as PlanId,
-    status: "trial" as const,
-    trialEndsAt: null,
-    renewsAt: new Date().toISOString(),
-  });
+interface SubscriptionApiResponse {
+  profileId: string;
+  plan: PlanId;
+  status: "trial" | "active" | "cancelled";
+  trialEndsAt: string | null;
+  renewsAt: string;
 }
 
-/**
- * Plan switch. Real billing goes through Apple/Google in-app purchase (see
- * TODO.md); this only moves the local state so the screen can be exercised.
- */
-export async function changePlan(plan: PlanId): Promise<Subscription> {
-  await delay(600);
-  const current = await getSubscription();
-  const renewsAt = new Date();
-  if (current.status === "trial" && current.trialEndsAt)
-    renewsAt.setTime(new Date(current.trialEndsAt).getTime());
-  else if (plan === "yearly") renewsAt.setFullYear(renewsAt.getFullYear() + 1);
-  else renewsAt.setMonth(renewsAt.getMonth() + 1);
+function toSubscription(row: SubscriptionApiResponse): Subscription {
+  return { plan: row.plan, status: row.status, trialEndsAt: row.trialEndsAt, renewsAt: row.renewsAt };
+}
 
-  const next: Subscription = {
-    ...current,
+export async function getSubscription(): Promise<Subscription> {
+  const { data } = await apiClient.get<SubscriptionApiResponse>("/subscriptions/mine");
+  return toSubscription(data);
+}
+
+export async function changePlan(plan: PlanId): Promise<Subscription> {
+  const { data } = await apiClient.patch<SubscriptionApiResponse>("/subscriptions/mine/plan", {
     plan,
-    status: current.status === "cancelled" ? "active" : current.status,
-    renewsAt: renewsAt.toISOString(),
-  };
-  await write(KEYS.subscription, next);
-  return next;
+  });
+  return toSubscription(data);
 }
 
 export async function cancelSubscription(): Promise<Subscription> {
-  await delay(400);
-  const current = await getSubscription();
-  const next: Subscription = { ...current, status: "cancelled" };
-  await write(KEYS.subscription, next);
-  return next;
+  const { data } = await apiClient.patch<SubscriptionApiResponse>("/subscriptions/mine/cancel");
+  return toSubscription(data);
 }
 
 export async function reactivateSubscription(): Promise<Subscription> {
-  await delay(400);
-  const current = await getSubscription();
-  const next: Subscription = {
-    ...current,
-    status: current.trialEndsAt ? "trial" : "active",
-  };
-  await write(KEYS.subscription, next);
-  return next;
+  const { data } = await apiClient.patch<SubscriptionApiResponse>(
+    "/subscriptions/mine/reactivate",
+  );
+  return toSubscription(data);
 }
 
 /**
- * Dev-only: fast-forwards the subscription's end date so the J-7 banner and
- * the expired block (issue #8) can be exercised without waiting real days.
+ * Dev-only demo tool (J-7 banner / expired block, issue #8) — writes
+ * straight to Supabase rather than the NestJS server: RLS lets a coiffeur
+ * update their own `coiffeur_subscriptions` row (see schema.sql), same as
+ * this app already does for profiles elsewhere. Deliberately bypasses
+ * changePlan()'s renewal-date rules — the whole point is to force an
+ * arbitrary end date.
  */
 export async function debugSetSubscriptionEnd(
   daysFromNow: number,
   status: "trial" | "cancelled",
 ): Promise<Subscription> {
-  const current = await getSubscription();
+  const userId = await currentUserId();
   const end = new Date();
   end.setDate(end.getDate() + daysFromNow);
-  const next: Subscription = {
-    ...current,
-    status,
-    trialEndsAt: end.toISOString(),
-    renewsAt: end.toISOString(),
-  };
-  await write(KEYS.subscription, next);
-  return next;
+
+  const { error } = await supabase
+    .from("coiffeur_subscriptions")
+    .update({ status, trial_ends_at: end.toISOString(), renews_at: end.toISOString() })
+    .eq("profile_id", userId);
+  if (error) throw error;
+
+  return getSubscription();
 }
 
 // ─── Reviews ─────────────────────────────────────────────────────────────────
@@ -380,7 +337,18 @@ export async function deleteReply(reviewId: string): Promise<Review[]> {
   return listProReviews();
 }
 
-/** Dev reset — wipes the mock-only part of the pro workspace (subscription), not the real profile/services/availability/appointments/reviews. */
+/** Dev reset — regenerates a fresh 30-day trial subscription; doesn't touch the real profile/services/availability/appointments/reviews. */
 export async function resetProWorkspace(): Promise<void> {
-  await AsyncStorage.multiRemove(Object.values(KEYS));
+  const userId = await currentUserId();
+  const trialEndsAt = new Date();
+  trialEndsAt.setDate(trialEndsAt.getDate() + 30);
+
+  const { error } = await supabase.from("coiffeur_subscriptions").upsert({
+    profile_id: userId,
+    plan: "monthly",
+    status: "trial",
+    trial_ends_at: trialEndsAt.toISOString(),
+    renews_at: trialEndsAt.toISOString(),
+  });
+  if (error) throw error;
 }

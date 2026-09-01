@@ -155,7 +155,7 @@ Emplacement décidé: même appli Next.js que la landing (`web/`), dans un group
 de routes `(admin)` séparé — il n'héritera donc pas du header/footer marketing.
 À démarrer quand le backend sera prêt.
 
-- [x] Créer le groupe de routes `(admin)` avec son propre layout (sidebar) — `web/src/app/(admin)/`, rail d'icônes + topbar, tableau de bord sur `/admin` (données statiques tant que l'auth admin n'existe pas)
+- [x] Créer le groupe de routes `(admin)` avec son propre layout (sidebar) — `web/src/app/(admin)/`, rail d'icônes + topbar, tableau de bord sur `/admin` (réservations réelles via `/admin/stats/bookings`)
 - [x] Auth admin sécurisée — Supabase Auth (`profiles.role === 'admin'`), lien depuis le bouton "Compte" de la landing, `/login`
 - [x] Liste + validation/rejet dossiers coiffeurs (pièce ID, diplôme, KBIS/RNE) avec message de refus — `/admin/dossiers`
 - [x] Suspension / bannissement compte (particulier ou coiffeur) — `/admin/comptes`, enforcé côté serveur dans `SupabaseStrategy`
@@ -163,7 +163,8 @@ de routes `(admin)` séparé — il n'héritera donc pas du header/footer market
 - [x] Modération avis signalés — `/admin/avis`
 - [x] Gestion des zones publicitaires: upload image, lien, activation par emplacement (issue #5) — `/admin/publicites`, `mobile/src/services/ads.ts` branché sur l'API réelle ; pas de popups à fréquence limitée pour l'instant, seulement les 3 emplacements bandeau/bannière/pop-up existants
 - [x] Gestion de contenu / pages (dont contenu de la 4e slide onboarding, issue #5) — `/admin/contenu`, `mobile/src/services/content.ts` branché sur l'API réelle ; une seule page de contenu gérée pour l'instant
-- [ ] Vue abonnements coiffeurs (statut, échéance) — pas de backend abonnements existant, hors scope pour l'instant
+- [x] Vue abonnements coiffeurs (statut, échéance) — `/admin/abonnements`, lecture seule ; `mobile/src/features/pro/` (Écran abonnement) branché sur ce même backend, plus mocké en AsyncStorage
+- [x] Paramètres admin — `/admin/parametres` : compte de l'admin (email/mot de passe) via Supabase Auth. Pas de section "réglages plateforme" pour l'instant (aucun besoin concret identifié)
 
 ## À définir (bloquant pour specs finales)
 - [ ] Prix abonnements mensuel / annuel

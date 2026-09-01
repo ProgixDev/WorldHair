@@ -161,6 +161,16 @@ interface CoiffeurMessageRow {
   created_at: string;
 }
 
+interface SubscriptionRow {
+  profile_id: string;
+  plan: string;
+  status: string;
+  trial_ends_at: string | null;
+  renews_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface AdSlotRow {
   id: string;
   active: boolean;
@@ -375,6 +385,7 @@ export class FakeSupabaseService {
   private readonly coiffeurMessages = new Map<string, CoiffeurMessageRow>();
   private readonly adSlots = new Map<string, AdSlotRow>(defaultAdSlots());
   private readonly appContent = new Map<string, AppContentRow>(defaultAppContent());
+  private readonly subscriptions = new Map<string, SubscriptionRow>();
 
   readonly client = {
     auth: {
@@ -441,6 +452,9 @@ export class FakeSupabaseService {
       if (table === 'app_content') {
         return this.appContentTable();
       }
+      if (table === 'coiffeur_subscriptions') {
+        return this.subscriptionsTable();
+      }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
     rpc: async (fn: string, params: Record<string, unknown> = {}) => {
@@ -500,6 +514,7 @@ export class FakeSupabaseService {
     for (const [id, row] of defaultAdSlots()) this.adSlots.set(id, row);
     this.appContent.clear();
     for (const [key, row] of defaultAppContent()) this.appContent.set(key, row);
+    this.subscriptions.clear();
   }
 
   /**
@@ -540,6 +555,27 @@ export class FakeSupabaseService {
   /** Test convenience: reads back what notifications/ actually recorded for a user, for assertions. */
   notifyLogFor(userId: string): NotificationLogRow[] {
     return [...this.notificationsLog.values()].filter((row) => row.user_id === userId);
+  }
+
+  /** Test convenience: seeds or overwrites a `coiffeur_subscriptions` row directly, bypassing SubscriptionsService's own get-or-create/plan-change flow. */
+  seedSubscription(params: {
+    profileId: string;
+    plan?: string;
+    status?: string;
+    trialEndsAt?: string | null;
+    renewsAt?: string;
+  }): void {
+    const existing = this.subscriptions.get(params.profileId);
+    const now = new Date().toISOString();
+    this.subscriptions.set(params.profileId, {
+      profile_id: params.profileId,
+      plan: params.plan ?? existing?.plan ?? 'monthly',
+      status: params.status ?? existing?.status ?? 'trial',
+      trial_ends_at: params.trialEndsAt !== undefined ? params.trialEndsAt : (existing?.trial_ends_at ?? null),
+      renews_at: params.renewsAt ?? existing?.renews_at ?? now,
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+    });
   }
 
   /**
@@ -1078,6 +1114,36 @@ export class FakeSupabaseService {
           }
           const updated = { ...existing, ...patch };
           rows.set(existing.id, updated);
+          return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private subscriptionsTable() {
+    const rows = this.subscriptions;
+
+    return {
+      select: () => new FakeSelectQuery<SubscriptionRow>(() => [...rows.values()]),
+
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async (): Promise<QueryResult> => {
+            const now = new Date().toISOString();
+            const created = { ...row, created_at: now, updated_at: now } as SubscriptionRow;
+            rows.set(created.profile_id, created);
+            return { data: created, error: null };
+          },
+        }),
+      }),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<SubscriptionRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
+          rows.set(existing.profile_id, updated);
           return { data: updated, count: 1 };
         }),
     };

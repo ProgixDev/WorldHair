@@ -235,3 +235,20 @@ export async function getBookingStats(range: StatsRange): Promise<BookingStats> 
   });
   return data;
 }
+
+/** Mirrors server/src/subscriptions/dto/subscription.dto.ts's AdminSubscriptionSummaryDto. */
+export interface AdminSubscriptionSummary {
+  profileId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  plan: "monthly" | "yearly";
+  status: "trial" | "active" | "cancelled" | "expired" | "not_started";
+  trialEndsAt: string | null;
+  renewsAt: string | null;
+}
+
+export async function listSubscriptions(): Promise<AdminSubscriptionSummary[]> {
+  const { data } = await apiClient.get<AdminSubscriptionSummary[]>("/admin/subscriptions");
+  return data;
+}

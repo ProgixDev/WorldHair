@@ -53,3 +53,14 @@ export async function getAdminSession(): Promise<AdminSession | null> {
 export async function signOutAdmin(): Promise<void> {
   await supabase.auth.signOut();
 }
+
+/** Supabase sends a confirmation link to the new address before the change takes effect. */
+export async function updateAdminEmail(email: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) throw new AdminAuthError(error.message);
+}
+
+export async function updateAdminPassword(password: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw new AdminAuthError(error.message);
+}

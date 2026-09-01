@@ -16,12 +16,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-/**
- * Every entry maps to a line under TODO.md's "## Admin". `/admin/abonnements`
- * and `/admin/parametres` have no backend yet — declared here so the rail is
- * the real navigation from the start rather than something that gets
- * rebuilt once those pages land.
- */
+/** Every entry maps to a line under TODO.md's "## Admin". */
 const NAV_ITEMS = [
   { href: "/admin", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/admin/dossiers", label: "Dossiers coiffeurs", icon: FileCheck2 },

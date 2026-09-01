@@ -677,6 +677,7 @@ create table public.coiffeur_messages (
 );
 
 create index coiffeur_messages_coiffeur_id_idx on public.coiffeur_messages (coiffeur_id, created_at);
+create index coiffeur_messages_sender_id_idx on public.coiffeur_messages (sender_id);
 
 alter table public.coiffeur_messages enable row level security;
 
@@ -794,3 +795,43 @@ create policy "Admin can delete admin media"
     bucket_id = 'admin-media'
     and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
   );
+
+-- "Vue abonnements coiffeurs (statut, échéance)" (TODO.md → Back-office
+-- admin) + mobile's "Écran abonnement" (mobile/src/features/pro/types.ts's
+-- Subscription — this table is its real backing store, replacing the
+-- AsyncStorage mock in mobile/src/services/pro.ts). Real billing still goes
+-- through Apple IAP / Google Play Billing later (TODO.md) — this table only
+-- tracks plan/status/dates, no payment processing.
+create table public.coiffeur_subscriptions (
+  profile_id uuid primary key references public.profiles (id) on delete cascade,
+  plan text not null default 'monthly' check (plan in ('monthly', 'yearly')),
+  -- 'expired' is NOT stored — derived at read time from status + renews_at/
+  -- trial_ends_at, same pattern as appointments.status's 'done'.
+  status text not null default 'trial' check (status in ('trial', 'active', 'cancelled')),
+  trial_ends_at timestamptz,
+  renews_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.coiffeur_subscriptions enable row level security;
+
+create policy "Coiffeur can view their own subscription, admin can view every subscription"
+  on public.coiffeur_subscriptions for select
+  using (
+    (select auth.uid ()) = profile_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
+
+create policy "Coiffeur can insert their own subscription"
+  on public.coiffeur_subscriptions for insert
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeur can update their own subscription"
+  on public.coiffeur_subscriptions for update
+  using ((select auth.uid ()) = profile_id)
+  with check ((select auth.uid ()) = profile_id);
+
+create trigger set_coiffeur_subscriptions_updated_at
+before update on public.coiffeur_subscriptions for each row
+execute procedure public.set_updated_at ();

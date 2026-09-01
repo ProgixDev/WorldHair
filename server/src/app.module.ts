@@ -21,6 +21,7 @@ import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalonModule } from './salon/salon.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -53,6 +54,7 @@ import { UsersModule } from './users/users.module';
     MessagesModule,
     AdSlotsModule,
     ContentModule,
+    SubscriptionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
