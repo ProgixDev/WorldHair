@@ -518,6 +518,7 @@ export class FakeSupabaseService {
     durationMin?: number;
     startsAt: string;
     status?: string;
+    createdAt?: string;
   }): string {
     const id = params.id ?? randomUUID();
     this.appointments.set(id, {
@@ -531,7 +532,7 @@ export class FakeSupabaseService {
       starts_at: params.startsAt,
       status: params.status ?? 'confirmed',
       client_note: null,
-      created_at: new Date().toISOString(),
+      created_at: params.createdAt ?? new Date().toISOString(),
     });
     return id;
   }

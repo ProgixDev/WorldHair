@@ -5,15 +5,17 @@ export class AdminAuthError extends Error {}
 export interface AdminSession {
   userId: string;
   email: string;
+  firstName: string;
+  lastName: string;
 }
 
 /** `profiles.role !== 'admin'` is checked here, client-side — the real gate
  * is still server-side (`@Roles('admin')`, server/src/common/guards/
  * roles.guard.ts); this only decides whether the web UI shows the page. */
-async function requireAdminRole(userId: string): Promise<void> {
+async function requireAdminRole(userId: string): Promise<{ firstName: string; lastName: string }> {
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, first_name, last_name")
     .eq("id", userId)
     .maybeSingle();
 
@@ -22,6 +24,7 @@ async function requireAdminRole(userId: string): Promise<void> {
     await supabase.auth.signOut();
     throw new AdminAuthError("Ce compte n'a pas les droits administrateur.");
   }
+  return { firstName: profile.first_name ?? "", lastName: profile.last_name ?? "" };
 }
 
 export async function signInAdmin(email: string, password: string): Promise<void> {
@@ -40,12 +43,11 @@ export async function getAdminSession(): Promise<AdminSession | null> {
   if (!user) return null;
 
   try {
-    await requireAdminRole(user.id);
+    const { firstName, lastName } = await requireAdminRole(user.id);
+    return { userId: user.id, email: user.email ?? "", firstName, lastName };
   } catch {
     return null;
   }
-
-  return { userId: user.id, email: user.email ?? "" };
 }
 
 export async function signOutAdmin(): Promise<void> {

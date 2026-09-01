@@ -214,3 +214,24 @@ export async function updateAppContent(
   const { data } = await apiClient.patch<AppContent>(`/admin/content/${key}`, patch);
   return data;
 }
+
+/** Mirrors server/src/appointments/admin-stats.service.ts. */
+export type StatsRange = "day" | "week" | "month";
+
+export interface BookingStatsPoint {
+  label: string;
+  confirmed: number;
+  cancelled: number;
+}
+
+export interface BookingStats {
+  range: StatsRange;
+  points: BookingStatsPoint[];
+}
+
+export async function getBookingStats(range: StatsRange): Promise<BookingStats> {
+  const { data } = await apiClient.get<BookingStats>("/admin/stats/bookings", {
+    params: { range },
+  });
+  return data;
+}

@@ -1,7 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useRef, useState } from "react";
+import { type StatsRange, getBookingStats } from "@/services/adminApi";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Two series, one axis — both are counts of appointments, so they share a
@@ -14,27 +15,11 @@ const SERIES = [
   { key: "cancelled", label: "Annulées", color: "#b8813f" },
 ] as const;
 
-const RANGES = ["Jour", "Semaine", "Mois"] as const;
-type Range = (typeof RANGES)[number];
-
-/** Placeholder figures until an admin stats endpoint exists. */
-const DATA: Record<Range, { labels: string[]; confirmed: number[]; cancelled: number[] }> = {
-  Jour: {
-    labels: ["6h", "8h", "10h", "12h", "14h", "16h", "18h", "20h"],
-    confirmed: [2, 9, 24, 31, 19, 38, 44, 21],
-    cancelled: [0, 2, 5, 4, 7, 6, 9, 3],
-  },
-  Semaine: {
-    labels: ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
-    confirmed: [64, 78, 71, 92, 128, 156, 43],
-    cancelled: [8, 12, 9, 14, 18, 24, 6],
-  },
-  Mois: {
-    labels: ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"],
-    confirmed: [96, 118, 142, 175, 158, 132, 108, 91, 149, 168, 186, 174],
-    cancelled: [14, 19, 22, 28, 24, 20, 17, 12, 23, 26, 31, 27],
-  },
-};
+const RANGE_OPTIONS: { label: string; value: StatsRange }[] = [
+  { label: "Jour", value: "day" },
+  { label: "Semaine", value: "week" },
+  { label: "Mois", value: "month" },
+];
 
 const VIEW_W = 720;
 const VIEW_H = 240;
@@ -60,12 +45,38 @@ function smoothPath(points: { x: number; y: number }[]): string {
 }
 
 export function BookingsChart() {
-  const [range, setRange] = useState<Range>("Mois");
+  const [range, setRange] = useState<StatsRange>("month");
   const [hovered, setHovered] = useState<number | null>(null);
+  const [labels, setLabels] = useState<string[]>([]);
+  const [confirmed, setConfirmed] = useState<number[]>([]);
+  const [cancelled, setCancelled] = useState<number[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const { labels, confirmed, cancelled } = DATA[range];
-  const yMax = niceMax(Math.max(...confirmed, ...cancelled));
+  const load = useCallback((nextRange: StatsRange) => {
+    getBookingStats(nextRange)
+      .then((data) => {
+        setLabels(data.points.map((p) => p.label));
+        setConfirmed(data.points.map((p) => p.confirmed));
+        setCancelled(data.points.map((p) => p.cancelled));
+        setError(null);
+      })
+      .catch(() => setError("Impossible de charger les statistiques."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load(range);
+  }, [range, load]);
+
+  const handleRangeChange = (next: StatsRange) => {
+    setLoading(true);
+    setHovered(null);
+    setRange(next);
+  };
+
+  const yMax = niceMax(Math.max(0, ...confirmed, ...cancelled));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(yMax * t));
 
   const xAt = (i: number) =>
@@ -95,22 +106,19 @@ export function BookingsChart() {
         <h2 className="text-base font-medium text-[#f2f6fb]">Réservations</h2>
 
         <div className="flex items-center gap-5">
-          {RANGES.map((option) => (
+          {RANGE_OPTIONS.map((option) => (
             <button
-              key={option}
+              key={option.value}
               type="button"
-              onClick={() => {
-                setRange(option);
-                setHovered(null);
-              }}
+              onClick={() => handleRangeChange(option.value)}
               className={cn(
                 "text-xs transition-colors",
-                option === range
+                option.value === range
                   ? "border-b-2 border-[#2a93d5] pb-0.5 font-medium text-[#f2f6fb]"
                   : "text-[#93a6bc] hover:text-white",
               )}
             >
-              {option}
+              {option.label}
             </button>
           ))}
         </div>
@@ -133,13 +141,17 @@ export function BookingsChart() {
         ))}
       </ul>
 
+      {loading && <p className="py-12 text-center text-sm text-[#93a6bc]">Chargement…</p>}
+      {error && <p className="py-12 text-center text-sm text-[#ff7a70]">{error}</p>}
+
+      {!loading && !error && (
       <div className="relative mt-2">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           className="h-auto w-full"
           role="img"
-          aria-label={`Réservations confirmées et annulées par ${range.toLowerCase()}`}
+          aria-label={`Réservations confirmées et annulées par ${RANGE_OPTIONS.find((o) => o.value === range)?.label.toLowerCase()}`}
           onMouseMove={handleMove}
           onMouseLeave={() => setHovered(null)}
         >
@@ -261,6 +273,7 @@ export function BookingsChart() {
           </div>
         )}
       </div>
+      )}
     </section>
   );
 }

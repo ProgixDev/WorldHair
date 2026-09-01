@@ -4,7 +4,8 @@ import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { cn } from "@/lib/utils";
 import { type AdminAccount, listAccounts, setAccountStatus } from "@/services/adminApi";
 import { Search } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 const ROLE_TABS = [
   { value: "particulier", label: "Particuliers" },
@@ -24,8 +25,17 @@ const STATUS_LABELS: Record<AdminAccount["accountStatus"], string> = {
 };
 
 export default function AdminComptesPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminComptesPageContent />
+    </Suspense>
+  );
+}
+
+function AdminComptesPageContent() {
+  const searchParams = useSearchParams();
   const [role, setRole] = useState<AdminAccount["role"]>("particulier");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
