@@ -1,6 +1,17 @@
+"use client";
+
+import { signOutAdmin } from "@/services/adminAuth";
 import { Bell, LogOut, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function AdminTopBar({ title }: { title: string }) {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await signOutAdmin();
+    router.replace("/login");
+  };
+
   return (
     <header className="flex items-center justify-between gap-6 px-8 pt-7 pb-2">
       <h1 className="text-2xl font-medium text-[#f2f6fb]">{title}</h1>
@@ -35,6 +46,7 @@ export function AdminTopBar({ title }: { title: string }) {
         <button
           type="button"
           aria-label="Se déconnecter"
+          onClick={handleLogout}
           className="grid size-10 place-items-center rounded-full border border-[#1e2e45] bg-[#111c2e] text-[#93a6bc] transition-colors hover:text-white"
         >
           <LogOut className="size-4" />

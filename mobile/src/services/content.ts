@@ -1,14 +1,4 @@
-/**
- * Mock content service for admin-managed onboarding copy (issue #5). No
- * back-office exists yet, so this returns a fixed fallback; the real API
- * replaces this file wholesale once the admin CMS lands.
- */
-
-const LATENCY_MS = 300;
-
-function delay(ms = LATENCY_MS): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { apiClient } from "../lib/apiClient";
 
 export interface OnboardingProductsContent {
   heading: string;
@@ -17,11 +7,17 @@ export interface OnboardingProductsContent {
   imageUri: string | null;
 }
 
+interface AppContentApiResponse {
+  key: string;
+  heading: string;
+  body: string;
+  imageUrl: string | null;
+  updatedAt: string;
+}
+
 export async function getOnboardingProductsSlideContent(): Promise<OnboardingProductsContent> {
-  await delay();
-  return {
-    heading: "Des produits de qualité",
-    body: "Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.",
-    imageUri: null,
-  };
+  const { data } = await apiClient.get<AppContentApiResponse>(
+    "/content/onboarding_products_slide",
+  );
+  return { heading: data.heading, body: data.body, imageUri: data.imageUrl };
 }

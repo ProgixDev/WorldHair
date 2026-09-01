@@ -203,6 +203,56 @@ export class CoiffeurApplicationsService {
 
   // ─── Admin ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Signed URLs for the 4 documents on one application — `coiffeur-documents`
+   * is a private bucket, so an admin can't just be handed the stored path.
+   * Uses the service-role client (bypasses Storage RLS entirely), which is
+   * exactly why this only lives behind `@Roles('admin')`. 10 minutes is long
+   * enough to review a dossier in one sitting, short enough not to leave a
+   * standing link to someone's ID document.
+   */
+  async getDocumentUrls(applicationId: string): Promise<Record<string, string | null>> {
+    const application = await this.findById(applicationId);
+    if (!application) {
+      throw new NotFoundException('Application not found.');
+    }
+
+    const entries: Array<[string, string | null]> = [
+      ['identity', application.identityDocumentPath],
+      ['diploma', application.diplomaDocumentPath],
+      ['kbis', application.kbisDocumentPath],
+      ['invoice', application.invoiceDocumentPath],
+    ];
+
+    const paths = entries
+      .filter((entry): entry is [string, string] => entry[1] !== null)
+      .map(([, path]) => path);
+
+    const { data, error } = await this.supabase.client.storage
+      .from('coiffeur-documents')
+      .createSignedUrls(paths, 600);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    const urlByPath = new Map(data.map((signed) => [signed.path, signed.signedUrl]));
+    return Object.fromEntries(
+      entries.map(([key, path]) => [key, path ? (urlByPath.get(path) ?? null) : null]),
+    );
+  }
+
+  private async findById(applicationId: string): Promise<CoiffeurApplication | null> {
+    const { data, error } = await this.supabase.client
+      .from('coiffeur_applications')
+      .select()
+      .eq('id', applicationId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return data ? mapRow(data as CoiffeurApplicationRow) : null;
+  }
+
   async listByStatus(
     status: ApplicationStatus | undefined,
     pagination: PaginationOptions,

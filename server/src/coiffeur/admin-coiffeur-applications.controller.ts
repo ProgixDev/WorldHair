@@ -34,4 +34,12 @@ export class AdminCoiffeurApplicationsController {
     const application = await this.applications.decide(id, dto.decision, dto.message);
     return toCoiffeurApplicationDto(application);
   }
+
+  /** Signed URLs (10 min) for the identity/diploma/kbis/invoice documents. */
+  @Get(':id/document-urls')
+  async documentUrls(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Record<string, string | null>> {
+    return this.applications.getDocumentUrls(id);
+  }
 }

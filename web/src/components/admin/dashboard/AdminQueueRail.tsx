@@ -1,69 +1,34 @@
+"use client";
+
+import {
+  type CoiffeurApplication,
+  type Review,
+  listCoiffeurApplications,
+  listReportedReviews,
+} from "@/services/adminApi";
 import { ChevronRight, Star } from "lucide-react";
+import { useEffect, useState } from "react";
 
-/**
- * The two real admin queues (TODO.md → Back-office admin), always visible
- * without scrolling past the chart. `APPLICATIONS`' shape mirrors the real
- * `CoiffeurApplicationDto` (server/src/coiffeur/dto/application.dto.ts), so
- * wiring `GET /admin/coiffeur-applications` in later is a swap of this array
- * for the fetch.
- */
-const APPLICATIONS = [
-  {
-    id: "1",
-    salonName: "Maison Amara",
-    firstName: "Amara",
-    lastName: "Diallo",
-    city: "Paris 11e",
-    waitingDays: 2,
-  },
-  {
-    id: "2",
-    salonName: "Atelier Rive Gauche",
-    firstName: "Léo",
-    lastName: "Marchand",
-    city: "Paris 6e",
-    waitingDays: 4,
-  },
-  {
-    id: "3",
-    salonName: "Studio Nord",
-    firstName: "Inès",
-    lastName: "Berger",
-    city: "Lille",
-    waitingDays: 6,
-  },
-];
-
-/**
- * Shaped after the real `ReviewDto` (server/src/reviews/reviews.service.ts):
- * `authorName` / `rating` / `comment` — note there's no salon *name* on that
- * DTO, only `salonId`, so this doesn't invent one either.
- */
-const REPORTED_REVIEWS = [
-  {
-    id: "1",
-    authorName: "Julien P.",
-    rating: 2,
-    comment: "Retard de 40 minutes non prévenu, prestation bâclée.",
-  },
-  {
-    id: "2",
-    authorName: "Sofia R.",
-    rating: 1,
-    comment: "Résultat très éloigné de ce qui avait été demandé.",
-  },
-];
-
-function initials(name: string): string {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase();
+function initials(firstName: string, lastName: string): string {
+  return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase();
 }
 
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+/** The two real admin queues (TODO.md → Back-office admin), always visible
+ * without scrolling past the chart — real data, capped to the 3/2 most
+ * recent so the rail stays a glance, not a second full list. */
 export function AdminQueueRail() {
+  const [applications, setApplications] = useState<CoiffeurApplication[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+
+  useEffect(() => {
+    void listCoiffeurApplications("pending").then((all) => setApplications(all.slice(0, 3)));
+    void listReportedReviews().then((all) => setReviews(all.slice(0, 2)));
+  }, []);
+
   return (
     <aside className="flex w-full shrink-0 flex-col gap-8 px-6 py-6 xl:w-80">
       <section>
@@ -80,24 +45,28 @@ export function AdminQueueRail() {
         </div>
 
         <ul className="mt-3 flex flex-col gap-2">
-          {APPLICATIONS.map((application) => (
+          {applications.length === 0 && (
+            <li className="p-3 text-xs text-[#5b7186]">Aucun dossier en attente.</li>
+          )}
+          {applications.map((application) => (
             <li key={application.id}>
               <a
-                href={`/admin/dossiers/${application.id}`}
+                href="/admin/dossiers"
                 className="flex items-center gap-3 rounded-2xl bg-[#111c2e] p-3 transition-colors hover:bg-[#1a2b45]"
               >
                 <span
                   aria-hidden="true"
                   className="grid size-9 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-[11px] font-bold text-[#f2f6fb]"
                 >
-                  {initials(`${application.firstName} ${application.lastName}`)}
+                  {initials(application.firstName, application.lastName)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-[#f2f6fb]">
                     {application.salonName}
                   </p>
                   <p className="truncate text-xs text-[#93a6bc]">
-                    {application.city} · {application.waitingDays} j
+                    {application.practiceZone === "salon" ? application.city : "Domicile"} ·{" "}
+                    {daysSince(application.submittedAt)} j
                   </p>
                 </div>
                 <ChevronRight
@@ -124,10 +93,13 @@ export function AdminQueueRail() {
         </div>
 
         <ul className="mt-3 flex flex-col gap-2">
-          {REPORTED_REVIEWS.map((review) => (
+          {reviews.length === 0 && (
+            <li className="p-3 text-xs text-[#5b7186]">Aucun avis signalé.</li>
+          )}
+          {reviews.map((review) => (
             <li key={review.id}>
               <a
-                href={`/admin/avis/${review.id}`}
+                href="/admin/avis"
                 className="flex flex-col gap-1.5 rounded-2xl bg-[#111c2e] p-3 transition-colors hover:bg-[#1a2b45]"
               >
                 <div className="flex items-center justify-between gap-2">

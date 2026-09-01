@@ -29,6 +29,7 @@ create table public.profiles (
   last_name text not null default '',
   photo_url text,
   role text not null default 'particulier' check (role in ('particulier', 'coiffeur', 'admin')),
+  account_status text not null default 'active' check (account_status in ('active', 'suspended', 'banned')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -662,3 +663,134 @@ alter table public.notifications_log enable row level security;
 create policy "Users can view their own notification history"
   on public.notifications_log for select
   using ((select auth.uid ()) = user_id);
+
+-- "Messagerie interne admin ↔ coiffeur" (TODO.md → Back-office admin). One
+-- implicit thread per coiffeur (coiffeur_id), no separate threads table.
+create table public.coiffeur_messages (
+  id uuid primary key default gen_random_uuid (),
+  coiffeur_id uuid not null references public.profiles (id) on delete cascade,
+  sender_role text not null check (sender_role in ('admin', 'coiffeur')),
+  sender_id uuid not null references public.profiles (id) on delete cascade,
+  body text not null,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index coiffeur_messages_coiffeur_id_idx on public.coiffeur_messages (coiffeur_id, created_at);
+
+alter table public.coiffeur_messages enable row level security;
+
+create policy "Coiffeur can view their own thread, admin can view every thread"
+  on public.coiffeur_messages for select
+  using (
+    (select auth.uid ()) = coiffeur_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
+
+create policy "Coiffeur can send in their own thread, admin can send in any thread"
+  on public.coiffeur_messages for insert
+  with check (
+    (select auth.uid ()) = sender_id
+    and (
+      (sender_role = 'coiffeur' and (select auth.uid ()) = coiffeur_id)
+      or (sender_role = 'admin' and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'))
+    )
+  );
+
+create policy "Coiffeur or admin can mark a message read"
+  on public.coiffeur_messages for update
+  using (
+    (select auth.uid ()) = coiffeur_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  )
+  with check (
+    (select auth.uid ()) = coiffeur_id
+    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
+
+-- "Gestion des zones publicitaires" (TODO.md → Back-office admin, issue #5).
+-- Fixed set of placements, one row per id — see mobile/src/services/ads.ts,
+-- the mock seam this replaces.
+create table public.ad_slots (
+  id text primary key check (id in ('home_banner', 'search_results', 'booking_confirmation')),
+  active boolean not null default false,
+  headline text not null default '',
+  image_url text,
+  link_url text,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.ad_slots enable row level security;
+
+create policy "Anyone can view ad slots"
+  on public.ad_slots for select
+  using (true);
+
+create policy "Admin can update ad slots"
+  on public.ad_slots for update
+  using (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'))
+  with check (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'));
+
+create trigger set_ad_slots_updated_at
+before update on public.ad_slots for each row
+execute procedure public.set_updated_at ();
+
+insert into public.ad_slots (id, headline) values
+  ('home_banner', 'Nos partenaires beauté'),
+  ('search_results', 'Découvrez nos marques partenaires'),
+  ('booking_confirmation', 'Prenez soin de vos cheveux entre deux rendez-vous');
+
+-- "Gestion de contenu / pages" (TODO.md → Back-office admin, issue #5) — a
+-- key/value content table (only one real key exists today: the 4e slide
+-- onboarding, see mobile/src/services/content.ts), extensible to further
+-- admin-managed copy without a schema change.
+create table public.app_content (
+  key text primary key,
+  heading text not null default '',
+  body text not null default '',
+  image_url text,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.app_content enable row level security;
+
+create policy "Anyone can view app content"
+  on public.app_content for select
+  using (true);
+
+create policy "Admin can update app content"
+  on public.app_content for update
+  using (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'))
+  with check (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'));
+
+create trigger set_app_content_updated_at
+before update on public.app_content for each row
+execute procedure public.set_updated_at ();
+
+insert into public.app_content (key, heading, body) values
+  ('onboarding_products_slide', 'Des produits de qualité', 'Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.');
+
+-- Shared public bucket for both ad-slot and content images — admin-only writes.
+insert into storage.buckets (id, name, public)
+values ('admin-media', 'admin-media', true);
+
+create policy "Admin can upload admin media"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'admin-media'
+    and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
+
+create policy "Admin can replace or delete admin media"
+  on storage.objects for update
+  using (
+    bucket_id = 'admin-media'
+    and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );
+
+create policy "Admin can delete admin media"
+  on storage.objects for delete
+  using (
+    bucket_id = 'admin-media'
+    and exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+  );

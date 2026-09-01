@@ -60,12 +60,15 @@ export function Header() {
             <Search className="size-4" />
           </Button>
           <Button
+            asChild
             variant="ghost"
             size="icon"
             aria-label="Compte"
             className="text-white hover:bg-white/10 hover:text-white"
           >
-            <User className="size-4" />
+            <Link href="/login">
+              <User className="size-4" />
+            </Link>
           </Button>
         </div>
       </div>

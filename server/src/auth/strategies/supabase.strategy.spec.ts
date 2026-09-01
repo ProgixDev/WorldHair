@@ -1,15 +1,18 @@
-import { InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { SupabaseStrategy } from './supabase.strategy';
 
 interface ProfileResult {
-  data: { role: string } | null;
+  data: { role: string; account_status?: string } | null;
   error: { message: string } | null;
 }
 
 function fakeSupabase(
   getUser: (token: string) => Promise<{ data: { user: unknown }; error: unknown }>,
-  getProfile: () => Promise<ProfileResult> = async () => ({ data: { role: 'particulier' }, error: null }),
+  getProfile: () => Promise<ProfileResult> = async () => ({
+    data: { role: 'particulier', account_status: 'active' },
+    error: null,
+  }),
 ): SupabaseService {
   return {
     client: {
@@ -107,5 +110,33 @@ describe('SupabaseStrategy', () => {
     const strategy = new SupabaseStrategy(fakeSupabase(async () => ({ data: { user: null }, error: null })));
 
     await expect(strategy.validate('bad-token')).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('throws ForbiddenException for a suspended account', async () => {
+    const strategy = new SupabaseStrategy(
+      fakeSupabase(
+        async () => ({
+          data: { user: { id: 'user-1', email: 'fan@example.com', email_confirmed_at: '2024-01-01T00:00:00Z' } },
+          error: null,
+        }),
+        async () => ({ data: { role: 'particulier', account_status: 'suspended' }, error: null }),
+      ),
+    );
+
+    await expect(strategy.validate('good-token')).rejects.toThrow(ForbiddenException);
+  });
+
+  it('throws ForbiddenException for a banned account', async () => {
+    const strategy = new SupabaseStrategy(
+      fakeSupabase(
+        async () => ({
+          data: { user: { id: 'user-1', email: 'fan@example.com', email_confirmed_at: '2024-01-01T00:00:00Z' } },
+          error: null,
+        }),
+        async () => ({ data: { role: 'coiffeur', account_status: 'banned' }, error: null }),
+      ),
+    );
+
+    await expect(strategy.validate('good-token')).rejects.toThrow(ForbiddenException);
   });
 });

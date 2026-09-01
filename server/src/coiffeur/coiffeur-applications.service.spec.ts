@@ -29,6 +29,24 @@ function salonDto(
   } as SubmitCoiffeurApplicationDto;
 }
 
+function domicileDto(
+  userId: string = USER_ID,
+  overrides: Partial<SubmitCoiffeurApplicationDto> = {},
+): SubmitCoiffeurApplicationDto {
+  return {
+    firstName: 'Sofia',
+    lastName: 'Benali',
+    phone: '06 12 34 56 78',
+    salonName: 'Sofia à domicile',
+    practiceZone: PracticeZone.Domicile,
+    travelRadiusKm: 15,
+    identityDocumentPath: `${userId}/identity.pdf`,
+    diplomaDocumentPath: `${userId}/diploma.pdf`,
+    kbisDocumentPath: `${userId}/kbis.pdf`,
+    ...overrides,
+  } as SubmitCoiffeurApplicationDto;
+}
+
 describe('CoiffeurApplicationsService', () => {
   let supabase: FakeSupabaseService;
   let service: CoiffeurApplicationsService;
@@ -163,5 +181,34 @@ describe('CoiffeurApplicationsService', () => {
         reviewMessage: 'Photo floue',
       }),
     );
+  });
+
+  it('getDocumentUrls() returns a signed URL per document, keyed by document type', async () => {
+    const application = await service.submit(USER_ID, salonDto());
+
+    const urls = await service.getDocumentUrls(application.id);
+
+    expect(urls.identity).toContain(`${USER_ID}/identity.pdf`);
+    expect(urls.diploma).toContain(`${USER_ID}/diploma.pdf`);
+    expect(urls.kbis).toContain(`${USER_ID}/kbis.pdf`);
+    expect(urls.invoice).toContain(`${USER_ID}/invoice.pdf`);
+  });
+
+  it('getDocumentUrls() leaves invoice null for a domicile application (no invoice document)', async () => {
+    const application = await service.submit(
+      USER_ID,
+      domicileDto(USER_ID, { invoiceDocumentPath: undefined }),
+    );
+
+    const urls = await service.getDocumentUrls(application.id);
+
+    expect(urls.invoice).toBeNull();
+    expect(urls.identity).toContain(`${USER_ID}/identity.pdf`);
+  });
+
+  it('getDocumentUrls() throws NotFoundException for an unknown application id', async () => {
+    await expect(
+      service.getDocumentUrls('00000000-0000-0000-0000-000000000000'),
+    ).rejects.toThrow(NotFoundException);
   });
 });

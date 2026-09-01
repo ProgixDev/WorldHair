@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { Role } from '../../common/types/role';
 import { SupabaseService } from '../../database/supabase.service';
@@ -28,18 +28,24 @@ export class SupabaseStrategy {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
-    // `role` lives on the `profiles` row (see schema.sql), not in the
-    // Supabase Auth token itself — this is the one extra lookup that costs
-    // every authenticated request, in exchange for `RolesGuard` (and anything
-    // else reading `AuthenticatedUser.role`) never needing a query of its own.
+    // `role`/`account_status` live on the `profiles` row (see schema.sql),
+    // not in the Supabase Auth token itself — this is the one extra lookup
+    // that costs every authenticated request, in exchange for `RolesGuard`
+    // (and anything else reading `AuthenticatedUser.role`) never needing a
+    // query of its own, and every route in this API enforcing suspension/
+    // bans for free rather than each one remembering to check.
     const { data: profile, error: profileError } = await this.supabase.client
       .from('profiles')
-      .select('role')
+      .select('role, account_status')
       .eq('id', data.user.id)
       .maybeSingle();
 
     if (profileError) {
       throw new InternalServerErrorException(profileError.message);
+    }
+
+    if (profile?.account_status === 'suspended' || profile?.account_status === 'banned') {
+      throw new ForbiddenException('This account has been suspended.');
     }
 
     return {

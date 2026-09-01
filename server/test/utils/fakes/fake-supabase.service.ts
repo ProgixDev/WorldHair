@@ -12,6 +12,7 @@ interface ProfileRow {
   last_name: string;
   photo_url: string | null;
   role: string;
+  account_status: string;
 }
 
 interface QueryResult {
@@ -150,6 +151,59 @@ interface NotificationLogRow {
   created_at: string;
 }
 
+interface CoiffeurMessageRow {
+  id: string;
+  coiffeur_id: string;
+  sender_role: string;
+  sender_id: string;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+interface AdSlotRow {
+  id: string;
+  active: boolean;
+  headline: string;
+  image_url: string | null;
+  link_url: string | null;
+  updated_at: string;
+}
+
+interface AppContentRow {
+  key: string;
+  heading: string;
+  body: string;
+  image_url: string | null;
+  updated_at: string;
+}
+
+/** Mirrors schema.sql's seed inserts for these two tables. */
+function defaultAdSlots(): [string, AdSlotRow][] {
+  const now = new Date().toISOString();
+  return [
+    ['home_banner', { id: 'home_banner', active: false, headline: 'Nos partenaires beauté', image_url: null, link_url: null, updated_at: now }],
+    ['search_results', { id: 'search_results', active: false, headline: 'Découvrez nos marques partenaires', image_url: null, link_url: null, updated_at: now }],
+    ['booking_confirmation', { id: 'booking_confirmation', active: false, headline: 'Prenez soin de vos cheveux entre deux rendez-vous', image_url: null, link_url: null, updated_at: now }],
+  ];
+}
+
+function defaultAppContent(): [string, AppContentRow][] {
+  const now = new Date().toISOString();
+  return [
+    [
+      'onboarding_products_slide',
+      {
+        key: 'onboarding_products_slide',
+        heading: 'Des produits de qualité',
+        body: 'Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.',
+        image_url: null,
+        updated_at: now,
+      },
+    ],
+  ];
+}
+
 function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknown][]): boolean {
   return filters.every(([column, value]) => row[column] === value);
 }
@@ -205,6 +259,12 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   range(from: number, to: number): this {
     this.rangeFrom = from;
     this.rangeTo = to;
+    return this;
+  }
+
+  /** Only ever called without `.range()` alongside it anywhere in this codebase. */
+  limit(count: number): this {
+    this.rangeTo = Math.min(this.rangeTo, count - 1);
     return this;
   }
 
@@ -312,6 +372,9 @@ export class FakeSupabaseService {
   private readonly pushTokens = new Map<string, PushTokenRow>();
   private readonly notificationPreferences = new Map<string, NotificationPreferencesRow>();
   private readonly notificationsLog = new Map<string, NotificationLogRow>();
+  private readonly coiffeurMessages = new Map<string, CoiffeurMessageRow>();
+  private readonly adSlots = new Map<string, AdSlotRow>(defaultAdSlots());
+  private readonly appContent = new Map<string, AppContentRow>(defaultAppContent());
 
   readonly client = {
     auth: {
@@ -331,6 +394,11 @@ export class FakeSupabaseService {
           }
           return { data: { user }, error: null };
         },
+        /** Only used by AdminAccountsService to resolve emails for the accounts list — one page is always enough at test scale. */
+        listUsers: async (_options: { page: number; perPage: number }) => ({
+          data: { users: [...this.authUsersByToken.values()] },
+          error: null,
+        }),
       },
     },
     from: (table: string) => {
@@ -364,6 +432,15 @@ export class FakeSupabaseService {
       if (table === 'notifications_log') {
         return this.notificationsLogTable();
       }
+      if (table === 'coiffeur_messages') {
+        return this.coiffeurMessagesTable();
+      }
+      if (table === 'ad_slots') {
+        return this.adSlotsTable();
+      }
+      if (table === 'app_content') {
+        return this.appContentTable();
+      }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
     rpc: async (fn: string, params: Record<string, unknown> = {}) => {
@@ -371,6 +448,18 @@ export class FakeSupabaseService {
         return this.searchSalonsRpc(params);
       }
       throw new Error(`FakeSupabaseService: unsupported rpc "${fn}"`);
+    },
+    storage: {
+      /** Only the one bucket/call any code under test actually uses so far. */
+      from: (bucket: string) => ({
+        createSignedUrls: async (paths: string[], expiresIn: number) => ({
+          data: paths.map((path) => ({
+            path,
+            signedUrl: `https://fake.local/${bucket}/${path}?expiresIn=${expiresIn}`,
+          })),
+          error: null,
+        }),
+      }),
     },
   };
 
@@ -389,6 +478,7 @@ export class FakeSupabaseService {
         last_name: profile?.lastName ?? '',
         photo_url: null,
         role,
+        account_status: 'active',
       });
     }
   }
@@ -405,6 +495,11 @@ export class FakeSupabaseService {
     this.pushTokens.clear();
     this.notificationPreferences.clear();
     this.notificationsLog.clear();
+    this.coiffeurMessages.clear();
+    this.adSlots.clear();
+    for (const [id, row] of defaultAdSlots()) this.adSlots.set(id, row);
+    this.appContent.clear();
+    for (const [key, row] of defaultAppContent()) this.appContent.set(key, row);
   }
 
   /**
@@ -623,20 +718,7 @@ export class FakeSupabaseService {
     const profiles = this.profiles;
 
     return {
-      select: () => ({
-        eq: (_column: 'id', id: string) => ({
-          maybeSingle: async (): Promise<QueryResult> => ({ data: profiles.get(id) ?? null, error: null }),
-        }),
-        /** e.g. `.select().in('id', [...])` — src/appointments/ resolving several clients' names at once. */
-        in: async (_column: 'id', ids: string[]): Promise<QueryResult> => ({
-          data: [...profiles.values()].filter((row) => ids.includes(row.id)),
-          error: null,
-        }),
-        limit: async (count: number): Promise<QueryResult> => ({
-          data: [...profiles.values()].slice(0, count),
-          error: null,
-        }),
-      }),
+      select: () => new FakeSelectQuery<ProfileRow>(() => [...profiles.values()]),
       update: (patch: Partial<ProfileRow>) => ({
         eq: (_column: 'id', id: string) => ({
           select: () => ({
@@ -962,6 +1044,79 @@ export class FakeSupabaseService {
         rows.set(id, created);
         return Promise.resolve({ data: created, error: null });
       },
+    };
+  }
+
+  private coiffeurMessagesTable() {
+    const rows = this.coiffeurMessages;
+
+    return {
+      select: () => new FakeSelectQuery<CoiffeurMessageRow>(() => [...rows.values()]),
+
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async (): Promise<QueryResult> => {
+            const id = randomUUID();
+            const created = {
+              read_at: null,
+              ...row,
+              id,
+              created_at: new Date().toISOString(),
+            } as CoiffeurMessageRow;
+            rows.set(id, created);
+            return { data: created, error: null };
+          },
+        }),
+      }),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<CoiffeurMessageRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          const updated = { ...existing, ...patch };
+          rows.set(existing.id, updated);
+          return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private adSlotsTable() {
+    const rows = this.adSlots;
+
+    return {
+      select: () => new FakeSelectQuery<AdSlotRow>(() => [...rows.values()]),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<AdSlotRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
+          rows.set(existing.id, updated);
+          return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private appContentTable() {
+    const rows = this.appContent;
+
+    return {
+      select: () => new FakeSelectQuery<AppContentRow>(() => [...rows.values()]),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<AppContentRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
+          rows.set(existing.key, updated);
+          return { data: updated, count: 1 };
+        }),
     };
   }
 }

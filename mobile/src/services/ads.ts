@@ -1,20 +1,6 @@
-/**
- * Mock ad-zone service (issue #5). The admin back-office will own activation,
- * image and link per placement (see TODO.md's "CRUD zones publicitaires");
- * this file is the seam it replaces. Every slot starts inactive, so nothing
- * renders until an admin turns one on.
- */
+import { apiClient } from "../lib/apiClient";
 
-const LATENCY_MS = 250;
-
-function delay(ms = LATENCY_MS): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export type AdPlacementId =
-  | "home_banner"
-  | "search_results"
-  | "booking_confirmation";
+export type AdPlacementId = "home_banner" | "search_results" | "booking_confirmation";
 
 export interface AdSlot {
   id: AdPlacementId;
@@ -24,33 +10,28 @@ export interface AdSlot {
   linkUrl: string | null;
 }
 
-const AD_SLOTS: AdSlot[] = [
-  {
-    id: "home_banner",
-    active: false,
-    headline: "Nos partenaires beauté",
-    imageUri: null,
-    linkUrl: null,
-  },
-  {
-    id: "search_results",
-    active: false,
-    headline: "Découvrez nos marques partenaires",
-    imageUri: null,
-    linkUrl: null,
-  },
-  {
-    id: "booking_confirmation",
-    active: false,
-    headline: "Prenez soin de vos cheveux entre deux rendez-vous",
-    imageUri: null,
-    linkUrl: null,
-  },
-];
+interface AdSlotApiResponse {
+  id: AdPlacementId;
+  active: boolean;
+  headline: string;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  updatedAt: string;
+}
+
+function mapSlot(row: AdSlotApiResponse): AdSlot {
+  return {
+    id: row.id,
+    active: row.active,
+    headline: row.headline,
+    imageUri: row.imageUrl,
+    linkUrl: row.linkUrl,
+  };
+}
 
 export async function getAdSlots(): Promise<AdSlot[]> {
-  await delay();
-  return AD_SLOTS;
+  const { data } = await apiClient.get<AdSlotApiResponse[]>("/ad-slots");
+  return data.map(mapSlot);
 }
 
 export async function getAdSlot(id: AdPlacementId): Promise<AdSlot | null> {

@@ -61,13 +61,13 @@ Source: cahier des charges (App mobile iOS & Android — mise en relation partic
 - [ ] Notification/flag J-7 avant fin d'abonnement, pour déclencher le bandeau de rappel côté app (issue #8)
 
 ### Back-office admin
-- [ ] Auth sécurisée back-office
-- [ ] Liste + validation/rejet dossiers coiffeurs (pièce ID + diplôme) avec message
-- [ ] Suspension / bannissement compte (particulier ou coiffeur)
-- [ ] Messagerie interne admin ↔ coiffeur (litige avant bannissement)
-- [ ] Gestion de contenu / pages
-- [ ] Modération avis signalés
-- [ ] CRUD zones publicitaires: image, lien, période d'activation, par emplacement (issue #5 — voir "## Admin" et propositions d'emplacements sous "Particulier")
+- [x] Auth sécurisée back-office
+- [x] Liste + validation/rejet dossiers coiffeurs (pièce ID + diplôme) avec message
+- [x] Suspension / bannissement compte (particulier ou coiffeur)
+- [x] Messagerie interne admin ↔ coiffeur (litige avant bannissement) — coiffeur notifié par push ; pas encore d'écran mobile pour lire/répondre
+- [x] Gestion de contenu / pages — 4e slide onboarding uniquement pour l'instant
+- [x] Modération avis signalés
+- [x] CRUD zones publicitaires: image, lien, période d'activation, par emplacement (issue #5 — voir "## Admin" et propositions d'emplacements sous "Particulier")
 
 ### Divers / infra
 - [ ] Choix stack backend + DB
@@ -156,14 +156,14 @@ de routes `(admin)` séparé — il n'héritera donc pas du header/footer market
 À démarrer quand le backend sera prêt.
 
 - [x] Créer le groupe de routes `(admin)` avec son propre layout (sidebar) — `web/src/app/(admin)/`, rail d'icônes + topbar, tableau de bord sur `/admin` (données statiques tant que l'auth admin n'existe pas)
-- [ ] Auth admin sécurisée
-- [ ] Liste + validation/rejet dossiers coiffeurs (pièce ID, diplôme, KBIS/RNE) avec message de refus
-- [ ] Suspension / bannissement compte (particulier ou coiffeur)
-- [ ] Messagerie interne admin ↔ coiffeur
-- [ ] Modération avis signalés
-- [ ] Gestion des zones publicitaires: upload image, lien, activation par emplacement, popups (issue #5)
-- [ ] Gestion de contenu / pages (dont contenu de la 4e slide onboarding, issue #5)
-- [ ] Vue abonnements coiffeurs (statut, échéance)
+- [x] Auth admin sécurisée — Supabase Auth (`profiles.role === 'admin'`), lien depuis le bouton "Compte" de la landing, `/login`
+- [x] Liste + validation/rejet dossiers coiffeurs (pièce ID, diplôme, KBIS/RNE) avec message de refus — `/admin/dossiers`
+- [x] Suspension / bannissement compte (particulier ou coiffeur) — `/admin/comptes`, enforcé côté serveur dans `SupabaseStrategy`
+- [x] Messagerie interne admin ↔ coiffeur — `/admin/messagerie`, notification push au coiffeur ; pas d'écran mobile encore côté coiffeur pour répondre depuis l'app
+- [x] Modération avis signalés — `/admin/avis`
+- [x] Gestion des zones publicitaires: upload image, lien, activation par emplacement (issue #5) — `/admin/publicites`, `mobile/src/services/ads.ts` branché sur l'API réelle ; pas de popups à fréquence limitée pour l'instant, seulement les 3 emplacements bandeau/bannière/pop-up existants
+- [x] Gestion de contenu / pages (dont contenu de la 4e slide onboarding, issue #5) — `/admin/contenu`, `mobile/src/services/content.ts` branché sur l'API réelle ; une seule page de contenu gérée pour l'instant
+- [ ] Vue abonnements coiffeurs (statut, échéance) — pas de backend abonnements existant, hors scope pour l'instant
 
 ## À définir (bloquant pour specs finales)
 - [ ] Prix abonnements mensuel / annuel

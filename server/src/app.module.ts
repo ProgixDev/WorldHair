@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AdSlotsModule } from './ad-slots/ad-slots.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -12,9 +13,11 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { ConfigModule } from './config/config.module';
 import { EnvironmentVariables } from './config/env.validation';
+import { ContentModule } from './content/content.module';
 import { DatabaseModule } from './database/database.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { HealthModule } from './health/health.module';
+import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalonModule } from './salon/salon.module';
@@ -47,6 +50,9 @@ import { UsersModule } from './users/users.module';
     AppointmentsModule,
     ReviewsModule,
     NotificationsModule,
+    MessagesModule,
+    AdSlotsModule,
+    ContentModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

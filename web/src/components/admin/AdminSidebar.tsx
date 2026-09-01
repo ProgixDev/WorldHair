@@ -7,6 +7,8 @@ import {
   Flag,
   LayoutDashboard,
   Megaphone,
+  MessageCircle,
+  Newspaper,
   Settings,
   Users,
 } from "lucide-react";
@@ -15,17 +17,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * Every entry maps to a line under TODO.md's "## Admin". Only `/admin` and the
- * two queues backed by real endpoints are reachable today — the rest are
- * declared here so the rail is the real navigation from the start rather than
- * something that gets rebuilt once those pages land.
+ * Every entry maps to a line under TODO.md's "## Admin". `/admin/abonnements`
+ * and `/admin/parametres` have no backend yet — declared here so the rail is
+ * the real navigation from the start rather than something that gets
+ * rebuilt once those pages land.
  */
 const NAV_ITEMS = [
   { href: "/admin", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/admin/dossiers", label: "Dossiers coiffeurs", icon: FileCheck2 },
   { href: "/admin/avis", label: "Avis signalés", icon: Flag },
   { href: "/admin/comptes", label: "Comptes", icon: Users },
+  { href: "/admin/messagerie", label: "Messagerie", icon: MessageCircle },
   { href: "/admin/publicites", label: "Publicités", icon: Megaphone },
+  { href: "/admin/contenu", label: "Contenu", icon: Newspaper },
   { href: "/admin/abonnements", label: "Abonnements", icon: CreditCard },
   { href: "/admin/parametres", label: "Paramètres", icon: Settings },
 ];
