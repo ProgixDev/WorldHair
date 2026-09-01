@@ -103,3 +103,7 @@ html {
     @apply bg-background text-foreground font-sans;
   }
 }
+
+button {
+  cursor: pointer;
+}

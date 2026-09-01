@@ -155,7 +155,7 @@ Emplacement décidé: même appli Next.js que la landing (`web/`), dans un group
 de routes `(admin)` séparé — il n'héritera donc pas du header/footer marketing.
 À démarrer quand le backend sera prêt.
 
-- [ ] Créer le groupe de routes `(admin)` avec son propre layout (sidebar)
+- [x] Créer le groupe de routes `(admin)` avec son propre layout (sidebar) — `web/src/app/(admin)/`, rail d'icônes + topbar, tableau de bord sur `/admin` (données statiques tant que l'auth admin n'existe pas)
 - [ ] Auth admin sécurisée
 - [ ] Liste + validation/rejet dossiers coiffeurs (pièce ID, diplôme, KBIS/RNE) avec message de refus
 - [ ] Suspension / bannissement compte (particulier ou coiffeur)
