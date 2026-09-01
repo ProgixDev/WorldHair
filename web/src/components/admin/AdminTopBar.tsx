@@ -1,11 +1,22 @@
 "use client";
 
-import { type AdminAccount, listAccounts } from "@/services/adminApi";
 import { getAdminSession, signOutAdmin } from "@/services/adminAuth";
 import { cn } from "@/lib/utils";
-import { Bell, LogOut, Search } from "lucide-react";
+import {
+  CreditCard,
+  FileCheck2,
+  Flag,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Newspaper,
+  Search,
+  Settings,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function initialsFor(firstName: string, lastName: string, email: string): string {
   const fromName = `${firstName[0] ?? ""}${lastName[0] ?? ""}`;
@@ -13,19 +24,71 @@ function initialsFor(firstName: string, lastName: string, email: string): string
   return (email[0] ?? "?").toUpperCase();
 }
 
-const ROLE_LABELS: Record<AdminAccount["role"], string> = {
-  particulier: "Particulier",
-  coiffeur: "Coiffeur",
-};
+interface Functionality {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /** Extra terms a page is found by, beyond its own label — mirrors AdminSidebar's NAV_ITEMS. */
+  keywords: string[];
+}
 
-const MIN_QUERY_LENGTH = 2;
-const DEBOUNCE_MS = 250;
+const FUNCTIONALITIES: Functionality[] = [
+  {
+    href: "/admin",
+    label: "Tableau de bord",
+    icon: LayoutDashboard,
+    keywords: ["statistiques", "réservations", "vue d'ensemble", "dashboard"],
+  },
+  {
+    href: "/admin/dossiers",
+    label: "Dossiers coiffeurs",
+    icon: FileCheck2,
+    keywords: ["kbis", "rne", "diplôme", "pièce d'identité", "validation", "inscription"],
+  },
+  {
+    href: "/admin/avis",
+    label: "Avis signalés",
+    icon: Flag,
+    keywords: ["modération", "masquer un avis", "signalement", "commentaires"],
+  },
+  {
+    href: "/admin/comptes",
+    label: "Comptes",
+    icon: Users,
+    keywords: ["utilisateurs", "suspendre", "bannir", "profils", "particuliers"],
+  },
+  {
+    href: "/admin/publicites",
+    label: "Publicités",
+    icon: Megaphone,
+    keywords: ["bandeau", "bannière", "pop-up", "zones publicitaires", "ads"],
+  },
+  {
+    href: "/admin/contenu",
+    label: "Contenu",
+    icon: Newspaper,
+    keywords: ["onboarding", "slides", "textes", "application mobile"],
+  },
+  {
+    href: "/admin/abonnements",
+    label: "Abonnements",
+    icon: CreditCard,
+    keywords: ["coiffeur pro", "facturation", "plan", "essai"],
+  },
+  {
+    href: "/admin/parametres",
+    label: "Paramètres",
+    icon: Settings,
+    keywords: ["mot de passe", "email", "administrateurs", "créer un admin"],
+  },
+];
+
+const MIN_QUERY_LENGTH = 1;
 
 export function AdminTopBar({ title }: { title: string }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [focused, setFocused] = useState(false);
-  const [suggestions, setSuggestions] = useState<AdminAccount[]>([]);
   const [initials, setInitials] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,17 +97,14 @@ export function AdminTopBar({ title }: { title: string }) {
     });
   }, []);
 
-  useEffect(() => {
-    const query = search.trim();
-    if (query.length < MIN_QUERY_LENGTH) return;
-
-    const timeoutId = setTimeout(() => {
-      listAccounts(undefined, query)
-        .then((accounts) => setSuggestions(accounts.slice(0, 6)))
-        .catch(() => setSuggestions([]));
-    }, DEBOUNCE_MS);
-
-    return () => clearTimeout(timeoutId);
+  const suggestions = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (query.length < MIN_QUERY_LENGTH) return [];
+    return FUNCTIONALITIES.filter(
+      (item) =>
+        item.label.toLowerCase().includes(query) ||
+        item.keywords.some((keyword) => keyword.toLowerCase().includes(query)),
+    ).slice(0, 6);
   }, [search]);
 
   const handleLogout = async () => {
@@ -52,20 +112,15 @@ export function AdminTopBar({ title }: { title: string }) {
     router.replace("/login");
   };
 
-  const goToAccount = (query: string, role?: AdminAccount["role"]) => {
+  const goTo = (href: string) => {
     setSearch("");
-    setSuggestions([]);
     setFocused(false);
-    const params = new URLSearchParams();
-    if (query) params.set("search", query);
-    if (role) params.set("role", role);
-    const queryString = params.toString();
-    router.push(queryString ? `/admin/comptes?${queryString}` : "/admin/comptes");
+    router.push(href);
   };
 
   const handleSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    goToAccount(search.trim());
+    if (suggestions[0]) goTo(suggestions[0].href);
   };
 
   const showSuggestions = focused && search.trim().length >= MIN_QUERY_LENGTH;
@@ -76,7 +131,7 @@ export function AdminTopBar({ title }: { title: string }) {
       className="relative hidden max-w-sm flex-1 items-center md:flex"
     >
       <label className="sr-only" htmlFor="admin-topbar-search">
-        Rechercher un compte
+        Rechercher une fonctionnalité
       </label>
       <input
         id="admin-topbar-search"
@@ -86,7 +141,7 @@ export function AdminTopBar({ title }: { title: string }) {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         autoComplete="off"
-        placeholder="Rechercher un compte..."
+        placeholder="Rechercher une fonctionnalité..."
         className="h-11 w-full rounded-full border border-[#1e2e45] bg-[#111c2e] pr-11 pl-5 text-sm text-[#f2f6fb] placeholder:text-[#93a6bc] focus:border-[#2a93d5] focus:outline-none"
       />
       <button
@@ -102,30 +157,25 @@ export function AdminTopBar({ title }: { title: string }) {
           {suggestions.length === 0 && (
             <li className="px-4 py-2.5 text-xs text-[#93a6bc]">Aucun résultat.</li>
           )}
-          {suggestions.map((account) => {
-            const fullName = `${account.firstName} ${account.lastName}`.trim();
-            return (
-              <li key={account.id}>
-                <button
-                  type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    goToAccount(account.email, account.role);
-                  }}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/5",
-                  )}
-                >
-                  <span className="min-w-0 flex-1 truncate text-sm text-[#f2f6fb]">
-                    {fullName || account.email}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-[#5b7186]">
-                    {ROLE_LABELS[account.role]}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
+          {suggestions.map((item) => (
+            <li key={item.href}>
+              <button
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  goTo(item.href);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/5",
+                )}
+              >
+                <item.icon className="size-4 shrink-0 text-[#93a6bc]" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-sm text-[#f2f6fb]">
+                  {item.label}
+                </span>
+              </button>
+            </li>
+          ))}
         </ul>
       )}
     </form>
@@ -138,13 +188,6 @@ export function AdminTopBar({ title }: { title: string }) {
       {form}
 
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="grid size-10 place-items-center rounded-full border border-[#1e2e45] bg-[#111c2e] text-[#93a6bc] transition-colors hover:text-white"
-        >
-          <Bell className="size-4" />
-        </button>
         <div
           aria-hidden="true"
           className="grid size-10 place-items-center rounded-full bg-[#111c2e] text-xs font-bold text-[#f2f6fb]"

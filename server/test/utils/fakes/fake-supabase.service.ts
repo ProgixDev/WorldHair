@@ -420,6 +420,17 @@ export class FakeSupabaseService {
           }
           return { data: { user }, error: null };
         },
+        /** Used by AdminUsersService.remove() — mirrors the real cascade from auth.users to profiles. */
+        deleteUser: async (id: string) => {
+          const tokenEntry = [...this.authUsersByToken.entries()].find(
+            ([, user]) => user.id === id,
+          );
+          if (tokenEntry) {
+            this.authUsersByToken.delete(tokenEntry[0]);
+          }
+          this.profiles.delete(id);
+          return { data: {}, error: null };
+        },
       },
     },
     from: (table: string) => {

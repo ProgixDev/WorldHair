@@ -2,24 +2,33 @@
 
 import { cn } from "@/lib/utils";
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
+import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import {
   type AdminSession,
   getAdminSession,
   updateAdminEmail,
   updateAdminPassword,
 } from "@/services/adminAuth";
-import { type AdminUser, createAdmin, listAdmins } from "@/services/adminApi";
+import {
+  type AdminUser,
+  createAdmin,
+  deleteAdmin,
+  listAdmins,
+} from "@/services/adminApi";
+import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 const TIER_LABELS: Record<AdminUser["tier"], string> = {
   admin: "Admin",
-  admin_limited: "Admin limité",
+  admin_limited: "Modérateur",
 };
 
 const TIER_STYLES: Record<AdminUser["tier"], string> = {
   admin: "bg-[#2a93d5]/15 text-[#2a93d5]",
   admin_limited: "bg-white/10 text-[#93a6bc]",
 };
+
+const ADMINS_PAGE_SIZE = 5;
 
 export default function AdminParametresPage() {
   const [email, setEmail] = useState("");
@@ -41,6 +50,9 @@ export default function AdminParametresPage() {
   const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [createAdminError, setCreateAdminError] = useState<string | null>(null);
   const [createAdminMessage, setCreateAdminMessage] = useState<string | null>(null);
+  const [adminsPage, setAdminsPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     getAdminSession().then((data) => {
@@ -74,11 +86,25 @@ export default function AdminParametresPage() {
       setCreateAdminMessage("Administrateur créé.");
       setNewAdminEmail("");
       setNewAdminPassword("");
+      setAdminsPage(1);
       loadAdmins();
     } catch (error) {
       setCreateAdminError(error instanceof Error ? error.message : "Une erreur est survenue.");
     } finally {
       setCreatingAdmin(false);
+    }
+  };
+
+  const handleDeleteAdmin = async (id: string) => {
+    setDeletingId(id);
+    setDeleteError(null);
+    try {
+      await deleteAdmin(id);
+      setAdmins((current) => current.filter((admin) => admin.id !== id));
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Une erreur est survenue.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -134,43 +160,47 @@ export default function AdminParametresPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-5">
               <p className="text-sm font-medium text-[#f2f6fb]">Adresse email</p>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] focus:outline-2 focus:outline-[#2a93d5]"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="h-11 min-w-0 flex-1 rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] focus:outline-2 focus:outline-[#2a93d5]"
+                />
+                <button
+                  type="button"
+                  disabled={emailSaving}
+                  onClick={() => void handleEmailSave()}
+                  className="h-11 shrink-0 rounded-full bg-[#2a93d5] px-6 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
+                >
+                  {emailSaving ? "Enregistrement…" : "Mettre à jour"}
+                </button>
+              </div>
               {emailError && <p className="text-xs text-[#ff7a70]">{emailError}</p>}
               {emailMessage && <p className="text-xs text-[#1f9d55]">{emailMessage}</p>}
-              <button
-                type="button"
-                disabled={emailSaving}
-                onClick={() => void handleEmailSave()}
-                className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
-              >
-                {emailSaving ? "Enregistrement…" : "Mettre à jour"}
-              </button>
             </div>
 
             <div className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-5">
               <p className="text-sm font-medium text-[#f2f6fb]">Mot de passe</p>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                placeholder="6 caractères minimum"
-                className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="6 caractères minimum"
+                  className="h-11 min-w-0 flex-1 rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
+                />
+                <button
+                  type="button"
+                  disabled={passwordSaving || !newPassword}
+                  onClick={() => void handlePasswordSave()}
+                  className="h-11 shrink-0 rounded-full bg-[#2a93d5] px-6 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
+                >
+                  {passwordSaving ? "Enregistrement…" : "Changer"}
+                </button>
+              </div>
               {passwordError && <p className="text-xs text-[#ff7a70]">{passwordError}</p>}
               {passwordMessage && <p className="text-xs text-[#1f9d55]">{passwordMessage}</p>}
-              <button
-                type="button"
-                disabled={passwordSaving || !newPassword}
-                onClick={() => void handlePasswordSave()}
-                className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
-              >
-                {passwordSaving ? "Enregistrement…" : "Changer"}
-              </button>
             </div>
           </div>
 
@@ -208,7 +238,7 @@ export default function AdminParametresPage() {
                   type="button"
                   disabled={creatingAdmin || !newAdminEmail || !newAdminPassword}
                   onClick={() => void handleCreateAdmin()}
-                  className="shrink-0 rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
+                  className="h-11 shrink-0 rounded-full bg-[#2a93d5] px-8 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
                 >
                   {creatingAdmin ? "Création…" : "Créer"}
                 </button>
@@ -221,24 +251,47 @@ export default function AdminParametresPage() {
               <div className="flex flex-col gap-2">
                 {adminsLoading && <p className="text-xs text-[#93a6bc]">Chargement…</p>}
                 {adminsError && <p className="text-xs text-[#ff7a70]">{adminsError}</p>}
+                {deleteError && <p className="text-xs text-[#ff7a70]">{deleteError}</p>}
                 {!adminsLoading &&
                   !adminsError &&
-                  admins.map((admin) => (
+                  pageSlice(admins, adminsPage, ADMINS_PAGE_SIZE).map((admin) => (
                     <div
                       key={admin.id}
                       className="flex items-center justify-between gap-3 rounded-xl bg-[#080f1a] px-4 py-2.5"
                     >
                       <span className="truncate text-sm text-[#f2f6fb]">{admin.email}</span>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full px-3 py-1 text-xs font-medium",
-                          TIER_STYLES[admin.tier],
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "rounded-full px-3 py-1 text-xs font-medium",
+                            TIER_STYLES[admin.tier],
+                          )}
+                        >
+                          {TIER_LABELS[admin.tier]}
+                        </span>
+                        {admin.id !== session?.userId && (
+                          <button
+                            type="button"
+                            aria-label="Supprimer cet administrateur"
+                            disabled={deletingId === admin.id}
+                            onClick={() => void handleDeleteAdmin(admin.id)}
+                            className="grid size-7 place-items-center rounded-full text-[#93a6bc] transition-colors hover:bg-[#ff7a70]/15 hover:text-[#ff7a70] disabled:opacity-50"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
                         )}
-                      >
-                        {TIER_LABELS[admin.tier]}
-                      </span>
+                      </div>
                     </div>
                   ))}
+
+                {!adminsLoading && !adminsError && (
+                  <Pagination
+                    page={adminsPage}
+                    total={admins.length}
+                    pageSize={ADMINS_PAGE_SIZE}
+                    onPageChange={setAdminsPage}
+                  />
+                )}
               </div>
             </div>
           )}

@@ -215,6 +215,59 @@ const APPOINTMENT_SEEDS: AppointmentSeed[] = [
   { serviceIndex: 0, dayOffset: -20, hour: 9, minute: 30, status: "cancelled" },
 ];
 
+interface ChartAppointmentSeed {
+  serviceIndex: number;
+  /** 0 = January, in the current calendar year — AdminStatsService's month buckets are Jan–Dec of `now`. */
+  month: number;
+  day: number;
+  status: "confirmed" | "cancelled";
+}
+
+/**
+ * Backdated `created_at` spread across the whole year, purely so `/admin`'s
+ * "Réservations" chart (AdminStatsService groups by `created_at`, not
+ * `starts_at`) shows two full curves instead of one bump around whichever
+ * month the script happened to run in.
+ */
+const CHART_APPOINTMENT_SEEDS: ChartAppointmentSeed[] = [
+  { serviceIndex: 0, month: 0, day: 8, status: "confirmed" },
+  { serviceIndex: 1, month: 0, day: 22, status: "confirmed" },
+  { serviceIndex: 2, month: 1, day: 5, status: "confirmed" },
+  { serviceIndex: 0, month: 1, day: 18, status: "confirmed" },
+  { serviceIndex: 3, month: 1, day: 25, status: "cancelled" },
+  { serviceIndex: 1, month: 2, day: 3, status: "confirmed" },
+  { serviceIndex: 2, month: 2, day: 10, status: "confirmed" },
+  { serviceIndex: 0, month: 2, day: 17, status: "confirmed" },
+  { serviceIndex: 3, month: 2, day: 24, status: "confirmed" },
+  { serviceIndex: 1, month: 2, day: 28, status: "cancelled" },
+  { serviceIndex: 2, month: 3, day: 4, status: "confirmed" },
+  { serviceIndex: 0, month: 3, day: 12, status: "confirmed" },
+  { serviceIndex: 3, month: 3, day: 20, status: "confirmed" },
+  { serviceIndex: 1, month: 3, day: 27, status: "cancelled" },
+  { serviceIndex: 2, month: 4, day: 6, status: "confirmed" },
+  { serviceIndex: 0, month: 4, day: 15, status: "confirmed" },
+  { serviceIndex: 3, month: 5, day: 2, status: "confirmed" },
+  { serviceIndex: 1, month: 5, day: 14, status: "confirmed" },
+  { serviceIndex: 2, month: 6, day: 9, status: "confirmed" },
+  { serviceIndex: 0, month: 6, day: 21, status: "confirmed" },
+  { serviceIndex: 3, month: 6, day: 29, status: "cancelled" },
+  { serviceIndex: 1, month: 7, day: 3, status: "confirmed" },
+  { serviceIndex: 2, month: 7, day: 11, status: "confirmed" },
+  { serviceIndex: 0, month: 7, day: 19, status: "confirmed" },
+  { serviceIndex: 3, month: 7, day: 26, status: "confirmed" },
+  { serviceIndex: 1, month: 8, day: 2, status: "cancelled" },
+  { serviceIndex: 2, month: 8, day: 9, status: "confirmed" },
+  { serviceIndex: 0, month: 8, day: 16, status: "confirmed" },
+  { serviceIndex: 3, month: 9, day: 5, status: "confirmed" },
+  { serviceIndex: 1, month: 9, day: 18, status: "confirmed" },
+  { serviceIndex: 2, month: 9, day: 27, status: "cancelled" },
+  { serviceIndex: 0, month: 10, day: 8, status: "confirmed" },
+  { serviceIndex: 3, month: 10, day: 21, status: "confirmed" },
+  { serviceIndex: 1, month: 11, day: 6, status: "confirmed" },
+  { serviceIndex: 2, month: 11, day: 15, status: "confirmed" },
+  { serviceIndex: 0, month: 11, day: 24, status: "cancelled" },
+];
+
 async function seedDemoAppointments(particulierId: string, coiffeurId: string): Promise<void> {
   const { data: services, error: servicesError } = await supabase
     .from("coiffeur_services")
@@ -231,7 +284,7 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
     .eq("coiffeur_id", coiffeurId);
   if (deleteError) throw deleteError;
 
-  const rows = APPOINTMENT_SEEDS.map((seed) => {
+  const agendaRows = APPOINTMENT_SEEDS.map((seed) => {
     const service = services[seed.serviceIndex % services.length];
     const startsAt = new Date();
     startsAt.setDate(startsAt.getDate() + seed.dayOffset);
@@ -246,13 +299,39 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
       starts_at: startsAt.toISOString(),
       status: seed.status,
       client_note: seed.note ?? null,
+      // A bulk insert's column list is the union of every row's keys — a row
+      // that omits `created_at` gets an explicit NULL, not `now()`'s default,
+      // once any row in the same batch (chartRows, below) sets it.
+      created_at: new Date().toISOString(),
     };
   });
 
-  const { error: insertError } = await supabase.from("appointments").insert(rows);
+  const year = new Date().getUTCFullYear();
+  const chartRows = CHART_APPOINTMENT_SEEDS.map((seed) => {
+    const service = services[seed.serviceIndex % services.length];
+    const at = new Date(Date.UTC(year, seed.month, seed.day, 11, 0, 0)).toISOString();
+    return {
+      particulier_id: particulierId,
+      coiffeur_id: coiffeurId,
+      service_id: service.id as string,
+      service_name: service.name as string,
+      price: service.price,
+      duration_min: service.duration_min,
+      starts_at: at,
+      status: seed.status,
+      client_note: null,
+      created_at: at,
+    };
+  });
+
+  const { error: insertError } = await supabase
+    .from("appointments")
+    .insert([...agendaRows, ...chartRows]);
   if (insertError) throw insertError;
 
-  console.log(`  demo appointments seeded (${rows.length})`);
+  console.log(
+    `  demo appointments seeded (${agendaRows.length} agenda + ${chartRows.length} chart-only)`,
+  );
 }
 
 async function seedSalonWorkspace(

@@ -46,4 +46,25 @@ describe('AdminUsersService', () => {
     // AdminUsersService.create() must have promoted it to admin_limited —
     // list() filtering on ['admin', 'admin_limited'] proves that happened.
   });
+
+  it("remove() deletes another admin's account, of either tier", async () => {
+    const created = await service.create('moderator@worldhair.app', 'password123');
+
+    await service.remove(created.id, 'user-a');
+
+    const admins = await service.list();
+    expect(admins.map((a) => a.id)).not.toContain(created.id);
+  });
+
+  it('remove() refuses to delete your own account', async () => {
+    await expect(service.remove('user-a', 'user-a')).rejects.toThrow(
+      'Vous ne pouvez pas supprimer votre propre compte.',
+    );
+  });
+
+  it('remove() refuses a non-admin id', async () => {
+    await expect(service.remove('user-p', 'user-a')).rejects.toThrow(
+      "Ce compte n'est pas un administrateur.",
+    );
+  });
 });

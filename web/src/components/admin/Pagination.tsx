@@ -3,17 +3,17 @@
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-/** Rows per page across every admin list. */
+/** Default rows per page — override per-list via the `pageSize` param/prop. */
 export const PAGE_SIZE = 10;
 
-export function pageCount(total: number): number {
-  return Math.max(1, Math.ceil(total / PAGE_SIZE));
+export function pageCount(total: number, pageSize: number = PAGE_SIZE): number {
+  return Math.max(1, Math.ceil(total / pageSize));
 }
 
 /** The slice of `items` belonging to `page` (1-indexed). */
-export function pageSlice<T>(items: T[], page: number): T[] {
-  const start = (page - 1) * PAGE_SIZE;
-  return items.slice(start, start + PAGE_SIZE);
+export function pageSlice<T>(items: T[], page: number, pageSize: number = PAGE_SIZE): T[] {
+  const start = (page - 1) * pageSize;
+  return items.slice(start, start + pageSize);
 }
 
 /**
@@ -25,17 +25,19 @@ export function pageSlice<T>(items: T[], page: number): T[] {
 export function Pagination({
   page,
   total,
+  pageSize = PAGE_SIZE,
   onPageChange,
 }: {
   page: number;
   total: number;
+  pageSize?: number;
   onPageChange: (page: number) => void;
 }) {
-  const pages = pageCount(total);
+  const pages = pageCount(total, pageSize);
   if (pages <= 1) return null;
 
-  const first = (page - 1) * PAGE_SIZE + 1;
-  const last = Math.min(page * PAGE_SIZE, total);
+  const first = (page - 1) * pageSize + 1;
+  const last = Math.min(page * pageSize, total);
 
   return (
     <div className="mt-2 flex items-center justify-between gap-4">

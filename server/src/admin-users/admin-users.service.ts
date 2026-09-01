@@ -10,9 +10,11 @@ interface ProfileRow {
 
 /**
  * "Gestion des admins" (web `/admin/parametres`): letting a full admin
- * create a lower-privilege one. `admin_limited` has every other admin
- * capability (see `common/types/role.ts`) — only this module, gated
+ * create and remove other admin accounts. `admin_limited` has every other
+ * admin capability (see `common/types/role.ts`) — only this module, gated
  * `@Roles('admin')` alone (no `admin_limited`), is exclusive to the top tier.
+ * create() always mints `admin_limited` — never a second full admin. remove()
+ * can delete any admin account, of either tier, except the caller's own.
  */
 @Injectable()
 export class AdminUsersService {
@@ -67,6 +69,31 @@ export class AdminUsersService {
       tier: 'admin_limited',
       createdAt: row?.created_at ?? new Date().toISOString(),
     };
+  }
+
+  /** A super admin can remove any admin account (either tier) except their own. */
+  async remove(id: string, currentUserId: string): Promise<void> {
+    if (id === currentUserId) {
+      throw new BadRequestException('Vous ne pouvez pas supprimer votre propre compte.');
+    }
+
+    const { data: profile, error: profileError } = await this.supabase.client
+      .from('profiles')
+      .select('id, role, created_at')
+      .eq('id', id)
+      .maybeSingle();
+    if (profileError) {
+      throw new InternalServerErrorException(profileError.message);
+    }
+    const row = profile as ProfileRow | null;
+    if (!row || (row.role !== 'admin' && row.role !== 'admin_limited')) {
+      throw new BadRequestException("Ce compte n'est pas un administrateur.");
+    }
+
+    const { error } = await this.supabase.client.auth.admin.deleteUser(id);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
   }
 
   /** Same paginated lookup as AdminAccountsService.emailsById — no bulk-by-id lookup in supabase-js. */

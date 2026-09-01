@@ -265,3 +265,7 @@ export async function createAdmin(email: string, password: string): Promise<Admi
   const { data } = await apiClient.post<AdminUser>("/admin/admins", { email, password });
   return data;
 }
+
+export async function deleteAdmin(id: string): Promise<void> {
+  await apiClient.delete(`/admin/admins/${id}`);
+}
