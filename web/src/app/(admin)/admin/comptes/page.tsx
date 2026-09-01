@@ -4,7 +4,8 @@ import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import { cn } from "@/lib/utils";
 import { type AdminAccount, listAccounts, setAccountStatus } from "@/services/adminApi";
-import { Search } from "lucide-react";
+import { Search, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
@@ -39,6 +40,11 @@ function AdminComptesPageContent() {
     () => (searchParams.get("role") === "coiffeur" ? "coiffeur" : "particulier"),
   );
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  // Set when arriving from a link that knows the exact account (e.g. dossiers'
+  // "Voir le profil") — a coiffeur's profiles.first_name/last_name are always
+  // blank (their identity lives in coiffeur_applications instead), so a name
+  // search can never find them; matching by id is the only reliable way in.
+  const [focusId, setFocusId] = useState(() => searchParams.get("id"));
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,22 +62,29 @@ function AdminComptesPageContent() {
   }, []);
 
   useEffect(() => {
-    load(role, search);
-  }, [role, search, load]);
+    // Ignore the text search while focusing a specific account by id.
+    load(role, focusId ? "" : search);
+  }, [role, search, focusId, load]);
 
   // Changing tab or query re-pages from the top — otherwise you can land on
   // page 3 of a one-page result and see nothing.
   const handleRoleChange = (next: AdminAccount["role"]) => {
     setLoading(true);
     setPage(1);
+    setFocusId(null);
     setRole(next);
   };
 
   const handleSearchChange = (value: string) => {
     setLoading(true);
     setPage(1);
+    setFocusId(null);
     setSearch(value);
   };
+
+  const visibleAccounts = focusId
+    ? accounts.filter((account) => account.id === focusId)
+    : accounts;
 
   const handleSetStatus = async (id: string, status: AdminAccount["accountStatus"]) => {
     setActioningId(id);
@@ -120,6 +133,16 @@ function AdminComptesPageContent() {
             </label>
           </div>
 
+          {focusId && (
+            <button
+              type="button"
+              onClick={() => setFocusId(null)}
+              className="mt-4 text-xs text-[#2a93d5] hover:text-white"
+            >
+              ← Voir tous les comptes
+            </button>
+          )}
+
           <div className="mt-6 flex flex-col gap-3">
             {loading && (
               <p className="py-8 text-center text-sm text-[#93a6bc]">Chargement…</p>
@@ -127,7 +150,7 @@ function AdminComptesPageContent() {
             {error && (
               <p className="py-8 text-center text-sm text-[#ff7a70]">{error}</p>
             )}
-            {!loading && !error && accounts.length === 0 && (
+            {!loading && !error && visibleAccounts.length === 0 && (
               <p className="py-8 text-center text-sm text-[#93a6bc]">
                 Aucun compte dans cette catégorie.
               </p>
@@ -135,7 +158,7 @@ function AdminComptesPageContent() {
 
             {!loading &&
               !error &&
-              pageSlice(accounts, page).map((account) => {
+              pageSlice(visibleAccounts, page).map((account) => {
               const fullName = `${account.firstName} ${account.lastName}`.trim();
               const displayName = fullName || account.email;
               const initial = (fullName || account.email)[0]?.toUpperCase() ?? "?";
@@ -168,6 +191,14 @@ function AdminComptesPageContent() {
                   <span className="text-xs text-[#93a6bc]">
                     {new Date(account.createdAt).toLocaleDateString("fr-FR")}
                   </span>
+                  <Link
+                    href={`/admin/comptes/${account.id}`}
+                    aria-label="Voir le profil"
+                    title="Voir le profil"
+                    className="grid size-8 shrink-0 place-items-center rounded-full text-[#93a6bc] transition-colors hover:bg-white/5 hover:text-white"
+                  >
+                    <UserRound className="size-4" aria-hidden="true" />
+                  </Link>
 
                   <div className="flex gap-2">
                     {account.accountStatus !== "active" && (
@@ -175,7 +206,7 @@ function AdminComptesPageContent() {
                         type="button"
                         disabled={busy}
                         onClick={() => void handleSetStatus(account.id, "active")}
-                        className="rounded-full bg-[#1f9d55] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                        className="rounded-full bg-[#1f9d55] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#1a8549] disabled:opacity-50"
                       >
                         Réactiver
                       </button>
@@ -195,7 +226,7 @@ function AdminComptesPageContent() {
                         type="button"
                         disabled={busy}
                         onClick={() => void handleSetStatus(account.id, "banned")}
-                        className="rounded-full bg-[#b3261e] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                        className="rounded-full bg-[#b3261e] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#921f18] disabled:opacity-50"
                       >
                         Bannir
                       </button>
@@ -206,7 +237,7 @@ function AdminComptesPageContent() {
             })}
 
             {!loading && !error && (
-              <Pagination page={page} total={accounts.length} onPageChange={setPage} />
+              <Pagination page={page} total={visibleAccounts.length} onPageChange={setPage} />
             )}
           </div>
         </div>

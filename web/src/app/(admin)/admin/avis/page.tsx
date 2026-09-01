@@ -109,7 +109,7 @@ export default function AdminAvisPage() {
                     type="button"
                     disabled={actioningId === review.id}
                     onClick={() => void handleModerate(review.id, "hide")}
-                    className="rounded-full bg-[#b3261e] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                    className="rounded-full bg-[#b3261e] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#921f18] disabled:opacity-50"
                   >
                     Masquer l&apos;avis
                   </button>

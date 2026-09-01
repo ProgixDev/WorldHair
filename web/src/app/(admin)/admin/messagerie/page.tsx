@@ -174,7 +174,7 @@ export default function AdminMessageriePage() {
                   type="button"
                   disabled={sending || !draft.trim()}
                   onClick={() => void handleSend()}
-                  className="grid size-10 shrink-0 place-items-center rounded-full bg-[#2a93d5] text-white disabled:opacity-50"
+                  className="grid size-10 shrink-0 place-items-center rounded-full bg-[#2a93d5] text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
                 >
                   <Send className="size-4" aria-hidden="true" />
                 </button>

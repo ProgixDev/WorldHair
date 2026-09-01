@@ -126,6 +126,21 @@ export async function setAccountStatus(
   return data;
 }
 
+export async function getAccount(id: string): Promise<AdminAccount> {
+  const { data } = await apiClient.get<AdminAccount>(`/admin/accounts/${id}`);
+  return data;
+}
+
+/** The coiffeur's dossier, looked up by profile id rather than application id — null if they never submitted one. */
+export async function getCoiffeurApplicationByProfileId(
+  profileId: string,
+): Promise<CoiffeurApplication | null> {
+  const { data } = await apiClient.get<CoiffeurApplication | null>(
+    `/admin/coiffeur-applications/by-profile/${profileId}`,
+  );
+  return data;
+}
+
 /** Mirrors server/src/messages/dto/message.dto.ts. */
 export interface ThreadSummary {
   coiffeurId: string;

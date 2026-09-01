@@ -54,6 +54,24 @@ describe('AdminAccountsService', () => {
     expect(byEmail.map((a) => a.id)).toEqual(['user-p']);
   });
 
+  it('getById() returns one account with its real email', async () => {
+    const account = await service.getById('user-c');
+
+    expect(account).toMatchObject({
+      id: 'user-c',
+      firstName: 'Sofia',
+      lastName: 'Benali',
+      email: 'sofia@example.com',
+      role: 'coiffeur',
+    });
+  });
+
+  it('getById() throws NotFoundException for an unknown id', async () => {
+    await expect(service.getById('00000000-0000-0000-0000-000000000000')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
   it('setStatus() suspends an account', async () => {
     const updated = await service.setStatus('user-p', 'suspended');
 

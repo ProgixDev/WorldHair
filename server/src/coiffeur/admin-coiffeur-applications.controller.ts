@@ -26,6 +26,15 @@ export class AdminCoiffeurApplicationsController {
     return applications.map(toCoiffeurApplicationDto);
   }
 
+  /** Backs the admin "Voir le profil" link — the coiffeur's own dossier, looked up by their profile id rather than by application id. */
+  @Get('by-profile/:profileId')
+  async getByProfileId(
+    @Param('profileId', ParseUUIDPipe) profileId: string,
+  ): Promise<CoiffeurApplicationDto | null> {
+    const application = await this.applications.getMine(profileId);
+    return application ? toCoiffeurApplicationDto(application) : null;
+  }
+
   @Patch(':id/decision')
   async decide(
     @Param('id', ParseUUIDPipe) id: string,

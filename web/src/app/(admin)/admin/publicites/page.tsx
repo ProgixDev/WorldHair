@@ -174,7 +174,7 @@ export default function AdminPublicitesPage() {
                       type="button"
                       disabled={busy}
                       onClick={() => void handleSave(slot.id)}
-                      className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                      className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
                     >
                       {busy ? "Enregistrement…" : "Enregistrer"}
                     </button>

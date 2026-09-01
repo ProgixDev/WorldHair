@@ -48,6 +48,23 @@ export class AdminAccountsService {
     );
   }
 
+  async getById(id: string): Promise<AdminAccountDto> {
+    const { data, error } = await this.supabase.client
+      .from('profiles')
+      .select('id, first_name, last_name, role, account_status, created_at')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException('Account not found.');
+    }
+
+    const emailById = await this.emailsById([id]);
+    return this.toDto(data as ProfileRow, emailById.get(id) ?? '');
+  }
+
   async setStatus(id: string, status: AccountStatus): Promise<AdminAccountDto> {
     const { data: existing, error: existingError } = await this.supabase.client
       .from('profiles')

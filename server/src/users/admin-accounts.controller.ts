@@ -18,6 +18,11 @@ export class AdminAccountsController {
     return this.accounts.list(query.role, query.search);
   }
 
+  @Get(':id')
+  getById(@Param('id', ParseUUIDPipe) id: string): Promise<AdminAccountDto> {
+    return this.accounts.getById(id);
+  }
+
   @Patch(':id/status')
   setStatus(
     @Param('id', ParseUUIDPipe) id: string,

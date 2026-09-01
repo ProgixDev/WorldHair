@@ -10,7 +10,8 @@ import {
   getApplicationDocumentUrls,
   listCoiffeurApplications,
 } from "@/services/adminApi";
-import { ChevronDown, FileText } from "lucide-react";
+import { ChevronDown, FileText, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 const STATUS_TABS = [
@@ -136,37 +137,51 @@ export default function AdminDossiersPage() {
 
               return (
                 <div key={application.id} className="rounded-2xl bg-[#111c2e]">
-                  <button
-                    type="button"
-                    onClick={() => void toggleExpand(application)}
-                    className="flex w-full flex-wrap items-center gap-4 p-4 text-left"
-                  >
-                    <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-xs font-bold text-[#f2f6fb]">
-                      {application.firstName[0]}
-                      {application.lastName[0]}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-[#f2f6fb]">
-                        {application.salonName}
-                      </p>
-                      <p className="truncate text-xs text-[#93a6bc]">
-                        {application.firstName} {application.lastName} ·{" "}
-                        {application.practiceZone === "salon"
-                          ? application.city
-                          : `Domicile · rayon ${application.travelRadiusKm} km`}
-                      </p>
-                    </div>
+                  <div className="flex w-full flex-wrap items-center gap-4 p-4">
+                    <button
+                      type="button"
+                      onClick={() => void toggleExpand(application)}
+                      className="flex min-w-0 flex-1 items-center gap-4 rounded-xl text-left transition-colors hover:bg-white/5"
+                    >
+                      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-xs font-bold text-[#f2f6fb]">
+                        {application.firstName[0]}
+                        {application.lastName[0]}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-[#f2f6fb]">
+                          {application.salonName}
+                        </p>
+                        <p className="truncate text-xs text-[#93a6bc]">
+                          {application.firstName} {application.lastName} ·{" "}
+                          {application.practiceZone === "salon"
+                            ? application.city
+                            : `Domicile · rayon ${application.travelRadiusKm} km`}
+                        </p>
+                      </div>
+                    </button>
                     <span className="text-xs text-[#93a6bc]">
                       {new Date(application.submittedAt).toLocaleDateString("fr-FR")}
                     </span>
-                    <ChevronDown
-                      className={cn(
-                        "size-4 shrink-0 text-[#5b7186] transition-transform",
-                        expanded && "rotate-180",
-                      )}
-                      aria-hidden="true"
-                    />
-                  </button>
+                    <Link
+                      href={`/admin/comptes/${application.profileId}`}
+                      aria-label="Voir le profil"
+                      title="Voir le profil"
+                      className="grid size-8 shrink-0 place-items-center rounded-full text-[#93a6bc] transition-colors hover:bg-white/5 hover:text-white"
+                    >
+                      <UserRound className="size-4" aria-hidden="true" />
+                    </Link>
+                    <button
+                      type="button"
+                      aria-label={expanded ? "Réduire" : "Détailler"}
+                      onClick={() => void toggleExpand(application)}
+                      className="grid size-8 shrink-0 place-items-center rounded-full text-[#5b7186] transition-colors hover:bg-white/5 hover:text-white"
+                    >
+                      <ChevronDown
+                        className={cn("size-4 transition-transform", expanded && "rotate-180")}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
 
                   {expanded && (
                     <div className="flex flex-col gap-4 border-t border-white/5 p-4">
@@ -230,7 +245,7 @@ export default function AdminDossiersPage() {
                                   type="button"
                                   disabled={actioningId === application.id}
                                   onClick={() => void handleReject(application.id)}
-                                  className="rounded-full bg-[#b3261e] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                                  className="rounded-full bg-[#b3261e] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#921f18] disabled:opacity-50"
                                 >
                                   Confirmer le refus
                                 </button>
@@ -249,7 +264,7 @@ export default function AdminDossiersPage() {
                                 type="button"
                                 disabled={actioningId === application.id}
                                 onClick={() => void handleValidate(application.id)}
-                                className="rounded-full bg-[#1f9d55] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                                className="rounded-full bg-[#1f9d55] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#1a8549] disabled:opacity-50"
                               >
                                 Valider
                               </button>
@@ -257,7 +272,7 @@ export default function AdminDossiersPage() {
                                 type="button"
                                 disabled={actioningId === application.id}
                                 onClick={() => setRejectingId(application.id)}
-                                className="rounded-full bg-white/10 px-4 py-2 text-xs text-[#93a6bc] hover:text-white"
+                                className="rounded-full bg-[#b3261e] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#921f18]"
                               >
                                 Refuser
                               </button>

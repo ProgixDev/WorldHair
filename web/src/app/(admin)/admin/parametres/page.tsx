@@ -82,7 +82,7 @@ export default function AdminParametresPage() {
               type="button"
               disabled={emailSaving}
               onClick={() => void handleEmailSave()}
-              className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+              className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
             >
               {emailSaving ? "Enregistrement…" : "Mettre à jour l'email"}
             </button>
@@ -104,7 +104,7 @@ export default function AdminParametresPage() {
                 type="button"
                 disabled={passwordSaving || !newPassword}
                 onClick={() => void handlePasswordSave()}
-                className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
               >
                 {passwordSaving ? "Enregistrement…" : "Changer le mot de passe"}
               </button>
