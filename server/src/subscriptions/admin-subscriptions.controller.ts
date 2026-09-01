@@ -6,9 +6,9 @@ import { SubscriptionsService } from './subscriptions.service';
 /**
  * "Vue abonnements coiffeurs (statut, échéance)" (TODO.md → Back-office
  * admin) — read-only, no admin override of a coiffeur's plan.
- * `@Roles('admin')` is enforced by the global `RolesGuard`.
+ * both admin tiers via `@Roles('admin', 'admin_limited')`, enforced by the global `RolesGuard`.
  */
-@Roles('admin')
+@Roles('admin', 'admin_limited')
 @Controller('admin/subscriptions')
 export class AdminSubscriptionsController {
   constructor(private readonly subscriptions: SubscriptionsService) {}

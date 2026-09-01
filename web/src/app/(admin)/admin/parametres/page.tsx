@@ -1,12 +1,25 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import {
+  type AdminSession,
   getAdminSession,
   updateAdminEmail,
   updateAdminPassword,
 } from "@/services/adminAuth";
-import { useEffect, useState } from "react";
+import { type AdminUser, createAdmin, listAdmins } from "@/services/adminApi";
+import { useCallback, useEffect, useState } from "react";
+
+const TIER_LABELS: Record<AdminUser["tier"], string> = {
+  admin: "Admin",
+  admin_limited: "Admin limité",
+};
+
+const TIER_STYLES: Record<AdminUser["tier"], string> = {
+  admin: "bg-[#2a93d5]/15 text-[#2a93d5]",
+  admin_limited: "bg-white/10 text-[#93a6bc]",
+};
 
 export default function AdminParametresPage() {
   const [email, setEmail] = useState("");
@@ -19,11 +32,55 @@ export default function AdminParametresPage() {
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
+  const [session, setSession] = useState<AdminSession | null>(null);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [adminsLoading, setAdminsLoading] = useState(true);
+  const [adminsError, setAdminsError] = useState<string | null>(null);
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [createAdminError, setCreateAdminError] = useState<string | null>(null);
+  const [createAdminMessage, setCreateAdminMessage] = useState<string | null>(null);
+
   useEffect(() => {
-    getAdminSession().then((session) => {
-      if (session) setEmail(session.email);
+    getAdminSession().then((data) => {
+      if (data) {
+        setEmail(data.email);
+        setSession(data);
+      }
     });
   }, []);
+
+  const loadAdmins = useCallback(() => {
+    listAdmins()
+      .then((data) => {
+        setAdmins(data);
+        setAdminsError(null);
+      })
+      .catch(() => setAdminsError("Impossible de charger les administrateurs."))
+      .finally(() => setAdminsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (session?.tier === "admin") loadAdmins();
+  }, [session, loadAdmins]);
+
+  const handleCreateAdmin = async () => {
+    setCreatingAdmin(true);
+    setCreateAdminError(null);
+    setCreateAdminMessage(null);
+    try {
+      await createAdmin(newAdminEmail, newAdminPassword);
+      setCreateAdminMessage("Administrateur créé.");
+      setNewAdminEmail("");
+      setNewAdminPassword("");
+      loadAdmins();
+    } catch (error) {
+      setCreateAdminError(error instanceof Error ? error.message : "Une erreur est survenue.");
+    } finally {
+      setCreatingAdmin(false);
+    }
+  };
 
   const handleEmailSave = async () => {
     setEmailSaving(true);
@@ -63,41 +120,47 @@ export default function AdminParametresPage() {
       <AdminTopBar title="Paramètres" />
 
       <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
-        <div className="rounded-3xl bg-[#080f1a] p-5 sm:p-6">
-          <div className="flex max-w-md flex-col gap-4 rounded-2xl bg-[#111c2e] p-5">
-            <p className="text-sm font-medium text-[#f2f6fb]">Mon compte</p>
+        <div className="flex flex-col gap-4 rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+          <div className="flex items-center gap-4 rounded-2xl bg-[#111c2e] p-5">
+            <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-base font-bold text-[#f2f6fb]">
+              {email[0]?.toUpperCase() ?? "?"}
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[#f2f6fb]">Administrateur</p>
+              <p className="truncate text-xs text-[#93a6bc]">{email || "…"}</p>
+            </div>
+          </div>
 
-            <label className="flex flex-col gap-1.5 text-xs text-[#93a6bc]">
-              Adresse email
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-5">
+              <p className="text-sm font-medium text-[#f2f6fb]">Adresse email</p>
               <input
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] focus:outline-2 focus:outline-[#2a93d5]"
               />
-            </label>
-            {emailError && <p className="text-xs text-[#ff7a70]">{emailError}</p>}
-            {emailMessage && <p className="text-xs text-[#1f9d55]">{emailMessage}</p>}
-            <button
-              type="button"
-              disabled={emailSaving}
-              onClick={() => void handleEmailSave()}
-              className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
-            >
-              {emailSaving ? "Enregistrement…" : "Mettre à jour l'email"}
-            </button>
+              {emailError && <p className="text-xs text-[#ff7a70]">{emailError}</p>}
+              {emailMessage && <p className="text-xs text-[#1f9d55]">{emailMessage}</p>}
+              <button
+                type="button"
+                disabled={emailSaving}
+                onClick={() => void handleEmailSave()}
+                className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
+              >
+                {emailSaving ? "Enregistrement…" : "Mettre à jour"}
+              </button>
+            </div>
 
-            <div className="flex flex-col gap-3 border-t border-white/5 pt-4">
-              <label className="flex flex-col gap-1.5 text-xs text-[#93a6bc]">
-                Nouveau mot de passe
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  placeholder="6 caractères minimum"
-                  className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
-                />
-              </label>
+            <div className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-5">
+              <p className="text-sm font-medium text-[#f2f6fb]">Mot de passe</p>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder="6 caractères minimum"
+                className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
+              />
               {passwordError && <p className="text-xs text-[#ff7a70]">{passwordError}</p>}
               {passwordMessage && <p className="text-xs text-[#1f9d55]">{passwordMessage}</p>}
               <button
@@ -106,10 +169,79 @@ export default function AdminParametresPage() {
                 onClick={() => void handlePasswordSave()}
                 className="self-start rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
               >
-                {passwordSaving ? "Enregistrement…" : "Changer le mot de passe"}
+                {passwordSaving ? "Enregistrement…" : "Changer"}
               </button>
             </div>
           </div>
+
+          {session?.tier === "admin" && (
+            <div className="flex flex-col gap-4 rounded-2xl bg-[#111c2e] p-5">
+              <div>
+                <p className="text-sm font-medium text-[#f2f6fb]">Gestion des admins</p>
+                <p className="text-xs text-[#5b7186]">
+                  Les administrateurs créés ici ont tous les droits sauf celui d&apos;en créer
+                  d&apos;autres.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex min-w-[180px] flex-1 flex-col gap-1.5 text-xs text-[#93a6bc]">
+                  Email
+                  <input
+                    type="email"
+                    value={newAdminEmail}
+                    onChange={(event) => setNewAdminEmail(event.target.value)}
+                    className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] focus:outline-2 focus:outline-[#2a93d5]"
+                  />
+                </label>
+                <label className="flex min-w-[180px] flex-1 flex-col gap-1.5 text-xs text-[#93a6bc]">
+                  Mot de passe
+                  <input
+                    type="password"
+                    value={newAdminPassword}
+                    onChange={(event) => setNewAdminPassword(event.target.value)}
+                    placeholder="6 caractères minimum"
+                    className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={creatingAdmin || !newAdminEmail || !newAdminPassword}
+                  onClick={() => void handleCreateAdmin()}
+                  className="shrink-0 rounded-full bg-[#2a93d5] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2480ba] disabled:opacity-50"
+                >
+                  {creatingAdmin ? "Création…" : "Créer"}
+                </button>
+              </div>
+              {createAdminError && <p className="text-xs text-[#ff7a70]">{createAdminError}</p>}
+              {createAdminMessage && (
+                <p className="text-xs text-[#1f9d55]">{createAdminMessage}</p>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {adminsLoading && <p className="text-xs text-[#93a6bc]">Chargement…</p>}
+                {adminsError && <p className="text-xs text-[#ff7a70]">{adminsError}</p>}
+                {!adminsLoading &&
+                  !adminsError &&
+                  admins.map((admin) => (
+                    <div
+                      key={admin.id}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-[#080f1a] px-4 py-2.5"
+                    >
+                      <span className="truncate text-sm text-[#f2f6fb]">{admin.email}</span>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-3 py-1 text-xs font-medium",
+                          TIER_STYLES[admin.tier],
+                        )}
+                      >
+                        {TIER_LABELS[admin.tier]}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

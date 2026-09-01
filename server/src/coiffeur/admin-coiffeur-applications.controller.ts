@@ -9,10 +9,10 @@ import { ReviewCoiffeurApplicationDto } from './dto/review-application.dto';
 /**
  * Admin review queue for coiffeur onboarding — the "Liste + validation/rejet
  * dossiers coiffeurs" line under TODO.md → Back-office admin, built here
- * since it's the same table this module already owns. `@Roles('admin')`
- * is enforced by the global `RolesGuard`.
+ * since it's the same table this module already owns. Both admin tiers via
+ * `@Roles('admin', 'admin_limited')`, enforced by the global `RolesGuard`.
  */
-@Roles('admin')
+@Roles('admin', 'admin_limited')
 @Controller('admin/coiffeur-applications')
 export class AdminCoiffeurApplicationsController {
   constructor(private readonly applications: CoiffeurApplicationsService) {}

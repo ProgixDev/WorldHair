@@ -2,17 +2,24 @@ import { supabase } from "@/lib/supabase";
 
 export class AdminAuthError extends Error {}
 
+export type AdminTier = "admin" | "admin_limited";
+
 export interface AdminSession {
   userId: string;
   email: string;
   firstName: string;
   lastName: string;
+  /** "admin" is the full/super tier; "admin_limited" has every admin capability except creating more admins. */
+  tier: AdminTier;
 }
 
-/** `profiles.role !== 'admin'` is checked here, client-side — the real gate
- * is still server-side (`@Roles('admin')`, server/src/common/guards/
- * roles.guard.ts); this only decides whether the web UI shows the page. */
-async function requireAdminRole(userId: string): Promise<{ firstName: string; lastName: string }> {
+/** `profiles.role !== 'admin' | 'admin_limited'` is checked here, client-side
+ * — the real gate is still server-side (`@Roles('admin', 'admin_limited')`,
+ * server/src/common/guards/roles.guard.ts); this only decides whether the
+ * web UI shows the page. */
+async function requireAdminRole(
+  userId: string,
+): Promise<{ firstName: string; lastName: string; tier: AdminTier }> {
   const { data: profile, error } = await supabase
     .from("profiles")
     .select("role, first_name, last_name")
@@ -20,11 +27,15 @@ async function requireAdminRole(userId: string): Promise<{ firstName: string; la
     .maybeSingle();
 
   if (error) throw new AdminAuthError(error.message);
-  if (profile?.role !== "admin") {
+  if (profile?.role !== "admin" && profile?.role !== "admin_limited") {
     await supabase.auth.signOut();
     throw new AdminAuthError("Ce compte n'a pas les droits administrateur.");
   }
-  return { firstName: profile.first_name ?? "", lastName: profile.last_name ?? "" };
+  return {
+    firstName: profile.first_name ?? "",
+    lastName: profile.last_name ?? "",
+    tier: profile.role,
+  };
 }
 
 export async function signInAdmin(email: string, password: string): Promise<void> {
@@ -43,8 +54,8 @@ export async function getAdminSession(): Promise<AdminSession | null> {
   if (!user) return null;
 
   try {
-    const { firstName, lastName } = await requireAdminRole(user.id);
-    return { userId: user.id, email: user.email ?? "", firstName, lastName };
+    const { firstName, lastName, tier } = await requireAdminRole(user.id);
+    return { userId: user.id, email: user.email ?? "", firstName, lastName, tier };
   } catch {
     return null;
   }

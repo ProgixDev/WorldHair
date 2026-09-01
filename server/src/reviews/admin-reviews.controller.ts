@@ -8,7 +8,7 @@ import { ReviewDto, ReviewsService } from './reviews.service';
  * No web admin UI consumes this yet — same "API first" pattern as
  * AdminCoiffeurApplicationsController.
  */
-@Roles('admin')
+@Roles('admin', 'admin_limited')
 @Controller('admin/reviews')
 export class AdminReviewsController {
   constructor(private readonly reviews: ReviewsService) {}

@@ -207,7 +207,8 @@ export class CoiffeurApplicationsService {
    * Signed URLs for the 4 documents on one application — `coiffeur-documents`
    * is a private bucket, so an admin can't just be handed the stored path.
    * Uses the service-role client (bypasses Storage RLS entirely), which is
-   * exactly why this only lives behind `@Roles('admin')`. 10 minutes is long
+   * exactly why this only lives behind `@Roles('admin', 'admin_limited')`.
+   * 10 minutes is long
    * enough to review a dossier in one sitting, short enough not to leave a
    * standing link to someone's ID document.
    */

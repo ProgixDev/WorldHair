@@ -6,9 +6,9 @@ import { UpdateAdSlotDto } from './dto/update-ad-slot.dto';
 
 /**
  * "Gestion des zones publicitaires" (TODO.md → Back-office admin, issue #5).
- * `@Roles('admin')` is enforced by the global `RolesGuard`.
+ * both admin tiers via `@Roles('admin', 'admin_limited')`, enforced by the global `RolesGuard`.
  */
-@Roles('admin')
+@Roles('admin', 'admin_limited')
 @Controller('admin/ad-slots')
 export class AdminAdSlotsController {
   constructor(private readonly adSlots: AdSlotsService) {}

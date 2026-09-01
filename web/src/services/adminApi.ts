@@ -247,3 +247,21 @@ export async function listSubscriptions(): Promise<AdminSubscriptionSummary[]> {
   const { data } = await apiClient.get<AdminSubscriptionSummary[]>("/admin/subscriptions");
   return data;
 }
+
+/** Mirrors server/src/admin-users/dto/admin-user.dto.ts. */
+export interface AdminUser {
+  id: string;
+  email: string;
+  tier: "admin" | "admin_limited";
+  createdAt: string;
+}
+
+export async function listAdmins(): Promise<AdminUser[]> {
+  const { data } = await apiClient.get<AdminUser[]>("/admin/admins");
+  return data;
+}
+
+export async function createAdmin(email: string, password: string): Promise<AdminUser> {
+  const { data } = await apiClient.post<AdminUser>("/admin/admins", { email, password });
+  return data;
+}

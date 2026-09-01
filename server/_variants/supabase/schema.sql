@@ -28,7 +28,10 @@ create table public.profiles (
   first_name text not null default '',
   last_name text not null default '',
   photo_url text,
-  role text not null default 'particulier' check (role in ('particulier', 'coiffeur', 'admin')),
+  -- 'admin_limited' (TODO.md/web "Paramètres" → create-admin section): every
+  -- admin capability except creating more admins — see is_admin() below and
+  -- server/src/admin-users/.
+  role text not null default 'particulier' check (role in ('particulier', 'coiffeur', 'admin', 'admin_limited')),
   account_status text not null default 'active' check (account_status in ('active', 'suspended', 'banned')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -105,7 +108,8 @@ set search_path = public
 stable
 as $$
   select exists (
-    select 1 from public.profiles where id = auth.uid () and role = 'admin'
+    select 1 from public.profiles
+    where id = auth.uid () and role in ('admin', 'admin_limited')
   );
 $$;
 
@@ -172,7 +176,7 @@ create policy "Coiffeurs can view their own application, admins can view every a
   on public.coiffeur_applications for select
   using (
     (select auth.uid ()) = profile_id
-    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+    or public.is_admin ()
   );
 
 create trigger set_coiffeur_applications_updated_at
@@ -209,7 +213,7 @@ create policy "Admins can view every coiffeur document"
   on storage.objects for select
   using (
     bucket_id = 'coiffeur-documents'
-    and exists (select 1 from public.profiles where id = auth.uid () and role = 'admin')
+    and public.is_admin ()
   );
 
 -- ── Coiffeur workspace (TODO.md → Backend → "Profils") ──────────────────────
@@ -557,7 +561,7 @@ create policy "Visible to anyone, or its owner/admin regardless of status"
     status = 'visible'
     or (select auth.uid ()) = particulier_id
     or (select auth.uid ()) = coiffeur_id
-    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
+    or public.is_admin ()
   );
 
 -- Server-side "signaler" (any authenticated caller) is enforced in
@@ -565,14 +569,8 @@ create policy "Visible to anyone, or its owner/admin regardless of status"
 -- covers the coiffeur's own reply + admin moderation.
 create policy "Coiffeur or admin can update a review"
   on public.reviews for update
-  using (
-    (select auth.uid ()) = coiffeur_id
-    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
-  )
-  with check (
-    (select auth.uid ()) = coiffeur_id
-    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
-  );
+  using ((select auth.uid ()) = coiffeur_id or public.is_admin ())
+  with check ((select auth.uid ()) = coiffeur_id or public.is_admin ());
 
 create trigger set_reviews_updated_at
 before update on public.reviews for each row
@@ -708,8 +706,8 @@ create policy "Anyone can view ad slots"
 
 create policy "Admin can update ad slots"
   on public.ad_slots for update
-  using (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'))
-  with check (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'));
+  using (public.is_admin ())
+  with check (public.is_admin ());
 
 create trigger set_ad_slots_updated_at
 before update on public.ad_slots for each row
@@ -740,8 +738,8 @@ create policy "Anyone can view app content"
 
 create policy "Admin can update app content"
   on public.app_content for update
-  using (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'))
-  with check (exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin'));
+  using (public.is_admin ())
+  with check (public.is_admin ());
 
 create trigger set_app_content_updated_at
 before update on public.app_content for each row
@@ -798,10 +796,7 @@ alter table public.coiffeur_subscriptions enable row level security;
 
 create policy "Coiffeur can view their own subscription, admin can view every subscription"
   on public.coiffeur_subscriptions for select
-  using (
-    (select auth.uid ()) = profile_id
-    or exists (select 1 from public.profiles where id = (select auth.uid ()) and role = 'admin')
-  );
+  using ((select auth.uid ()) = profile_id or public.is_admin ());
 
 create policy "Coiffeur can insert their own subscription"
   on public.coiffeur_subscriptions for insert

@@ -8,7 +8,7 @@ import { AdminAccountDto, ListAccountsQueryDto, SetAccountStatusDto } from './dt
  * Back-office admin) — same module as the self-service `/users/me` since
  * both read/write the `profiles` table.
  */
-@Roles('admin')
+@Roles('admin', 'admin_limited')
 @Controller('admin/accounts')
 export class AdminAccountsController {
   constructor(private readonly accounts: AdminAccountsService) {}

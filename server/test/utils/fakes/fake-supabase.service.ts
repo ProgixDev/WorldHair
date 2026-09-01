@@ -399,6 +399,27 @@ export class FakeSupabaseService {
           data: { users: [...this.authUsersByToken.values()] },
           error: null,
         }),
+        /** Used by AdminUsersService.create() — mirrors handle_new_user(), seeding a blank profile row just like a real signup would. */
+        createUser: async (params: { email: string; password: string; email_confirm?: boolean }) => {
+          const id = randomUUID();
+          const user: FakeAuthUser = {
+            id,
+            email: params.email,
+            email_confirmed_at: params.email_confirm ? new Date().toISOString() : null,
+          };
+          this.authUsersByToken.set(`created:${id}`, user);
+          if (!this.profiles.has(id)) {
+            this.profiles.set(id, {
+              id,
+              first_name: '',
+              last_name: '',
+              photo_url: null,
+              role: 'particulier',
+              account_status: 'active',
+            });
+          }
+          return { data: { user }, error: null };
+        },
       },
     },
     from: (table: string) => {

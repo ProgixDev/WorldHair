@@ -156,6 +156,7 @@ de routes `(admin)` séparé — il n'héritera donc pas du header/footer market
 
 - [x] Créer le groupe de routes `(admin)` avec son propre layout (sidebar) — `web/src/app/(admin)/`, rail d'icônes + topbar, tableau de bord sur `/admin` (réservations réelles via `/admin/stats/bookings`)
 - [x] Auth admin sécurisée — Supabase Auth (`profiles.role === 'admin'`), lien depuis le bouton "Compte" de la landing, `/login`
+- [x] Deux paliers admin — `admin` (complet, peut créer d'autres admins) et `admin_limited` (tous les droits sauf celui-là) — `/admin/parametres` → "Gestion des admins", `@Roles('admin')` exclusif pour créer/lister, `@Roles('admin', 'admin_limited')` partout ailleurs
 - [x] Liste + validation/rejet dossiers coiffeurs (pièce ID, diplôme, KBIS/RNE) avec message de refus — `/admin/dossiers`
 - [x] Suspension / bannissement compte (particulier ou coiffeur) — `/admin/comptes`, enforcé côté serveur dans `SupabaseStrategy`
 - [ ] Messagerie interne admin ↔ coiffeur — construite puis retirée (jugée pas utile), voir git history

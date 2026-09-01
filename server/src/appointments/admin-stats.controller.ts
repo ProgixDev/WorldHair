@@ -4,10 +4,10 @@ import { AdminStatsService, BookingStats } from './admin-stats.service';
 import { BookingStatsQueryDto } from './dto/booking-stats.dto';
 
 /**
- * Real numbers for the dashboard's "Réservations" chart. `@Roles('admin')`
- * is enforced by the global `RolesGuard`.
+ * Real numbers for the dashboard's "Réservations" chart. Both admin tiers
+ * via `@Roles('admin', 'admin_limited')`, enforced by the global `RolesGuard`.
  */
-@Roles('admin')
+@Roles('admin', 'admin_limited')
 @Controller('admin/stats')
 export class AdminStatsController {
   constructor(private readonly stats: AdminStatsService) {}

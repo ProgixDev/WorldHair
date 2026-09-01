@@ -77,7 +77,7 @@ export class AdminAccountsService {
     if (!existing) {
       throw new NotFoundException('Account not found.');
     }
-    if ((existing as ProfileRow).role === 'admin') {
+    if (['admin', 'admin_limited'].includes((existing as ProfileRow).role)) {
       throw new ForbiddenException('Admin accounts cannot be moderated through this endpoint.');
     }
 

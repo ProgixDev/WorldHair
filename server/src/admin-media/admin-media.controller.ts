@@ -21,7 +21,7 @@ const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
  * SELECT policy — that was the real, missing piece), but this also gets
  * server-side size/mimetype validation for free.
  */
-@Roles('admin')
+@Roles('admin', 'admin_limited')
 @Controller('admin/media')
 export class AdminMediaController {
   constructor(private readonly supabase: SupabaseService) {}
