@@ -44,8 +44,8 @@ export default function AdminAvisPage() {
     <>
       <AdminTopBar title="Avis signalés" />
 
-      <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
-        <div className="rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+      <div className="min-w-0 flex-1 px-4 pt-4 pb-8 sm:px-8">
+        <div className="rounded-3xl bg-[#080f1a] p-4 sm:p-6">
           <p className="text-xs text-[#93a6bc]">
             Un avis signalé reste visible publiquement tant qu&apos;il n&apos;est
             pas masqué ici — le signalement seul ne le retire pas.

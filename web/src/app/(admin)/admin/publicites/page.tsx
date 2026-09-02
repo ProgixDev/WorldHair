@@ -74,8 +74,8 @@ export default function AdminPublicitesPage() {
     <>
       <AdminTopBar title="Publicités" />
 
-      <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
-        <div className="rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+      <div className="min-w-0 flex-1 px-4 pt-4 pb-8 sm:px-8">
+        <div className="rounded-3xl bg-[#080f1a] p-4 sm:p-6">
           {loading && <p className="py-8 text-center text-sm text-[#93a6bc]">Chargement…</p>}
           {error && <p className="py-8 text-center text-sm text-[#ff7a70]">{error}</p>}
 

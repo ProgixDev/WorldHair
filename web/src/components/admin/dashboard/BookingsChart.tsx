@@ -21,11 +21,21 @@ const RANGE_OPTIONS: { label: string; value: StatsRange }[] = [
   { label: "Mois", value: "month" },
 ];
 
-const VIEW_W = 720;
-const VIEW_H = 240;
+/**
+ * The SVG is drawn at its container's own pixel width rather than at a fixed
+ * 720 scaled to fit. Scaled-to-fit is what a phone actually got: ~167px of
+ * space for a 720-unit viewBox is a 0.23 ratio, which rendered the 11px tick
+ * and axis labels at under 3px — present, but unreadable. Drawing 1:1 keeps
+ * every label at its true size at any width.
+ */
+const FALLBACK_W = 720;
+const MIN_W = 260;
+/** Below this the chart is tall enough to read but not so tall it pushes the
+ *  cards under it off a phone screen. */
+const NARROW_W = 420;
 const PAD = { left: 40, right: 12, top: 14, bottom: 28 };
-const PLOT_W = VIEW_W - PAD.left - PAD.right;
-const PLOT_H = VIEW_H - PAD.top - PAD.bottom;
+/** Horizontal room one x-axis label needs before its neighbours collide. */
+const LABEL_SLOT = 46;
 
 function niceMax(value: number): number {
   const step = value > 150 ? 50 : value > 60 ? 25 : 10;
@@ -52,7 +62,9 @@ export function BookingsChart() {
   const [cancelled, setCancelled] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewW, setViewW] = useState(FALLBACK_W);
   const svgRef = useRef<SVGSVGElement>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback((nextRange: StatsRange) => {
     getBookingStats(nextRange)
@@ -70,42 +82,66 @@ export function BookingsChart() {
     load(range);
   }, [range, load]);
 
+  // Track the container's real width so the viewBox can match it 1:1.
+  useEffect(() => {
+    const element = plotRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width;
+      if (width) setViewW(Math.max(MIN_W, Math.round(width)));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const handleRangeChange = (next: StatsRange) => {
     setLoading(true);
     setHovered(null);
     setRange(next);
   };
 
+  const viewH = viewW < NARROW_W ? 200 : 240;
+  const plotW = viewW - PAD.left - PAD.right;
+  const plotH = viewH - PAD.top - PAD.bottom;
+
   const yMax = niceMax(Math.max(0, ...confirmed, ...cancelled));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(yMax * t));
 
+  // Show every nth label once they no longer fit side by side — twelve months
+  // across a phone-width plot would otherwise overlap into a grey smear.
+  const labelStep = Math.max(1, Math.ceil(labels.length / Math.max(1, Math.floor(plotW / LABEL_SLOT))));
+
   const xAt = (i: number) =>
-    PAD.left + (labels.length === 1 ? PLOT_W / 2 : (i / (labels.length - 1)) * PLOT_W);
-  const yAt = (v: number) => PAD.top + PLOT_H - (v / yMax) * PLOT_H;
+    PAD.left + (labels.length === 1 ? plotW / 2 : (i / (labels.length - 1)) * plotW);
+  const yAt = (v: number) => PAD.top + plotH - (v / yMax) * plotH;
 
   const pointsFor = (values: number[]) =>
     values.map((v, i) => ({ x: xAt(i), y: yAt(v) }));
 
   const confirmedPoints = pointsFor(confirmed);
   const cancelledPoints = pointsFor(cancelled);
-  const areaPath = `${smoothPath(confirmedPoints)} L ${xAt(labels.length - 1)} ${PAD.top + PLOT_H} L ${PAD.left} ${PAD.top + PLOT_H} Z`;
+  const areaPath = `${smoothPath(confirmedPoints)} L ${xAt(labels.length - 1)} ${PAD.top + plotH} L ${PAD.left} ${PAD.top + plotH} Z`;
 
-  const handleMove = (event: React.MouseEvent<SVGSVGElement>) => {
+  // Pointer events rather than mouse ones: on a phone there is no hover, so
+  // without touch the tooltip was unreachable and the numbers behind it
+  // simply unavailable.
+  const handlePointer = (clientX: number) => {
     const svg = svgRef.current;
-    if (!svg) return;
+    if (!svg || labels.length === 0) return;
     const rect = svg.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * VIEW_W;
-    const ratio = (x - PAD.left) / PLOT_W;
+    const x = ((clientX - rect.left) / rect.width) * viewW;
+    const ratio = (x - PAD.left) / plotW;
     const index = Math.round(ratio * (labels.length - 1));
     setHovered(Math.min(labels.length - 1, Math.max(0, index)));
   };
 
   return (
-    <section className="rounded-2xl bg-[#111c2e] p-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <section className="rounded-2xl bg-[#111c2e] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <h2 className="text-base font-medium text-[#f2f6fb]">Réservations</h2>
 
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4 sm:gap-5">
           {RANGE_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -141,19 +177,24 @@ export function BookingsChart() {
         ))}
       </ul>
 
+      {/* Always mounted, even while loading — it is what the ResizeObserver
+          measures, and a ref inside a conditional would never be observed. */}
+      <div ref={plotRef} className="relative mt-2">
       {loading && <p className="py-12 text-center text-sm text-[#93a6bc]">Chargement…</p>}
       {error && <p className="py-12 text-center text-sm text-[#ff7a70]">{error}</p>}
 
       {!loading && !error && (
-      <div className="relative mt-2">
+      <>
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-          className="h-auto w-full"
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          className="h-auto w-full touch-pan-y"
           role="img"
           aria-label={`Réservations confirmées et annulées par ${RANGE_OPTIONS.find((o) => o.value === range)?.label.toLowerCase()}`}
-          onMouseMove={handleMove}
+          onMouseMove={(event) => handlePointer(event.clientX)}
           onMouseLeave={() => setHovered(null)}
+          onTouchStart={(event) => handlePointer(event.touches[0].clientX)}
+          onTouchMove={(event) => handlePointer(event.touches[0].clientX)}
         >
           <defs>
             <linearGradient id="confirmedArea" x1="0" y1="0" x2="0" y2="1">
@@ -166,7 +207,7 @@ export function BookingsChart() {
             <g key={tick}>
               <line
                 x1={PAD.left}
-                x2={VIEW_W - PAD.right}
+                x2={viewW - PAD.right}
                 y1={yAt(tick)}
                 y2={yAt(tick)}
                 stroke="#1e2e45"
@@ -183,17 +224,19 @@ export function BookingsChart() {
             </g>
           ))}
 
-          {labels.map((label, i) => (
-            <text
-              key={label}
-              x={xAt(i)}
-              y={VIEW_H - 8}
-              textAnchor="middle"
-              className="fill-[#5b7186] text-[11px]"
-            >
-              {label}
-            </text>
-          ))}
+          {labels.map((label, i) =>
+            i % labelStep === 0 ? (
+              <text
+                key={label}
+                x={xAt(i)}
+                y={viewH - 8}
+                textAnchor="middle"
+                className="fill-[#5b7186] text-[11px]"
+              >
+                {label}
+              </text>
+            ) : null,
+          )}
 
           <path d={areaPath} fill="url(#confirmedArea)" />
 
@@ -202,7 +245,7 @@ export function BookingsChart() {
               x1={xAt(hovered)}
               x2={xAt(hovered)}
               y1={PAD.top}
-              y2={PAD.top + PLOT_H}
+              y2={PAD.top + plotH}
               stroke="#93a6bc"
               strokeWidth="1"
               strokeDasharray="4 4"
@@ -247,7 +290,11 @@ export function BookingsChart() {
         {hovered !== null && (
           <div
             className="pointer-events-none absolute top-0 -translate-x-1/2 rounded-xl border border-[#1e2e45] bg-[#0c1524] px-3 py-2 shadow-lg"
-            style={{ left: `${(xAt(hovered) / VIEW_W) * 100}%` }}
+            // Clamped: at the first or last point an unclamped centre would
+            // hang the card half outside the chart, off a phone screen.
+            style={{
+              left: `${Math.min(85, Math.max(15, (xAt(hovered) / viewW) * 100))}%`,
+            }}
           >
             <p className="text-[11px] font-medium text-[#f2f6fb]">
               {labels[hovered]}
@@ -272,8 +319,9 @@ export function BookingsChart() {
             ))}
           </div>
         )}
-      </div>
+      </>
       )}
+      </div>
     </section>
   );
 }

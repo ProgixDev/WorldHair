@@ -145,8 +145,8 @@ export default function AdminParametresPage() {
     <>
       <AdminTopBar title="Paramètres" />
 
-      <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
-        <div className="flex flex-col gap-4 rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+      <div className="min-w-0 flex-1 px-4 pt-4 pb-8 sm:px-8">
+        <div className="flex flex-col gap-4 rounded-3xl bg-[#080f1a] p-4 sm:p-6">
           <div className="flex items-center gap-4 rounded-2xl bg-[#111c2e] p-5">
             <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-base font-bold text-[#f2f6fb]">
               {email[0]?.toUpperCase() ?? "?"}

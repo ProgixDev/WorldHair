@@ -51,8 +51,8 @@ export default function AdminAbonnementsPage() {
     <>
       <AdminTopBar title="Abonnements" />
 
-      <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
-        <div className="rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+      <div className="min-w-0 flex-1 px-4 pt-4 pb-8 sm:px-8">
+        <div className="rounded-3xl bg-[#080f1a] p-4 sm:p-6">
           <div className="flex flex-col gap-3">
             {loading && (
               <p className="py-8 text-center text-sm text-[#93a6bc]">Chargement…</p>
@@ -74,35 +74,43 @@ export default function AdminAbonnementsPage() {
                   : subscription.renewsAt;
 
               return (
+                // Same stacking as the accounts list: the name/email column is
+                // the only flexible child, so on one wrapping row it was the
+                // one thing that got squeezed away.
                 <div
                   key={subscription.profileId}
-                  className="flex flex-wrap items-center gap-4 rounded-2xl bg-[#111c2e] p-4"
+                  className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4"
                 >
-                  <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-xs font-bold text-[#f2f6fb]">
-                    {(fullName || subscription.email)[0]?.toUpperCase() ?? "?"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[#f2f6fb]">
-                      {fullName || subscription.email}
-                    </p>
-                    {fullName && (
-                      <p className="truncate text-xs text-[#93a6bc]">{subscription.email}</p>
-                    )}
+                  <div className="flex min-w-0 items-center gap-3 sm:flex-1 sm:gap-4">
+                    <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-xs font-bold text-[#f2f6fb]">
+                      {(fullName || subscription.email)[0]?.toUpperCase() ?? "?"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-[#f2f6fb]">
+                        {fullName || subscription.email}
+                      </p>
+                      {fullName && (
+                        <p className="truncate text-xs text-[#93a6bc]">{subscription.email}</p>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-xs text-[#93a6bc]">
-                    {PLAN_LABELS[subscription.plan]}
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-full px-3 py-1 text-xs font-medium",
-                      STATUS_STYLES[subscription.status],
-                    )}
-                  >
-                    {STATUS_LABELS[subscription.status]}
-                  </span>
-                  <span className="w-28 shrink-0 text-right text-xs text-[#93a6bc]">
-                    {echeance ? new Date(echeance).toLocaleDateString("fr-FR") : "—"}
-                  </span>
+
+                  <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                    <span className="text-xs text-[#93a6bc]">
+                      {PLAN_LABELS[subscription.plan]}
+                    </span>
+                    <span
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium",
+                        STATUS_STYLES[subscription.status],
+                      )}
+                    >
+                      {STATUS_LABELS[subscription.status]}
+                    </span>
+                    <span className="ml-auto shrink-0 text-right text-xs text-[#93a6bc] sm:ml-0 sm:w-28">
+                      {echeance ? new Date(echeance).toLocaleDateString("fr-FR") : "—"}
+                    </span>
+                  </div>
                 </div>
               );
             })}

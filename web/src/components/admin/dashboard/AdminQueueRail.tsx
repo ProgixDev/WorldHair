@@ -36,7 +36,7 @@ export function AdminQueueRail() {
   }, []);
 
   return (
-    <aside className="flex w-full shrink-0 flex-col gap-8 px-6 py-6 xl:w-80">
+    <aside className="flex w-full shrink-0 flex-col gap-8 px-4 py-6 sm:px-6 xl:w-80">
       <section>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-medium text-[#f2f6fb]">

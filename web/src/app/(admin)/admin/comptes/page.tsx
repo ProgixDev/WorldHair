@@ -100,8 +100,8 @@ function AdminComptesPageContent() {
     <>
       <AdminTopBar title="Comptes" />
 
-      <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
-        <div className="rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+      <div className="min-w-0 flex-1 px-4 pt-4 pb-8 sm:px-8">
+        <div className="rounded-3xl bg-[#080f1a] p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-6">
               {ROLE_TABS.map((tab) => (
@@ -121,14 +121,14 @@ function AdminComptesPageContent() {
               ))}
             </div>
 
-            <label className="flex items-center gap-2 rounded-full bg-[#111c2e] px-4 py-2">
-              <Search className="size-4 text-[#5b7186]" aria-hidden="true" />
+            <label className="flex w-full items-center gap-2 rounded-full bg-[#111c2e] px-4 py-2 sm:w-auto">
+              <Search className="size-4 shrink-0 text-[#5b7186]" aria-hidden="true" />
               <input
                 type="text"
                 value={search}
                 onChange={(event) => handleSearchChange(event.target.value)}
                 placeholder="Rechercher par nom ou email"
-                className="w-56 bg-transparent text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-none sm:w-56"
               />
             </label>
           </div>
@@ -165,42 +165,51 @@ function AdminComptesPageContent() {
               const busy = actioningId === account.id;
 
               return (
+                // Stacked on phones: as one wrapping row the name/email column
+                // was the only flexible child, so it collapsed to a couple of
+                // truncated characters while the pill, date and three buttons
+                // kept their intrinsic widths. Identity gets its own full line.
                 <div
                   key={account.id}
-                  className="flex flex-wrap items-center gap-4 rounded-2xl bg-[#111c2e] p-4"
+                  className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4"
                 >
-                  <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-xs font-bold text-[#f2f6fb]">
-                    {initial}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[#f2f6fb]">
-                      {displayName}
-                    </p>
-                    {fullName && (
-                      <p className="truncate text-xs text-[#93a6bc]">{account.email}</p>
-                    )}
+                  <div className="flex min-w-0 items-center gap-3 sm:flex-1 sm:gap-4">
+                    <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-xs font-bold text-[#f2f6fb]">
+                      {initial}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-[#f2f6fb]">
+                        {displayName}
+                      </p>
+                      {fullName && (
+                        <p className="truncate text-xs text-[#93a6bc]">{account.email}</p>
+                      )}
+                    </div>
                   </div>
-                  <span
-                    className={cn(
-                      "rounded-full px-3 py-1 text-xs font-medium",
-                      STATUS_STYLES[account.accountStatus],
-                    )}
-                  >
-                    {STATUS_LABELS[account.accountStatus]}
-                  </span>
-                  <span className="text-xs text-[#93a6bc]">
-                    {new Date(account.createdAt).toLocaleDateString("fr-FR")}
-                  </span>
-                  <Link
-                    href={`/admin/comptes/${account.id}`}
-                    aria-label="Voir le profil"
-                    title="Voir le profil"
-                    className="grid size-8 shrink-0 place-items-center rounded-full text-[#93a6bc] transition-colors hover:bg-white/5 hover:text-white"
-                  >
-                    <UserRound className="size-4" aria-hidden="true" />
-                  </Link>
 
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <span
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium",
+                        STATUS_STYLES[account.accountStatus],
+                      )}
+                    >
+                      {STATUS_LABELS[account.accountStatus]}
+                    </span>
+                    <span className="text-xs text-[#93a6bc]">
+                      {new Date(account.createdAt).toLocaleDateString("fr-FR")}
+                    </span>
+                    <Link
+                      href={`/admin/comptes/${account.id}`}
+                      aria-label="Voir le profil"
+                      title="Voir le profil"
+                      className="grid size-8 shrink-0 place-items-center rounded-full text-[#93a6bc] transition-colors hover:bg-white/5 hover:text-white"
+                    >
+                      <UserRound className="size-4" aria-hidden="true" />
+                    </Link>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
                     {account.accountStatus !== "active" && (
                       <button
                         type="button"

@@ -100,7 +100,7 @@ export default function AdminAccountProfilePage() {
     <>
       <AdminTopBar title="Profil" />
 
-      <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
+      <div className="min-w-0 flex-1 px-4 pt-4 pb-8 sm:px-8">
         <Link
           href="/admin/comptes"
           className="inline-flex items-center gap-1.5 text-xs text-[#93a6bc] transition-colors hover:text-white"
@@ -109,34 +109,39 @@ export default function AdminAccountProfilePage() {
           Retour aux comptes
         </Link>
 
-        <div className="mt-4 rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+        <div className="mt-4 rounded-3xl bg-[#080f1a] p-4 sm:p-6">
           {loading && <p className="py-8 text-center text-sm text-[#93a6bc]">Chargement…</p>}
           {error && <p className="py-8 text-center text-sm text-[#ff7a70]">{error}</p>}
 
           {!loading && !error && account && (
             <div className="flex flex-col gap-6">
-              <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-[#111c2e] p-5">
-                <span className="grid size-14 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-lg font-bold text-[#f2f6fb]">
-                  {displayName[0]?.toUpperCase() ?? "?"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-base font-medium text-[#f2f6fb]">{displayName}</p>
-                  <p className="truncate text-xs text-[#93a6bc]">{account.email}</p>
+              <div className="flex flex-col gap-3 rounded-2xl bg-[#111c2e] p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
+                <div className="flex min-w-0 items-center gap-3 sm:flex-1 sm:gap-4">
+                  <span className="grid size-14 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-lg font-bold text-[#f2f6fb]">
+                    {displayName[0]?.toUpperCase() ?? "?"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-medium text-[#f2f6fb]">{displayName}</p>
+                    <p className="truncate text-xs text-[#93a6bc]">{account.email}</p>
+                  </div>
                 </div>
-                <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-[#93a6bc]">
-                  {account.role === "coiffeur" ? "Coiffeur" : "Particulier"}
-                </span>
-                <span
-                  className={cn(
-                    "rounded-full px-3 py-1 text-xs font-medium",
-                    STATUS_STYLES[account.accountStatus],
-                  )}
-                >
-                  {STATUS_LABELS[account.accountStatus]}
-                </span>
-                <span className="text-xs text-[#93a6bc]">
-                  Créé le {new Date(account.createdAt).toLocaleDateString("fr-FR")}
-                </span>
+
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-[#93a6bc]">
+                    {account.role === "coiffeur" ? "Coiffeur" : "Particulier"}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-medium",
+                      STATUS_STYLES[account.accountStatus],
+                    )}
+                  >
+                    {STATUS_LABELS[account.accountStatus]}
+                  </span>
+                  <span className="text-xs text-[#93a6bc]">
+                    Créé le {new Date(account.createdAt).toLocaleDateString("fr-FR")}
+                  </span>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2">

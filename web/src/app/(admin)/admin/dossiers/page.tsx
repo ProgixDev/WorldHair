@@ -96,8 +96,8 @@ export default function AdminDossiersPage() {
     <>
       <AdminTopBar title="Dossiers coiffeurs" />
 
-      <div className="min-w-0 flex-1 px-6 pt-4 pb-8 sm:px-8">
-        <div className="rounded-3xl bg-[#080f1a] p-5 sm:p-6">
+      <div className="min-w-0 flex-1 px-4 pt-4 pb-8 sm:px-8">
+        <div className="rounded-3xl bg-[#080f1a] p-4 sm:p-6">
           <div className="flex items-center gap-6">
             {STATUS_TABS.map((tab) => (
               <button
@@ -137,11 +137,14 @@ export default function AdminDossiersPage() {
 
               return (
                 <div key={application.id} className="rounded-2xl bg-[#111c2e]">
-                  <div className="flex w-full flex-wrap items-center gap-4 p-4">
+                  {/* Salon name and applicant get their own full-width line on
+                      phones — sharing one wrapping row with the date and two
+                      icon buttons left them truncated to a few characters. */}
+                  <div className="flex w-full flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                     <button
                       type="button"
                       onClick={() => void toggleExpand(application)}
-                      className="flex min-w-0 flex-1 items-center gap-4 rounded-xl text-left transition-colors hover:bg-white/5"
+                      className="flex min-w-0 items-center gap-3 rounded-xl text-left transition-colors hover:bg-white/5 sm:flex-1 sm:gap-4"
                     >
                       <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#1e2e45] text-xs font-bold text-[#f2f6fb]">
                         {application.firstName[0]}
@@ -159,28 +162,31 @@ export default function AdminDossiersPage() {
                         </p>
                       </div>
                     </button>
-                    <span className="text-xs text-[#93a6bc]">
-                      {new Date(application.submittedAt).toLocaleDateString("fr-FR")}
-                    </span>
-                    <Link
-                      href={`/admin/comptes/${application.profileId}`}
-                      aria-label="Voir le profil"
-                      title="Voir le profil"
-                      className="grid size-8 shrink-0 place-items-center rounded-full text-[#93a6bc] transition-colors hover:bg-white/5 hover:text-white"
-                    >
-                      <UserRound className="size-4" aria-hidden="true" />
-                    </Link>
-                    <button
-                      type="button"
-                      aria-label={expanded ? "Réduire" : "Détailler"}
-                      onClick={() => void toggleExpand(application)}
-                      className="grid size-8 shrink-0 place-items-center rounded-full text-[#5b7186] transition-colors hover:bg-white/5 hover:text-white"
-                    >
-                      <ChevronDown
-                        className={cn("size-4 transition-transform", expanded && "rotate-180")}
-                        aria-hidden="true"
-                      />
-                    </button>
+
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <span className="text-xs text-[#93a6bc]">
+                        {new Date(application.submittedAt).toLocaleDateString("fr-FR")}
+                      </span>
+                      <Link
+                        href={`/admin/comptes/${application.profileId}`}
+                        aria-label="Voir le profil"
+                        title="Voir le profil"
+                        className="grid size-8 shrink-0 place-items-center rounded-full text-[#93a6bc] transition-colors hover:bg-white/5 hover:text-white"
+                      >
+                        <UserRound className="size-4" aria-hidden="true" />
+                      </Link>
+                      <button
+                        type="button"
+                        aria-label={expanded ? "Réduire" : "Détailler"}
+                        onClick={() => void toggleExpand(application)}
+                        className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-[#5b7186] transition-colors hover:bg-white/5 hover:text-white sm:ml-0"
+                      >
+                        <ChevronDown
+                          className={cn("size-4 transition-transform", expanded && "rotate-180")}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   {expanded && (
