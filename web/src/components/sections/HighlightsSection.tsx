@@ -21,10 +21,10 @@ const PRESTATIONS = [
 
 export function HighlightsSection() {
   return (
-    <section id="fonctionnalites" className="bg-background mt-16 scroll-mt-10 sm:mt-24">
-      <div className="mx-auto max-w-[1680px] px-4 py-20 sm:px-6">
+    <section id="fonctionnalites" className="bg-background mt-10 scroll-mt-10 sm:mt-24">
+      <div className="mx-auto max-w-[1680px] px-4 py-12 sm:px-6 sm:py-20">
         <div>
-          <h2 className="text-primary text-2xl font-thin tracking-tight whitespace-nowrap uppercase sm:text-5xl lg:text-6xl">
+          <h2 className="text-primary text-2xl font-thin tracking-tight text-balance uppercase sm:text-5xl sm:whitespace-nowrap lg:text-6xl">
             Vos cheveux, notre priorité.
           </h2>
           <p className="text-muted-foreground mt-3 max-w-xl text-sm text-pretty">
@@ -33,7 +33,7 @@ export function HighlightsSection() {
           </p>
         </div>
 
-        <div className="border-border mt-12 grid overflow-hidden rounded-2xl border sm:grid-cols-3 sm:divide-x">
+        <div className="border-border mt-8 grid overflow-hidden rounded-2xl border sm:mt-12 sm:grid-cols-3 sm:divide-x">
           {PRESTATIONS.map((prestation) => (
             <div
               key={prestation.name}
@@ -44,6 +44,7 @@ export function HighlightsSection() {
                   src={prestation.image}
                   alt={prestation.name}
                   fill
+                  sizes="(min-width: 640px) 33vw, 100vw"
                   className="object-cover"
                 />
               </div>

@@ -23,10 +23,10 @@ const STEPS = [
 
 export function RitualSection() {
   return (
-    <section id="parcours" className="bg-background mt-16 scroll-mt-5 sm:mt-24">
-      <div className="mx-auto max-w-[1680px] px-4 py-20 sm:px-6">
+    <section id="parcours" className="bg-background mt-10 scroll-mt-5 sm:mt-24">
+      <div className="mx-auto max-w-[1680px] px-4 py-12 sm:px-6 sm:py-20">
         <div>
-          <h2 className="text-primary text-2xl font-thin tracking-tight whitespace-nowrap uppercase sm:text-5xl lg:text-6xl">
+          <h2 className="text-primary text-2xl font-thin tracking-tight text-balance uppercase sm:text-5xl sm:whitespace-nowrap lg:text-6xl">
             Votre style, votre parcours.
           </h2>
           <p className="text-muted-foreground mt-3 max-w-xl text-sm text-pretty">
@@ -35,10 +35,10 @@ export function RitualSection() {
           </p>
         </div>
 
-        <div className="mt-12 grid gap-6 sm:grid-cols-3">
+        <div className="mt-8 grid gap-6 sm:mt-12 sm:grid-cols-3">
           {STEPS.map((step) => (
             <div key={step.number} className="flex flex-col gap-4">
-              <div className="bg-muted border-border relative flex aspect-3/4 items-center justify-center overflow-hidden rounded-2xl border">
+              <div className="bg-muted border-border relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border sm:aspect-3/4">
                 <Image
                   src={step.image}
                   alt={step.title}

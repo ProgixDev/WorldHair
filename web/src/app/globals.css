@@ -3,6 +3,11 @@
 
 html {
   scroll-behavior: smooth;
+  /* Safety net: the hero and footer wordmarks are viewport-scaled display
+     type, so a future size bump shouldn't be able to turn into a
+     page-wide horizontal scroll on phones. Nothing here is meant to scroll
+     sideways. */
+  overflow-x: hidden;
 }
 
 @theme inline {

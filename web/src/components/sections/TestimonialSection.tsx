@@ -4,7 +4,7 @@ import Image from "next/image";
 export function TestimonialSection() {
   return (
     <section id="avis" className="scroll-mt-8 bg-background">
-      <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 px-4 pt-20 text-center sm:px-6">
+      <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 px-4 pt-12 text-center sm:px-6 sm:pt-20">
         <p className="font-heading text-xl text-balance sm:text-2xl">
           &ldquo;J&apos;ai trouvé un coiffeur à deux rues de chez moi et
           réservé mon créneau en moins de deux minutes — plus simple, tu
@@ -20,7 +20,7 @@ export function TestimonialSection() {
         </span>
       </div>
 
-      <div className="mx-auto flex max-w-[1680px] justify-center px-4 pt-12 sm:px-6">
+      <div className="mx-auto flex max-w-[1680px] justify-center px-4 pt-8 sm:px-6 sm:pt-12">
         <Image
           src="/images/TestimonialSectionMainPicture.png"
           alt="Icônes de témoignage cinq étoiles"

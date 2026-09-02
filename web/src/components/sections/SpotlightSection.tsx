@@ -15,12 +15,13 @@ export function SpotlightSection() {
             src="/images/SpotlightSectionMainPicture.png"
             alt=""
             fill
+            sizes="(min-width: 640px) 50vw, 100vw"
             className="object-cover"
           />
         </div>
 
-        <div className="flex flex-col justify-center gap-12 px-4 py-20 sm:px-10 sm:py-28">
-          <h2 className="text-4xl font-normal text-balance uppercase sm:text-5xl">
+        <div className="flex flex-col justify-center gap-8 px-4 py-14 sm:gap-12 sm:px-10 sm:py-28">
+          <h2 className="text-3xl font-normal text-balance uppercase sm:text-5xl">
             Développez votre clientèle, sans effort administratif.
           </h2>
           <div className="flex flex-col gap-4 text-sm">

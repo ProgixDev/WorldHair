@@ -8,9 +8,12 @@ describe("Home", () => {
     const hero = screen.getByRole("region", { name: "WorldHair" });
 
     expect(hero).toHaveClass("min-h-screen");
-    expect(screen.getByRole("heading", { name: "WorldHair" })).toHaveClass(
-      "top-28",
-    );
+    // The wordmark sits in normal flow on phones and only takes up the
+    // design's absolute placement from `sm` up — those offsets are desktop
+    // geometry and overlap the other hero blocks at phone widths.
+    const wordmark = screen.getByRole("heading", { name: "WorldHair" });
+    expect(wordmark).toHaveClass("static");
+    expect(wordmark).toHaveClass("sm:absolute");
     expect(screen.getByText("Votre style, à votre rythme")).toBeInTheDocument();
   });
 });
