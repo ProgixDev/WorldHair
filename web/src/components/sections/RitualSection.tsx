@@ -15,7 +15,7 @@ const STEPS = [
   },
   {
     number: "03",
-    image: "/images/RitualSectionStyle.png",
+    image: "/images/worldhair-ritual-step-3-booking-phone-v2.png",
     tag: "Style",
     title: "Profitez de votre style",
   },
@@ -35,29 +35,40 @@ export function RitualSection() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-6 sm:mt-12 sm:grid-cols-3">
-          {STEPS.map((step) => (
-            <div key={step.number} className="flex flex-col gap-4">
-              <div className="bg-muted border-border relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border sm:aspect-3/4">
-                <Image
-                  src={step.image}
-                  alt={step.title}
-                  fill
-                  sizes="(min-width: 640px) 33vw, 100vw"
-                  className="absolute inset-0 size-full object-cover"
-                />
-                <span className="text-foreground/60 absolute top-3 left-3 text-sm font-bold">
-                  {step.number}
-                </span>
-                <span className="border-border bg-background/90 absolute top-3 right-3 rounded-full border px-3 py-1 text-xs font-medium">
-                  {step.tag}
-                </span>
+        {/* Chronological timeline: a connecting line (vertical on phones,
+            horizontal from sm up) runs behind the three steps, passing
+            through each step's numbered badge — pinned to the image's own
+            top-left corner rather than floating beside it. */}
+        <div className="relative mt-8 sm:mt-12">
+          <div
+            aria-hidden="true"
+            className="border-border absolute top-0 bottom-0 left-[30px] border-l sm:top-[30px] sm:right-0 sm:bottom-auto sm:left-0 sm:border-t sm:border-l-0"
+          />
+
+          <div className="relative grid gap-10 sm:grid-cols-3 sm:gap-8">
+            {STEPS.map((step, index) => (
+              <div key={step.number} className="flex flex-col gap-4">
+                <div className="bg-muted border-border relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border sm:aspect-3/4">
+                  <Image
+                    src={step.image}
+                    alt={step.title}
+                    fill
+                    sizes="(min-width: 640px) 33vw, 100vw"
+                    className="absolute inset-0 size-full object-cover"
+                  />
+                  <span className="bg-primary text-primary-foreground ring-background absolute top-3 left-3 z-10 grid size-9 place-items-center rounded-full text-sm font-bold ring-4">
+                    {index + 1}
+                  </span>
+                  <span className="border-border bg-background/90 absolute top-3 right-3 rounded-full border px-3 py-1 text-xs font-medium">
+                    {step.tag}
+                  </span>
+                </div>
+                <p className="text-sm font-bold tracking-tight uppercase">
+                  {step.title}
+                </p>
               </div>
-              <p className="text-sm font-bold tracking-tight uppercase">
-                {step.title}
-              </p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </section>

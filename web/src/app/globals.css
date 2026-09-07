@@ -111,3 +111,25 @@ html {
 button {
   cursor: pointer;
 }
+
+/* Continuous horizontal drift for the diversity photo strip in
+   HighlightsSection — the track is rendered twice back to back and this
+   travels exactly half its width, so the loop seam is invisible. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 32s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
+}

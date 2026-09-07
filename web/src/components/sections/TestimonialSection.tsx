@@ -26,7 +26,7 @@ export function TestimonialSection() {
           alt="Icônes de témoignage cinq étoiles"
           width={1536}
           height={1024}
-          className="w-full max-w-xl object-contain sm:max-w-3xl lg:max-w-4xl"
+          className="w-full max-w-xs object-contain sm:max-w-md lg:max-w-lg"
         />
       </div>
     </section>
