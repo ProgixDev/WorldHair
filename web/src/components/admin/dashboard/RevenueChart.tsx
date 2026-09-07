@@ -22,7 +22,7 @@ const MIN_W = 260;
 /** Below this the chart is tall enough to read but not so tall it pushes the
  *  cards under it off a phone screen. */
 const NARROW_W = 420;
-const PAD = { left: 48, right: 12, top: 14, bottom: 28 };
+const PAD = { left: 64, right: 12, top: 14, bottom: 28 };
 /** Horizontal room one x-axis label needs before its neighbours collide. */
 const LABEL_SLOT = 46;
 
@@ -34,16 +34,59 @@ function niceMax(value: number): number {
   return Math.max(step, Math.ceil(value / step) * step);
 }
 
-function smoothPath(points: { x: number; y: number }[]): string {
-  if (points.length < 2) return "";
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const cur = points[i];
-    d += ` Q ${prev.x} ${prev.y} ${(prev.x + cur.x) / 2} ${(prev.y + cur.y) / 2}`;
+/**
+ * Monotone cubic Hermite spline (Fritsch-Carlson). Passes exactly through
+ * every point, like the Catmull-Rom curve this replaced, but that curve's
+ * control points were free to overshoot past a segment's own two values —
+ * which let a valley next to a tall peak dip the line below zero. Clamping
+ * each tangent keeps every segment's curve within the range of its own two
+ * endpoints, so it can never go below the lowest value on the chart (0) or
+ * above a local peak.
+ */
+function linePath(points: { x: number; y: number }[]): string {
+  const n = points.length;
+  if (n < 2) return "";
+  if (n === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+
+  const dx: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(points[i + 1].x - points[i].x);
+    slope.push((points[i + 1].y - points[i].y) / dx[i]);
   }
-  const last = points[points.length - 1];
-  return `${d} L ${last.x} ${last.y}`;
+
+  const tangent = new Array<number>(n);
+  tangent[0] = slope[0];
+  tangent[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    tangent[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+  }
+
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) {
+      tangent[i] = 0;
+      tangent[i + 1] = 0;
+      continue;
+    }
+    const alpha = tangent[i] / slope[i];
+    const beta = tangent[i + 1] / slope[i];
+    const magnitude = alpha * alpha + beta * beta;
+    if (magnitude > 9) {
+      const tau = 3 / Math.sqrt(magnitude);
+      tangent[i] = tau * alpha * slope[i];
+      tangent[i + 1] = tau * beta * slope[i];
+    }
+  }
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < n - 1; i++) {
+    const c1x = points[i].x + dx[i] / 3;
+    const c1y = points[i].y + (tangent[i] * dx[i]) / 3;
+    const c2x = points[i + 1].x - dx[i] / 3;
+    const c2y = points[i + 1].y - (tangent[i + 1] * dx[i]) / 3;
+    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${points[i + 1].x} ${points[i + 1].y}`;
+  }
+  return d;
 }
 
 export function RevenueChart() {
@@ -91,7 +134,7 @@ export function RevenueChart() {
     setRange(next);
   };
 
-  const viewH = viewW < NARROW_W ? 200 : 240;
+  const viewH = viewW < NARROW_W ? 320 : 420;
   const plotW = viewW - PAD.left - PAD.right;
   const plotH = viewH - PAD.top - PAD.bottom;
 
@@ -107,7 +150,7 @@ export function RevenueChart() {
   const yAt = (v: number) => PAD.top + plotH - (v / yMax) * plotH;
 
   const revenuePoints = revenue.map((v, i) => ({ x: xAt(i), y: yAt(v) }));
-  const areaPath = `${smoothPath(revenuePoints)} L ${xAt(labels.length - 1)} ${PAD.top + plotH} L ${PAD.left} ${PAD.top + plotH} Z`;
+  const areaPath = `${linePath(revenuePoints)} L ${xAt(labels.length - 1)} ${PAD.top + plotH} L ${PAD.left} ${PAD.top + plotH} Z`;
 
   // Pointer events rather than mouse ones: on a phone there is no hover, so
   // without touch the tooltip was unreachable and the numbers behind it
@@ -188,7 +231,7 @@ export function RevenueChart() {
                 textAnchor="end"
                 className="fill-[#5b7186] text-[11px]"
               >
-                {tick.toLocaleString("fr-FR")}
+                {currency(tick)}
               </text>
             </g>
           ))}
@@ -222,23 +265,27 @@ export function RevenueChart() {
           )}
 
           <path
-            d={smoothPath(revenuePoints)}
+            d={linePath(revenuePoints)}
             fill="none"
             stroke="#2a93d5"
             strokeWidth="2"
             strokeLinecap="round"
           />
 
-          {hovered !== null && (
+          {/* Drawn from the same revenuePoints the line itself is built from,
+              so every dot sits exactly on the line — never approximated by a
+              separately-computed position. */}
+          {revenuePoints.map((point, i) => (
             <circle
-              cx={revenuePoints[hovered].x}
-              cy={revenuePoints[hovered].y}
-              r="4.5"
+              key={i}
+              cx={point.x}
+              cy={point.y}
+              r={hovered === i ? "4.5" : "3"}
               fill="#2a93d5"
               stroke="#111c2e"
               strokeWidth="2"
             />
-          )}
+          ))}
         </svg>
 
         {hovered !== null && (
