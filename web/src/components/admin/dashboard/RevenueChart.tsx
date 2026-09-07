@@ -4,17 +4,6 @@ import { cn } from "@/lib/utils";
 import { type StatsRange, getBookingStats } from "@/services/adminApi";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * Two series, one axis — both are counts of appointments, so they share a
- * scale (never a dual-axis chart). Colours are WorldHair's own accent blue
- * and DESIGN.md's warm gold, each snapped to the dark-mode lightness band so
- * the pair passes CVD separation against the #111c2e card surface.
- */
-const SERIES = [
-  { key: "confirmed", label: "Confirmées", color: "#2a93d5" },
-  { key: "cancelled", label: "Annulées", color: "#b8813f" },
-] as const;
-
 const RANGE_OPTIONS: { label: string; value: StatsRange }[] = [
   { label: "Jour", value: "day" },
   { label: "Semaine", value: "week" },
@@ -33,12 +22,15 @@ const MIN_W = 260;
 /** Below this the chart is tall enough to read but not so tall it pushes the
  *  cards under it off a phone screen. */
 const NARROW_W = 420;
-const PAD = { left: 40, right: 12, top: 14, bottom: 28 };
+const PAD = { left: 48, right: 12, top: 14, bottom: 28 };
 /** Horizontal room one x-axis label needs before its neighbours collide. */
 const LABEL_SLOT = 46;
 
+const currency = (value: number) =>
+  value.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+
 function niceMax(value: number): number {
-  const step = value > 150 ? 50 : value > 60 ? 25 : 10;
+  const step = value > 1500 ? 500 : value > 600 ? 250 : value > 150 ? 50 : 10;
   return Math.max(step, Math.ceil(value / step) * step);
 }
 
@@ -54,12 +46,11 @@ function smoothPath(points: { x: number; y: number }[]): string {
   return `${d} L ${last.x} ${last.y}`;
 }
 
-export function BookingsChart() {
+export function RevenueChart() {
   const [range, setRange] = useState<StatsRange>("month");
   const [hovered, setHovered] = useState<number | null>(null);
   const [labels, setLabels] = useState<string[]>([]);
-  const [confirmed, setConfirmed] = useState<number[]>([]);
-  const [cancelled, setCancelled] = useState<number[]>([]);
+  const [revenue, setRevenue] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewW, setViewW] = useState(FALLBACK_W);
@@ -70,8 +61,7 @@ export function BookingsChart() {
     getBookingStats(nextRange)
       .then((data) => {
         setLabels(data.points.map((p) => p.label));
-        setConfirmed(data.points.map((p) => p.confirmed));
-        setCancelled(data.points.map((p) => p.cancelled));
+        setRevenue(data.points.map((p) => p.revenue));
         setError(null);
       })
       .catch(() => setError("Impossible de charger les statistiques."))
@@ -105,7 +95,7 @@ export function BookingsChart() {
   const plotW = viewW - PAD.left - PAD.right;
   const plotH = viewH - PAD.top - PAD.bottom;
 
-  const yMax = niceMax(Math.max(0, ...confirmed, ...cancelled));
+  const yMax = niceMax(Math.max(0, ...revenue));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(yMax * t));
 
   // Show every nth label once they no longer fit side by side — twelve months
@@ -116,12 +106,8 @@ export function BookingsChart() {
     PAD.left + (labels.length === 1 ? plotW / 2 : (i / (labels.length - 1)) * plotW);
   const yAt = (v: number) => PAD.top + plotH - (v / yMax) * plotH;
 
-  const pointsFor = (values: number[]) =>
-    values.map((v, i) => ({ x: xAt(i), y: yAt(v) }));
-
-  const confirmedPoints = pointsFor(confirmed);
-  const cancelledPoints = pointsFor(cancelled);
-  const areaPath = `${smoothPath(confirmedPoints)} L ${xAt(labels.length - 1)} ${PAD.top + plotH} L ${PAD.left} ${PAD.top + plotH} Z`;
+  const revenuePoints = revenue.map((v, i) => ({ x: xAt(i), y: yAt(v) }));
+  const areaPath = `${smoothPath(revenuePoints)} L ${xAt(labels.length - 1)} ${PAD.top + plotH} L ${PAD.left} ${PAD.top + plotH} Z`;
 
   // Pointer events rather than mouse ones: on a phone there is no hover, so
   // without touch the tooltip was unreachable and the numbers behind it
@@ -139,7 +125,7 @@ export function BookingsChart() {
   return (
     <section className="rounded-2xl bg-[#111c2e] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-        <h2 className="text-base font-medium text-[#f2f6fb]">Réservations</h2>
+        <h2 className="text-base font-medium text-[#f2f6fb]">Revenus</h2>
 
         <div className="flex items-center gap-4 sm:gap-5">
           {RANGE_OPTIONS.map((option) => (
@@ -160,26 +146,9 @@ export function BookingsChart() {
         </div>
       </div>
 
-      {/* Legend — identity never rests on colour alone. */}
-      <ul className="mt-4 flex items-center gap-5">
-        {SERIES.map((series) => (
-          <li
-            key={series.key}
-            className="flex items-center gap-2 text-xs text-[#93a6bc]"
-          >
-            <span
-              aria-hidden="true"
-              className="size-2.5 rounded-full"
-              style={{ backgroundColor: series.color }}
-            />
-            {series.label}
-          </li>
-        ))}
-      </ul>
-
       {/* Always mounted, even while loading — it is what the ResizeObserver
           measures, and a ref inside a conditional would never be observed. */}
-      <div ref={plotRef} className="relative mt-2">
+      <div ref={plotRef} className="relative mt-4">
       {loading && <p className="py-12 text-center text-sm text-[#93a6bc]">Chargement…</p>}
       {error && <p className="py-12 text-center text-sm text-[#ff7a70]">{error}</p>}
 
@@ -190,14 +159,14 @@ export function BookingsChart() {
           viewBox={`0 0 ${viewW} ${viewH}`}
           className="h-auto w-full touch-pan-y"
           role="img"
-          aria-label={`Réservations confirmées et annulées par ${RANGE_OPTIONS.find((o) => o.value === range)?.label.toLowerCase()}`}
+          aria-label={`Revenus par ${RANGE_OPTIONS.find((o) => o.value === range)?.label.toLowerCase()}`}
           onMouseMove={(event) => handlePointer(event.clientX)}
           onMouseLeave={() => setHovered(null)}
           onTouchStart={(event) => handlePointer(event.touches[0].clientX)}
           onTouchMove={(event) => handlePointer(event.touches[0].clientX)}
         >
           <defs>
-            <linearGradient id="confirmedArea" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="revenueArea" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#2a93d5" stopOpacity="0.28" />
               <stop offset="100%" stopColor="#2a93d5" stopOpacity="0" />
             </linearGradient>
@@ -219,7 +188,7 @@ export function BookingsChart() {
                 textAnchor="end"
                 className="fill-[#5b7186] text-[11px]"
               >
-                {tick}
+                {tick.toLocaleString("fr-FR")}
               </text>
             </g>
           ))}
@@ -238,7 +207,7 @@ export function BookingsChart() {
             ) : null,
           )}
 
-          <path d={areaPath} fill="url(#confirmedArea)" />
+          <path d={areaPath} fill="url(#revenueArea)" />
 
           {hovered !== null && (
             <line
@@ -253,38 +222,23 @@ export function BookingsChart() {
           )}
 
           <path
-            d={smoothPath(cancelledPoints)}
-            fill="none"
-            stroke="#b8813f"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d={smoothPath(confirmedPoints)}
+            d={smoothPath(revenuePoints)}
             fill="none"
             stroke="#2a93d5"
             strokeWidth="2"
             strokeLinecap="round"
           />
 
-          {hovered !== null &&
-            SERIES.map((series) => {
-              const point =
-                series.key === "confirmed"
-                  ? confirmedPoints[hovered]
-                  : cancelledPoints[hovered];
-              return (
-                <circle
-                  key={series.key}
-                  cx={point.x}
-                  cy={point.y}
-                  r="4.5"
-                  fill={series.color}
-                  stroke="#111c2e"
-                  strokeWidth="2"
-                />
-              );
-            })}
+          {hovered !== null && (
+            <circle
+              cx={revenuePoints[hovered].x}
+              cy={revenuePoints[hovered].y}
+              r="4.5"
+              fill="#2a93d5"
+              stroke="#111c2e"
+              strokeWidth="2"
+            />
+          )}
         </svg>
 
         {hovered !== null && (
@@ -299,24 +253,9 @@ export function BookingsChart() {
             <p className="text-[11px] font-medium text-[#f2f6fb]">
               {labels[hovered]}
             </p>
-            {SERIES.map((series) => (
-              <p
-                key={series.key}
-                className="mt-1 flex items-center gap-2 text-[11px] text-[#93a6bc]"
-              >
-                <span
-                  aria-hidden="true"
-                  className="size-2 rounded-full"
-                  style={{ backgroundColor: series.color }}
-                />
-                {series.label}
-                <span className="ml-auto font-medium text-[#f2f6fb]">
-                  {series.key === "confirmed"
-                    ? confirmed[hovered]
-                    : cancelled[hovered]}
-                </span>
-              </p>
-            ))}
+            <p className="mt-1 text-[11px] font-medium text-[#f2f6fb]">
+              {currency(revenue[hovered])}
+            </p>
           </div>
         )}
       </>

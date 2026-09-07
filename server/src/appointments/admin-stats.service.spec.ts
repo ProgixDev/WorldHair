@@ -34,10 +34,10 @@ describe('AdminStatsService', () => {
     const todayNoonIso = new Date(todayStartMs + 12 * 3_600_000).toISOString();
 
     supabase.seedAppointment({
-      particulierId: 'p1', coiffeurId: 'c1', startsAt: todayNoonIso, status: 'confirmed', createdAt: todayNoonIso,
+      particulierId: 'p1', coiffeurId: 'c1', startsAt: todayNoonIso, status: 'confirmed', createdAt: todayNoonIso, price: 50,
     });
     supabase.seedAppointment({
-      particulierId: 'p2', coiffeurId: 'c1', startsAt: todayNoonIso, status: 'cancelled', createdAt: todayNoonIso,
+      particulierId: 'p2', coiffeurId: 'c1', startsAt: todayNoonIso, status: 'cancelled', createdAt: todayNoonIso, price: 30,
     });
     // A pending appointment shouldn't count toward either series.
     supabase.seedAppointment({
@@ -52,6 +52,9 @@ describe('AdminStatsService', () => {
 
     const isoDayOfWeek = (now.getUTCDay() + 6) % 7; // 0 = Monday
     expect(stats.points[isoDayOfWeek]).toMatchObject({ confirmed: 1, cancelled: 1 });
+    // Revenue counts only the confirmed appointment's price — the cancelled
+    // one's 30 must not leak in.
+    expect(stats.points[isoDayOfWeek].revenue).toBe(50);
   });
 
   it('an appointment created well before the range window is not counted', async () => {

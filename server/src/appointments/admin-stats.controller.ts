@@ -4,7 +4,7 @@ import { AdminStatsService, BookingStats } from './admin-stats.service';
 import { BookingStatsQueryDto } from './dto/booking-stats.dto';
 
 /**
- * Real numbers for the dashboard's "Réservations" chart. Both admin tiers
+ * Real numbers for the dashboard's revenue chart. Both admin tiers
  * via `@Roles('admin', 'admin_limited')`, enforced by the global `RolesGuard`.
  */
 @Roles('admin', 'admin_limited')

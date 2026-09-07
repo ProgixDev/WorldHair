@@ -217,6 +217,7 @@ export interface BookingStatsPoint {
   label: string;
   confirmed: number;
   cancelled: number;
+  revenue: number;
 }
 
 export interface BookingStats {

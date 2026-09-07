@@ -1,7 +1,7 @@
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { AdminQueueRail } from "@/components/admin/dashboard/AdminQueueRail";
 import { AdminStatCards } from "@/components/admin/dashboard/AdminStatCards";
-import { BookingsChart } from "@/components/admin/dashboard/BookingsChart";
+import { RevenueChart } from "@/components/admin/dashboard/RevenueChart";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -25,7 +25,7 @@ export default function AdminDashboardPage() {
             {/* Figures first, then the chart they came out of — the tiles
                 answer "how are we doing", the chart answers "since when". */}
             <AdminStatCards />
-            <BookingsChart />
+            <RevenueChart />
           </div>
         </div>
 

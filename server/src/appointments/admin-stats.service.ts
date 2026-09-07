@@ -7,6 +7,8 @@ export interface BookingStatsPoint {
   label: string;
   confirmed: number;
   cancelled: number;
+  /** Sum of `price` for confirmed appointments created in this bucket. */
+  revenue: number;
 }
 
 export interface BookingStats {
@@ -64,14 +66,15 @@ function bucketsFor(range: StatsRange, now: Date): Bucket[] {
 interface AppointmentStatsRow {
   status: string;
   created_at: string;
+  price: string | number;
 }
 
 /**
- * Backs the dashboard's "Réservations" chart (`/admin` →
- * `components/admin/dashboard/BookingsChart.tsx`) — real counts of
- * appointments by `created_at`, replacing that component's placeholder
- * figures. Reads the same `appointments` table `AppointmentsService` owns;
- * lives here rather than a separate module for that reason.
+ * Backs the dashboard's revenue chart (`/admin` →
+ * `components/admin/dashboard/RevenueChart.tsx`) — real revenue and booking
+ * counts by `created_at`. Reads the same `appointments` table
+ * `AppointmentsService` owns; lives here rather than a separate module for
+ * that reason.
  */
 @Injectable()
 export class AdminStatsService {
@@ -84,7 +87,7 @@ export class AdminStatsService {
 
     const { data, error } = await this.supabase.client
       .from('appointments')
-      .select('status, created_at')
+      .select('status, created_at, price')
       .gte('created_at', earliest);
     if (error) {
       throw new InternalServerErrorException(error.message);
@@ -97,10 +100,12 @@ export class AdminStatsService {
         const createdAtMs = new Date(row.created_at).getTime();
         return createdAtMs >= bucket.startMs && createdAtMs < bucket.endMs;
       });
+      const confirmedRows = inBucket.filter((row) => row.status === 'confirmed');
       return {
         label: bucket.label,
-        confirmed: inBucket.filter((row) => row.status === 'confirmed').length,
+        confirmed: confirmedRows.length,
         cancelled: inBucket.filter((row) => row.status === 'cancelled').length,
+        revenue: confirmedRows.reduce((sum, row) => sum + Number(row.price), 0),
       };
     });
 
