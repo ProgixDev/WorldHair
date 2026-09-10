@@ -2,8 +2,9 @@ import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Webhook } from 'standardwebhooks';
-import { EnvironmentVariables } from '../config/env.validation';
+import { EnvironmentVariables, NodeEnv } from '../config/env.validation';
 import { MailService } from '../mail/mail.service';
+import { DevOtpStore } from './dev-otp.store';
 import { EmailHookService } from './email-hook.service';
 import { EmailHookPayload } from './email-hook.types';
 
@@ -52,19 +53,25 @@ function baseData(overrides: Partial<EmailHookPayload['email_data']> = {}): Emai
 
 describe('EmailHookService', () => {
   let mail: { sendVerificationEmail: jest.Mock; sendRendered: jest.Mock };
+  let devOtp: DevOtpStore;
   let service: EmailHookService;
 
-  function configFor(secretEnv: string): ConfigService<EnvironmentVariables, true> {
+  function configFor(
+    secretEnv: string,
+    nodeEnv: NodeEnv = NodeEnv.Development,
+  ): ConfigService<EnvironmentVariables, true> {
     const values: Record<string, unknown> = {
       SEND_EMAIL_HOOK_SECRET: secretEnv,
       SUPABASE_URL,
+      NODE_ENV: nodeEnv,
     };
     return { get: (key: string) => values[key] } as unknown as ConfigService<EnvironmentVariables, true>;
   }
 
   beforeEach(() => {
     mail = { sendVerificationEmail: jest.fn(), sendRendered: jest.fn() };
-    service = new EmailHookService(configFor(SECRET), mail as unknown as MailService);
+    devOtp = new DevOtpStore(configFor(SECRET));
+    service = new EmailHookService(configFor(SECRET), mail as unknown as MailService, devOtp);
   });
 
   describe('verifyAndParse', () => {
@@ -93,7 +100,7 @@ describe('EmailHookService', () => {
     });
 
     it('refuses to run with no secret configured', () => {
-      const unconfigured = new EmailHookService(configFor(''), mail as unknown as MailService);
+      const unconfigured = new EmailHookService(configFor(''), mail as unknown as MailService, devOtp);
       const payload: EmailHookPayload = { user: baseUser(), email_data: baseData() };
       const { headers, body } = sign(SECRET, JSON.stringify(payload));
 
@@ -101,7 +108,11 @@ describe('EmailHookService', () => {
     });
 
     it('accepts the old secret during rotation (new|old)', () => {
-      const rotating = new EmailHookService(configFor(`${SECRET}|${OLD_SECRET}`), mail as unknown as MailService);
+      const rotating = new EmailHookService(
+        configFor(`${SECRET}|${OLD_SECRET}`),
+        mail as unknown as MailService,
+        devOtp,
+      );
       const payload: EmailHookPayload = { user: baseUser(), email_data: baseData() };
       const { headers, body } = sign(OLD_SECRET, JSON.stringify(payload));
 
@@ -118,6 +129,29 @@ describe('EmailHookService', () => {
 
       expect(mail.sendVerificationEmail).toHaveBeenCalledWith('camille@example.com', '112233');
       expect(mail.sendRendered).not.toHaveBeenCalled();
+    });
+
+    it('signup: also stashes the code in DevOtpStore for local testing', async () => {
+      await service.dispatch({
+        user: baseUser({ email: 'camille@example.com' }),
+        email_data: baseData({ email_action_type: 'signup', token: '112233' }),
+      });
+
+      expect(devOtp.take('camille@example.com')).toBe('112233');
+    });
+
+    it('signup: does NOT stash the code when NODE_ENV=production', async () => {
+      const prodDevOtp = new DevOtpStore(configFor(SECRET, NodeEnv.Production));
+      const prodService = new EmailHookService(configFor(SECRET, NodeEnv.Production), mail as unknown as MailService, prodDevOtp);
+
+      await prodService.dispatch({
+        user: baseUser({ email: 'camille@example.com' }),
+        email_data: baseData({ email_action_type: 'signup', token: '112233' }),
+      });
+
+      expect(prodDevOtp.take('camille@example.com')).toBeNull();
+      // The actual email still goes out in production — only the dev shortcut is disabled.
+      expect(mail.sendVerificationEmail).toHaveBeenCalledWith('camille@example.com', '112233');
     });
 
     it('magiclink: sends a link built from Supabase\'s own verify endpoint', async () => {
