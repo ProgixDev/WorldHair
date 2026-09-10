@@ -4,7 +4,6 @@ import { Webhook, WebhookVerificationError } from 'standardwebhooks';
 import { EnvironmentVariables } from '../config/env.validation';
 import { MailService } from '../mail/mail.service';
 import { emailChangeMail, magicLinkMail, passwordResetLinkMail } from '../mail/mail.templates';
-import { DevOtpStore } from './dev-otp.store';
 import { EmailHookData, EmailHookPayload, EmailHookUser } from './email-hook.types';
 
 interface WebhookHeaders {
@@ -32,7 +31,6 @@ export class EmailHookService {
   constructor(
     private readonly config: ConfigService<EnvironmentVariables, true>,
     private readonly mail: MailService,
-    private readonly devOtp: DevOtpStore,
   ) {}
 
   /**
@@ -77,9 +75,6 @@ export class EmailHookService {
 
     switch (data.email_action_type) {
       case 'signup':
-        // Dev convenience only — no-ops outside development, see
-        // DevOtpStore's doc comment.
-        this.devOtp.set(user.email, data.token);
         await this.mail.sendVerificationEmail(user.email, data.token);
         return;
 

@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { AuthHeader } from "../../components/ui/AuthHeader";
 import { Button } from "../../components/ui/Button";
@@ -16,13 +16,9 @@ import {
   getSignupIntent,
 } from "../../services/preferences";
 import { AuthError } from "../../services/auth";
-import { fetchDevOtp } from "../../services/devOtp";
 import { isValidVerificationCode } from "../../utils/validation";
 
 const RESEND_COOLDOWN_S = 30;
-/** How long to keep polling for the dev-only auto-fill before giving up. */
-const DEV_OTP_POLL_TIMEOUT_MS = 20_000;
-const DEV_OTP_POLL_INTERVAL_MS = 1_000;
 
 export default function VerifyEmail() {
   const router = useRouter();
@@ -49,72 +45,38 @@ export default function VerifyEmail() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  const submit = useCallback(
-    async (value: string) => {
-      if (!isValidVerificationCode(value)) {
-        setError("Entrez les 6 chiffres du code.");
-        return;
+  const submit = async (value: string) => {
+    if (!isValidVerificationCode(value)) {
+      setError("Entrez les 6 chiffres du code.");
+      return;
+    }
+
+    setError(null);
+    setVerifying(true);
+    try {
+      const next = await verifyEmail(email, value);
+
+      // Honor the role picked at sign-up: a freshly-verified account is
+      // still role "particulier" in the database until a coiffeur
+      // application is actually submitted (see services/auth.ts), so this
+      // is the one place that intent needs to be read back.
+      const intent = await getSignupIntent();
+      await clearSignupIntent();
+      if (intent === "coiffeur" && !next.application) {
+        router.replace(ROUTES.proIdentity as never);
+      } else {
+        router.replace(nextRouteForSession(next, true) as never);
       }
-
-      setError(null);
-      setVerifying(true);
-      try {
-        const next = await verifyEmail(email, value);
-
-        // Honor the role picked at sign-up: a freshly-verified account is
-        // still role "particulier" in the database until a coiffeur
-        // application is actually submitted (see services/auth.ts), so this
-        // is the one place that intent needs to be read back.
-        const intent = await getSignupIntent();
-        await clearSignupIntent();
-        if (intent === "coiffeur" && !next.application) {
-          router.replace(ROUTES.proIdentity as never);
-        } else {
-          router.replace(nextRouteForSession(next, true) as never);
-        }
-      } catch (err) {
-        setError(
-          err instanceof AuthError
-            ? err.message
-            : "Vérification impossible. Réessayez.",
-        );
-      } finally {
-        setVerifying(false);
-      }
-    },
-    [email, router, verifyEmail],
-  );
-
-  // Dev-only: poll the server for the code Supabase's Send Email Hook just
-  // stashed (see services/devOtp.ts), and auto-fill + auto-submit once it
-  // shows up — skips the "go copy the code out of Render's logs" step while
-  // testing. The server itself 404s this route outside development, so
-  // there's nothing to gate here beyond __DEV__ except not wasting a request
-  // against a build that could never get an answer anyway.
-  useEffect(() => {
-    if (!__DEV__ || !email) return;
-
-    let cancelled = false;
-    const deadline = Date.now() + DEV_OTP_POLL_TIMEOUT_MS;
-
-    const poll = async () => {
-      while (!cancelled && Date.now() < deadline) {
-        const token = await fetchDevOtp(email);
-        if (cancelled) return;
-        if (token) {
-          setCode(token);
-          void submit(token);
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, DEV_OTP_POLL_INTERVAL_MS));
-      }
-    };
-
-    void poll();
-    return () => {
-      cancelled = true;
-    };
-  }, [email, submit]);
+    } catch (err) {
+      setError(
+        err instanceof AuthError
+          ? err.message
+          : "Vérification impossible. Réessayez.",
+      );
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const handleResend = async () => {
     setError(null);

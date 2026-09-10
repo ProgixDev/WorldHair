@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../mail/mail.module';
-import { DevOtpController } from './dev-otp.controller';
-import { DevOtpStore } from './dev-otp.store';
 import { EmailHookController } from './email-hook.controller';
 import { EmailHookService } from './email-hook.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -26,14 +24,11 @@ import { SupabaseStrategy } from './strategies/supabase.strategy';
  * Supabase's own mailer. That's mail delivery, not session issuance — see
  * `email-hook.service.ts`'s doc comment for the full picture, and
  * `server/README.md` for which side (client vs this API) does what overall.
- *
- * `DevOtpController`/`DevOtpStore` are a dev-only convenience riding along
- * on the same signup email dispatch — see `dev-otp.store.ts`'s doc comment.
  */
 @Module({
   imports: [MailModule],
-  controllers: [EmailHookController, DevOtpController],
-  providers: [SupabaseStrategy, JwtAuthGuard, OptionalJwtAuthGuard, EmailHookService, DevOtpStore],
+  controllers: [EmailHookController],
+  providers: [SupabaseStrategy, JwtAuthGuard, OptionalJwtAuthGuard, EmailHookService],
   // SupabaseStrategy must be exported too, not just the two guards:
   // app.module.ts (unchanged between variants) registers its OWN separate
   // `{ provide: APP_GUARD, useClass: JwtAuthGuard }` instance rather than
