@@ -33,26 +33,26 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [ ] Profile setup: first name, last name, photo (optional, uploads)
 
 ### `/discover`
-- [ ] Full-screen map + salon carousel, sorted by distance
-- [ ] Tapping a pin scrolls the carousel to match
-- [ ] Scrolling the carousel selects the matching pin
-- [ ] Specialty chips filter the list (Tout / coupe / coloration / afro / tresses / barbier / soins / mariage)
-- [ ] No GPS → shows "Paris (approx.)" + "Activer ma position" block
-- [ ] Ad banner appears only when `home_banner` is enabled in admin
+- [x] Full-screen map + salon carousel, sorted by distance
+- [x] Tapping a pin scrolls the carousel to match
+- [x] Scrolling the carousel selects the matching pin
+- [x] Specialty chips filter the list (Tout / coupe / coloration / afro / tresses / barbier / soins / mariage)
+- [x] No GPS → shows "Paris (approx.)" + "Activer ma position" block
+- [x] Ad banner appears only when `home_banner` is enabled in admin
 
 ### `/search`
-- [ ] Text search is accent-insensitive (e.g. "beaute" finds "beauté")
-- [ ] Text search also matches service names, not just salon names
-- [ ] Distance filter (1/3/5/10 km/Partout)
-- [ ] Sort (nearest / best rated / price)
-- [ ] Filter badge shows correct active-filter count
-- [ ] No filters → all 26 salons show
-- [ ] Ad appears every 6 results when `search_results` is enabled
+- [x] Text search is accent-insensitive (e.g. "beaute" finds "beauté")
+- [x] Text search also matches service names, not just salon names
+- [x] Distance filter (1/3/5/10 km/Partout)
+- [x] Sort (nearest / best rated / price)
+- [x] Filter badge shows correct active-filter count
+- [x] No filters → all 26 salons show
+- [x] Ad appears every 6 results when `search_results` is enabled
 
 ### Salon page
-- [ ] Parallax cover scroll effect
-- [ ] Services, opening hours, map, reviews all render
-- [ ] Your own review is signed "Vous"
+- [x] Parallax cover scroll effect
+- [x] Services, opening hours, map, reviews all render
+- [x] Your own review is signed "Vous"
 
 ### Booking (4 steps)
 - [ ] Service → Slot → Payment → Confirmation, all 4 steps reachable

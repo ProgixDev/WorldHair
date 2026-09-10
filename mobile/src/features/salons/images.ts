@@ -10,6 +10,8 @@ import type { ImageSourcePropType } from "react-native";
 
 const UNSPLASH = "https://images.unsplash.com/photo-";
 const UNSPLASH_QUERY = "?auto=format&fit=crop&q=70";
+/** Small enough to arrive near-instantly; expo-image blurs it up into the full-size load. */
+const PLACEHOLDER_WIDTH = 24;
 
 /** Verified photo ids — salon, hair and portrait subjects. */
 const COVER_IDS = [
@@ -33,13 +35,6 @@ const COVER_IDS = [
   "1487412947147-5cebf100ffc2",
 ];
 
-/** Bundled art, used as the offline fallback and for the onboarding slides. */
-export const BUNDLED_COVERS: ImageSourcePropType[] = [
-  require("../../../assets/images/OnBoarding/OnBoarding1.png"),
-  require("../../../assets/images/OnBoarding/OnBoarding2.png"),
-  require("../../../assets/images/OnBoarding/OnBoarding3.png"),
-];
-
 /** Stable hash so a given id always resolves to the same picture. */
 function hash(value: string): number {
   let out = 0;
@@ -58,9 +53,20 @@ export function coverFor(salon: { id: string }, width = 800) {
   return { uri: coverUrl(salon.id, width) };
 }
 
-/** Offline stand-in shown while the remote cover loads or if it fails. */
+/**
+ * Shown while the real cover loads — a tiny (near-instant) fetch of the
+ * *same* photo `coverFor` resolves to, so it's a blur-up of the correct
+ * image rather than a swap. This used to cycle through 3 bundled onboarding
+ * backdrops (a completely different, unrelated pool from the real cover),
+ * which is what made every salon flash the wrong picture before the real
+ * one arrived — not a loading illusion, an actually different photo.
+ */
 export function coverPlaceholder(id: string): ImageSourcePropType {
-  return BUNDLED_COVERS[hash(id) % BUNDLED_COVERS.length];
+  return { uri: coverUrl(id, PLACEHOLDER_WIDTH) };
+}
+
+function gallerySeed(salonId: string, index: number): string {
+  return salonId + "-" + index;
 }
 
 /** Work-gallery strip on the salon page — always distinct per slot. */
@@ -68,9 +74,22 @@ export function galleryFor(salonId: string, count = 8): { uri: string }[] {
   return Array.from({ length: count }, (_, index) => ({
     uri:
       "https://picsum.photos/seed/" +
-      encodeURIComponent(salonId + "-" + index) +
+      encodeURIComponent(gallerySeed(salonId, index)) +
       "/500/500",
   }));
+}
+
+/** Same-seed tiny version of one `galleryFor` slot — see coverPlaceholder's doc comment. */
+export function galleryPlaceholder(salonId: string, index: number): { uri: string } {
+  return {
+    uri:
+      "https://picsum.photos/seed/" +
+      encodeURIComponent(gallerySeed(salonId, index)) +
+      "/" +
+      PLACEHOLDER_WIDTH +
+      "/" +
+      PLACEHOLDER_WIDTH,
+  };
 }
 
 /** Deterministic face for a review author. */

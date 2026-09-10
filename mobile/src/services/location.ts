@@ -31,34 +31,58 @@ export async function peekPermission(): Promise<LocationResult> {
         permission.canAskAgain ? "unknown" : "denied",
         permission.canAskAgain,
       );
-    return readPosition();
+    // Passive read (app boot) — never show a system dialog unprompted, so
+    // this stays a plain services-on check rather than letting
+    // getCurrentPositionAsync's own settings-resolution flow fire.
+    return readPosition({ allowSettingsPrompt: false });
   } catch {
     return fallback("error");
   }
 }
 
-/** Prompts if needed, then resolves the device position. */
+/**
+ * Prompts if needed, then resolves the device position. User-initiated
+ * (the "Activer" button) — this is the one path that's allowed to trigger
+ * Android's native "turn on Location" system dialog when services are off.
+ */
 export async function requestPosition(): Promise<LocationResult> {
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) return fallback("denied", permission.canAskAgain);
-    return readPosition();
+    return readPosition({ allowSettingsPrompt: true });
   } catch {
     return fallback("error");
   }
 }
 
-async function readPosition(): Promise<LocationResult> {
+async function readPosition({
+  allowSettingsPrompt,
+}: {
+  allowSettingsPrompt: boolean;
+}): Promise<LocationResult> {
   try {
-    const enabled = await Location.hasServicesEnabledAsync();
-    if (!enabled) return fallback("disabled");
+    if (!allowSettingsPrompt) {
+      const enabled = await Location.hasServicesEnabledAsync();
+      if (!enabled) return fallback("disabled");
+    }
 
     // Last known first — it returns instantly and is accurate enough to rank
     // salons; the fresh fix follows only when there is nothing cached.
+    //
+    // On the active path, deliberately NOT pre-checking hasServicesEnabledAsync
+    // and bailing out on our own: getCurrentPositionAsync's Android
+    // implementation already shows the real system "turn on Location" dialog
+    // itself when services are off (mayShowUserSettingsDialog, on by
+    // default) and waits for the user's answer. Short-circuiting to the
+    // Paris fallback before that ever runs — the previous bug here — meant
+    // tapping "Activer" silently did nothing once permission was granted:
+    // no permission dialog left to show, and the settings dialog never got
+    // the chance to fire either.
     const position =
       (await Location.getLastKnownPositionAsync()) ??
       (await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
+        mayShowUserSettingsDialog: allowSettingsPrompt,
       }));
 
     return {
@@ -71,6 +95,8 @@ async function readPosition(): Promise<LocationResult> {
       canAskAgain: true,
     };
   } catch {
+    // Covers both an unexpected read failure and the user declining the
+    // settings-resolution dialog above — either way, still no position.
     return fallback("error");
   }
 }

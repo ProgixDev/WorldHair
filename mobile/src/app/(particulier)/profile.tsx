@@ -164,11 +164,22 @@ export default function Profile() {
     );
   };
 
+  // Specific per status rather than one generic "Position désactivée" —
+  // "granted but isFallback" (services off / read failed) used to look
+  // identical to "never asked" or "denied", which made a real GPS problem
+  // (e.g. no location fix on an emulator, or the device's Location Services
+  // toggle being off) indistinguishable from just not having granted yet.
   const locationLabel = manualLabel
     ? manualLabel + " (choisie manuellement)"
     : status === "granted" && !isFallback
       ? "Position activée"
-      : "Position désactivée";
+      : status === "denied"
+        ? "Autorisation refusée"
+        : status === "disabled"
+          ? "Services de localisation désactivés sur l'appareil"
+          : status === "error"
+            ? "Position indisponible — signal GPS introuvable"
+            : "Position désactivée";
 
   return (
     <ScrollView

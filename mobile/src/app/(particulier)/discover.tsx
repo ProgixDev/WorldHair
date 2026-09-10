@@ -27,7 +27,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { fetchSalons } from "../../features/salons/api";
 import { withDistance } from "../../features/salons/geo";
 import { SPECIALTIES, type Salon, type SpecialtyId } from "../../features/salons/types";
-import { getAdSlot, type AdSlot } from "../../services/ads";
+import { useAdSlot } from "../../services/ads";
 
 /**
  * Map-first home. The map owns the whole screen; everything else floats over
@@ -54,19 +54,13 @@ export default function Discover() {
   const [specialty, setSpecialty] = useState<SpecialtyId | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
-  const [homeBanner, setHomeBanner] = useState<AdSlot | null>(null);
   const [allSalons, setAllSalons] = useState<Salon[]>([]);
   const listRef = useRef<FlatList>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getAdSlot("home_banner").then((slot) => {
-      if (!cancelled) setHomeBanner(slot);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Refetches on focus and polls every 15s while focused — see useAdSlot's
+  // doc comment for why (tabs stay mounted, a one-shot fetch never noticed
+  // an admin toggling the banner without a full app restart).
+  const homeBanner = useAdSlot("home_banner");
 
   useEffect(() => {
     let cancelled = false;
@@ -188,30 +182,52 @@ export default function Discover() {
             </Pressable>
           </View>
 
+          {/* Recherche already has its own bottom tab — always one tap away
+              regardless of screen — so this spot is free for a quicker win:
+              activate GPS, or refresh it if it's already on (e.g. after
+              actually moving). Same `enable()` either way; it re-reads the
+              position regardless of prior state. */}
           <Pressable
-            onPress={() => router.push("/search" as never)}
+            onPress={() => void enable()}
+            disabled={isLoading}
             accessibilityRole="button"
-            accessibilityLabel="Rechercher un salon"
+            accessibilityLabel={
+              status === "granted" && !isFallback
+                ? "Actualiser ma position"
+                : "Activer ma position"
+            }
+            accessibilityState={{ busy: isLoading }}
             style={({ pressed }) => [
               {
-                width: 56,
-                height: 56,
+                width: 44,
+                height: 44,
                 borderRadius: radius.full,
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: theme.surface.glass,
                 borderWidth: 1,
-                borderColor: theme.border,
-                opacity: pressed ? 0.7 : 1,
+                borderColor:
+                  status === "granted" && !isFallback
+                    ? theme.primary.main
+                    : theme.border,
+                opacity: pressed || isLoading ? 0.7 : 1,
               },
               elevation(2, theme.shadow),
             ]}
           >
-            <MaterialCommunityIcons
-              name="magnify"
-              size={24}
-              color={theme.foreground.white}
-            />
+            {isLoading ? (
+              <ActivityIndicator size="small" color={theme.foreground.white} />
+            ) : (
+              <MaterialCommunityIcons
+                name="crosshairs-gps"
+                size={19}
+                color={
+                  status === "granted" && !isFallback
+                    ? theme.primary.main
+                    : theme.foreground.white
+                }
+              />
+            )}
           </Pressable>
         </View>
 

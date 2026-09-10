@@ -30,7 +30,7 @@ import {
 } from "../../features/salons/filters";
 import { withDistance } from "../../features/salons/geo";
 import { SPECIALTIES, type Salon, type SalonWithDistance } from "../../features/salons/types";
-import { getAdSlot, type AdSlot } from "../../services/ads";
+import { useAdSlot } from "../../services/ads";
 
 /** How often the ad banner is interleaved among search results. */
 const AD_INTERVAL = 6;
@@ -53,18 +53,11 @@ export default function Search() {
 
   const [filters, setFilters] = useState<SalonFilters>(DEFAULT_FILTERS);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [resultsBanner, setResultsBanner] = useState<AdSlot | null>(null);
   const [allSalons, setAllSalons] = useState<Salon[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    getAdSlot("search_results").then((slot) => {
-      if (!cancelled) setResultsBanner(slot);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Refetches on focus and polls every 15s while focused — see useAdSlot's
+  // doc comment in services/ads.ts.
+  const resultsBanner = useAdSlot("search_results");
 
   useEffect(() => {
     let cancelled = false;

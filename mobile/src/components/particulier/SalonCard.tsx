@@ -2,7 +2,6 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
-import { elevation } from "../../constants/elevation";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -33,20 +32,17 @@ export function SalonCard({ salon, width, onPress, active }: SalonCardProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={salon.name + ", " + formatDistance(salon.distanceKm)}
-      style={({ pressed }) => [
-        {
-          width,
-          flexDirection: "row",
-          gap: spacing.lg,
-          padding: spacing.md,
-          borderRadius: radius.xl,
-          backgroundColor: theme.surface.raised,
-          borderWidth: 1.5,
-          borderColor: active ? theme.primary.main : theme.divider,
-          opacity: pressed ? 0.9 : 1,
-        },
-        elevation(active ? 3 : 2, theme.shadow),
-      ]}
+      style={({ pressed }) => ({
+        width,
+        flexDirection: "row",
+        gap: spacing.lg,
+        padding: spacing.md,
+        borderRadius: radius.xl,
+        backgroundColor: theme.surface.raised,
+        borderWidth: 1.5,
+        borderColor: active ? theme.primary.main : theme.divider,
+        opacity: pressed ? 0.9 : 1,
+      })}
     >
       <Image
         source={coverFor(salon, 400)}

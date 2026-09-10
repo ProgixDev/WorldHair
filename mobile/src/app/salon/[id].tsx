@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { Button } from "../../components/ui/Button";
@@ -20,6 +20,7 @@ import {
   coverFor,
   coverPlaceholder,
   galleryFor,
+  galleryPlaceholder,
 } from "../../features/salons/images";
 import { fetchSalonById } from "../../features/salons/api";
 import { formatDistance, haversineKm } from "../../features/salons/geo";
@@ -312,7 +313,7 @@ export default function SalonDetail() {
                 <Image
                   key={image.uri}
                   source={image}
-                  placeholder={coverPlaceholder(salon.id + index)}
+                  placeholder={galleryPlaceholder(salon.id, index)}
                   placeholderContentFit="cover"
                   cachePolicy="memory-disk"
                   style={{
@@ -622,15 +623,38 @@ export default function SalonDetail() {
 
           {/* Adresse */}
           <Section title="Adresse">
-            <View
-              style={{
+            <Pressable
+              onPress={() =>
+                void Linking.openURL(
+                  "https://www.google.com/maps/search/?api=1&query=" +
+                    salon.latitude +
+                    "," +
+                    salon.longitude,
+                )
+              }
+              accessibilityRole="link"
+              accessibilityLabel={
+                "Ouvrir " +
+                salon.addressLine +
+                ", " +
+                salon.postalCode +
+                " " +
+                salon.city +
+                " dans Google Maps"
+              }
+              style={({ pressed }) => ({
                 borderRadius: radius.xl,
                 overflow: "hidden",
                 borderWidth: 1,
                 borderColor: theme.divider,
-              }}
+                opacity: pressed ? 0.85 : 1,
+              })}
             >
-              <View style={{ height: 160 }}>
+              {/* pointerEvents="none": scrollEnabled/zoomEnabled={false} above
+                  only turns off pan/zoom — the native map view still captures
+                  taps on its own otherwise, which would swallow the press
+                  before it ever reaches this card's own Pressable. */}
+              <View style={{ height: 160 }} pointerEvents="none">
                 <MapCanvas
                   salons={[{ ...salon, distanceKm }]}
                   center={{
@@ -667,8 +691,13 @@ export default function SalonDetail() {
                     " " +
                     salon.city}
                 </Text>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={18}
+                  color={theme.foreground.gray}
+                />
               </View>
-            </View>
+            </Pressable>
           </Section>
         </View>
       </Animated.ScrollView>
