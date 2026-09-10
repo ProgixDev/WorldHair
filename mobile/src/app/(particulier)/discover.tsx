@@ -11,10 +11,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CityPicker } from "../../components/particulier/CityPicker";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { SalonCard } from "../../components/particulier/SalonCard";
 import { AdBanner } from "../../components/ui/AdBanner";
-import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -25,7 +25,6 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { fetchSalons } from "../../features/salons/api";
-import { CITIES } from "../../features/salons/cities";
 import { withDistance } from "../../features/salons/geo";
 import { SPECIALTIES, type Salon, type SpecialtyId } from "../../features/salons/types";
 import { getAdSlot, type AdSlot } from "../../services/ads";
@@ -391,45 +390,5 @@ export default function Discover() {
         }}
       />
     </View>
-  );
-}
-
-function CityPicker({
-  visible,
-  onClose,
-  onPick,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onPick: (city: (typeof CITIES)[number]) => void;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    <BottomSheet visible={visible} title="Choisir une ville" onClose={onClose}>
-      {CITIES.map((city) => (
-        <Pressable
-          key={city.id}
-          onPress={() => onPick(city)}
-          accessibilityRole="button"
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            minHeight: 52,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <MaterialCommunityIcons
-            name="city-variant-outline"
-            size={20}
-            color={theme.foreground.gray}
-          />
-          <Text style={[typography.body, { color: theme.foreground.white }]}>
-            {city.label}
-          </Text>
-        </Pressable>
-      ))}
-    </BottomSheet>
   );
 }

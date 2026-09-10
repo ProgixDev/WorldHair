@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { OnboardingSlide } from "../../components/onboarding/OnboardingSlide";
+import { CityPicker } from "../../components/particulier/CityPicker";
 import { useResponsive } from "../../constants/responsive";
 import { useLocation } from "../../contexts/LocationContext";
 import { ROUTES } from "../../features/auth/routing";
@@ -27,10 +28,19 @@ const LAST_SLIDE = ONBOARDING_SLIDES.length - 1;
 export default function Onboarding() {
   const router = useRouter();
   const { width } = useResponsive();
-  const { enable } = useLocation();
+  const { enable, setManualCoords } = useLocation();
   const listRef = useRef<FlatList<OnboardingSlideData>>(null);
   const [index, setIndex] = useState(0);
   const [slides, setSlides] = useState(ONBOARDING_SLIDES);
+  // True while the GPS CTA is waiting on the permission prompt — blocks the
+  // slide advance until it's actually answered, see handlePrimary below.
+  const [requestingLocation, setRequestingLocation] = useState(false);
+  // "Choisir une ville" opens this instead of immediately advancing — same
+  // picker `/discover` uses for its own manual-location fallback.
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [pendingSlideIndex, setPendingSlideIndex] = useState<number | null>(
+    null,
+  );
   // Slide 3 sets this before the user reaches the last slide; a direct swipe
   // past it (no CTA press) falls back to "manual".
   const [locationIntent, setStoredLocationIntent] =
@@ -95,16 +105,32 @@ export default function Onboarding() {
   );
 
   const handlePrimary = useCallback(
-    (slideIndex: number) => {
+    async (slideIndex: number) => {
       const slide = slides[slideIndex];
-      // "Activer ma position" should actually prompt for it, not just
-      // record the intent — the permission dialog runs alongside the
-      // navigation rather than blocking it.
-      if (slide.cta.locationIntent === "gps") void enable();
+      // "Activer ma position" actually prompts for it, and waits for an
+      // answer before moving on — advancing first meant the OS dialog could
+      // land on slide 4 (or later, once the answer was already known), which
+      // read as "nothing happened" even on a real prompt.
+      if (slide.cta.locationIntent === "gps") {
+        setRequestingLocation(true);
+        try {
+          await enable();
+        } finally {
+          setRequestingLocation(false);
+        }
+      }
       advanceOrFinish(slideIndex, slide.cta.locationIntent);
     },
     [slides, enable, advanceOrFinish],
   );
+
+  const handleSecondary = useCallback((slideIndex: number) => {
+    // Only the location slide has a secondary CTA today, and it's always
+    // "manual" — opens the picker rather than advancing outright, unlike
+    // advanceOrFinish's other callers.
+    setPendingSlideIndex(slideIndex);
+    setCityPickerOpen(true);
+  }, []);
 
   const handleMomentumEnd = (
     event: NativeSyntheticEvent<NativeScrollEvent>,
@@ -135,18 +161,31 @@ export default function Onboarding() {
             slide={item}
             index={slideIndex}
             total={ONBOARDING_SLIDES.length}
-            onPrimary={() => handlePrimary(slideIndex)}
+            primaryLoading={slideIndex === index && requestingLocation}
+            onPrimary={() => void handlePrimary(slideIndex)}
             onSecondary={
               item.secondaryCta
-                ? () =>
-                    advanceOrFinish(
-                      slideIndex,
-                      item.secondaryCta!.locationIntent,
-                    )
+                ? () => handleSecondary(slideIndex)
                 : undefined
             }
           />
         )}
+      />
+
+      <CityPicker
+        visible={cityPickerOpen}
+        onClose={() => setCityPickerOpen(false)}
+        onPick={(city) => {
+          setManualCoords(
+            { latitude: city.latitude, longitude: city.longitude },
+            city.label,
+          );
+          setCityPickerOpen(false);
+          if (pendingSlideIndex !== null) {
+            advanceOrFinish(pendingSlideIndex, "manual");
+            setPendingSlideIndex(null);
+          }
+        }}
       />
     </View>
   );

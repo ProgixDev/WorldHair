@@ -5,6 +5,7 @@ const KEYS = {
   onboardingSeen: "@worldhair/onboarding_seen",
   locationIntent: "@worldhair/location_intent",
   signupIntent: "@worldhair/signup_intent",
+  manualCity: "@worldhair/manual_city",
 } as const;
 
 /** How the user chose to find salons on the last onboarding slide. */
@@ -38,6 +39,53 @@ export async function getLocationIntent(): Promise<LocationIntent | null> {
 export async function setLocationIntent(intent: LocationIntent): Promise<void> {
   try {
     await AsyncStorage.setItem(KEYS.locationIntent, intent);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * The city picked via "Choisir une ville" (onboarding's location slide or
+ * `/discover`'s own picker) — persisted so it survives an app restart rather
+ * than resetting to the Paris fallback every launch. Only consulted while
+ * GPS isn't granted (see LocationContext's init effect): live GPS always
+ * wins over a possibly-stale saved city once permission exists.
+ */
+export interface ManualCity {
+  label: string;
+  latitude: number;
+  longitude: number;
+}
+
+export async function getManualCity(): Promise<ManualCity | null> {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.manualCity);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ManualCity>;
+    if (
+      typeof parsed.label !== "string" ||
+      typeof parsed.latitude !== "number" ||
+      typeof parsed.longitude !== "number"
+    ) {
+      return null;
+    }
+    return { label: parsed.label, latitude: parsed.latitude, longitude: parsed.longitude };
+  } catch {
+    return null;
+  }
+}
+
+export async function setManualCity(city: ManualCity): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.manualCity, JSON.stringify(city));
+  } catch {
+    // ignore
+  }
+}
+
+export async function clearManualCity(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(KEYS.manualCity);
   } catch {
     // ignore
   }
@@ -111,6 +159,7 @@ export async function clearPreferences(): Promise<void> {
       KEYS.onboardingSeen,
       KEYS.locationIntent,
       KEYS.signupIntent,
+      KEYS.manualCity,
     ]);
   } catch {
     // ignore

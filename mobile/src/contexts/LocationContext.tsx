@@ -13,6 +13,11 @@ import {
   requestPosition,
   type LocationStatus,
 } from "../services/location";
+import {
+  clearManualCity,
+  getManualCity,
+  setManualCity as persistManualCity,
+} from "../services/preferences";
 
 interface LocationContextValue {
   /** Device position when granted, Paris centre otherwise. */
@@ -42,17 +47,42 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    peekPermission()
-      .then((result) => {
+
+    Promise.all([peekPermission(), getManualCity()]).then(
+      ([result, savedCity]) => {
         if (cancelled) return;
+
+        // Live GPS always wins once it's actually granted — a saved manual
+        // city only matters while there's nothing better. Still worth
+        // reading both in parallel above rather than gating one on the
+        // other: whichever branch applies, there's no second AsyncStorage
+        // round trip to wait on.
+        if (result.status === "granted" && !result.isFallback) {
+          setCoords(result.coords);
+          setStatus(result.status);
+          setIsFallback(result.isFallback);
+          setCanAskAgain(result.canAskAgain);
+          return;
+        }
+
+        if (savedCity) {
+          setCoords({ latitude: savedCity.latitude, longitude: savedCity.longitude });
+          setManualLabel(savedCity.label);
+          setIsFallback(false);
+          setStatus("granted");
+          setCanAskAgain(result.canAskAgain);
+          return;
+        }
+
         setCoords(result.coords);
         setStatus(result.status);
         setIsFallback(result.isFallback);
         setCanAskAgain(result.canAskAgain);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
+      },
+    ).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+
     return () => {
       cancelled = true;
     };
@@ -66,7 +96,12 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       setStatus(result.status);
       setIsFallback(result.isFallback);
       setCanAskAgain(result.canAskAgain);
-      if (!result.isFallback) setManualLabel(null);
+      if (!result.isFallback) {
+        // Real GPS now works — any previously saved manual city would only
+        // ever be stale from here on, so it's not worth keeping around.
+        setManualLabel(null);
+        void clearManualCity();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -77,6 +112,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     setManualLabel(label);
     setIsFallback(false);
     setStatus("granted");
+    void persistManualCity({ label, latitude: next.latitude, longitude: next.longitude });
   }, []);
 
   const value = useMemo<LocationContextValue>(

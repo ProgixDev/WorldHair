@@ -21,10 +21,10 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 ## Mobile — client (particulier)
 
 ### Onboarding & auth
-- [ ] Onboarding, 4 slides, swipe through
-- [ ] Slide 3 "Activer ma position" → real system permission prompt appears
-- [ ] Slide 3 "Choisir une ville" → alternate path works
-- [ ] Slide 4 text/image reflect whatever's set in `/admin/contenu`
+- [x] Onboarding, 4 slides, swipe through
+- [x] Slide 3 "Activer ma position" → real system permission prompt appears
+- [x] Slide 3 "Choisir une ville" → alternate path works
+- [x] Slide 4 text/image reflect whatever's set in `/admin/contenu`
 - [ ] Sign up with email+password, pick **Particulier**
 - [ ] Sign up with email+password, pick **Coiffeur**
 - [ ] Google/Apple button — expect it to fail (⚠️ mocked, no OAuth app registered)

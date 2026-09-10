@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, Text, View } from "react-native";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -12,6 +11,7 @@ import {
 } from "../../features/salons/filters";
 import { SPECIALTIES } from "../../features/salons/types";
 import { Button } from "../ui/Button";
+import { BottomSheet } from "../ui/BottomSheet";
 import { Chip } from "../ui/Chip";
 
 interface FilterSheetProps {
@@ -32,7 +32,6 @@ export function FilterSheet({
   onClose,
 }: FilterSheetProps) {
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<SalonFilters>(filters);
 
   useEffect(() => {
@@ -50,175 +49,12 @@ export function FilterSheet({
   const count = countFor(draft);
 
   return (
-    <Modal
+    <BottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <Pressable
-        onPress={onClose}
-        accessibilityLabel="Fermer les filtres"
-        style={{ flex: 1, backgroundColor: "#00000099" }}
-      />
-
-      <View
-        style={{
-          backgroundColor: theme.surface.raised,
-          borderTopLeftRadius: radius.xl,
-          borderTopRightRadius: radius.xl,
-          borderTopWidth: 1,
-          borderColor: theme.border,
-          paddingBottom: Math.max(insets.bottom, spacing.lg),
-          maxHeight: "80%",
-        }}
-      >
-        <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
-          <View
-            style={{
-              width: 44,
-              height: 4,
-              borderRadius: radius.full,
-              backgroundColor: theme.border,
-            }}
-          />
-        </View>
-
-        <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: spacing.xl,
-            paddingBottom: spacing.lg,
-            gap: spacing.xl,
-          }}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={[typography.h2, { color: theme.foreground.white }]}>
-            Filtres
-          </Text>
-
-          <Section title="Prestation">
-            <View
-              style={{
-                flexDirection: "row",
-                flexWrap: "wrap",
-                gap: spacing.sm,
-              }}
-            >
-              {SPECIALTIES.map((specialty) => (
-                <Chip
-                  key={specialty.id}
-                  label={specialty.label}
-                  selected={draft.specialties.includes(specialty.id)}
-                  onPress={() => toggleSpecialty(specialty.id)}
-                />
-              ))}
-            </View>
-          </Section>
-
-          <Section title="Distance maximale">
-            <View
-              style={{
-                flexDirection: "row",
-                flexWrap: "wrap",
-                gap: spacing.sm,
-              }}
-            >
-              {DISTANCE_OPTIONS.map((option) => (
-                <Chip
-                  key={option.label}
-                  label={option.label}
-                  selected={draft.maxDistanceKm === option.value}
-                  onPress={() =>
-                    setDraft((current) => ({
-                      ...current,
-                      maxDistanceKm: option.value,
-                    }))
-                  }
-                />
-              ))}
-            </View>
-          </Section>
-
-          <Section title="Trier par">
-            <View style={{ gap: spacing.sm }}>
-              {SORT_OPTIONS.map((option) => {
-                const selected = draft.sort === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        sort: option.value,
-                      }))
-                    }
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: spacing.md,
-                      minHeight: 56,
-                      paddingHorizontal: spacing.lg,
-                      borderRadius: radius.lg,
-                      borderWidth: 1.5,
-                      borderColor: selected
-                        ? theme.primary.main
-                        : theme.divider,
-                      backgroundColor: selected
-                        ? theme.primary.soft
-                        : theme.surface.base,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: radius.full,
-                        borderWidth: 2,
-                        borderColor: selected
-                          ? theme.primary.main
-                          : theme.border,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {selected ? (
-                        <View
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: radius.full,
-                            backgroundColor: theme.primary.main,
-                          }}
-                        />
-                      ) : null}
-                    </View>
-                    <Text
-                      style={[
-                        typography.body,
-                        { color: theme.foreground.white },
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Section>
-        </ScrollView>
-
-        <View
-          style={{
-            flexDirection: "row",
-            gap: spacing.md,
-            paddingHorizontal: spacing.xl,
-            paddingTop: spacing.md,
-            borderTopWidth: 1,
-            borderColor: theme.border,
-          }}
-        >
+      title="Filtres"
+      onClose={onClose}
+      footer={
+        <>
           <Button
             label="Réinitialiser"
             variant="outline"
@@ -235,9 +71,112 @@ export function FilterSheet({
             disabled={count === 0}
             style={{ flex: 1.4 }}
           />
+        </>
+      }
+    >
+      <Section title="Prestation">
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: spacing.sm,
+          }}
+        >
+          {SPECIALTIES.map((specialty) => (
+            <Chip
+              key={specialty.id}
+              label={specialty.label}
+              selected={draft.specialties.includes(specialty.id)}
+              onPress={() => toggleSpecialty(specialty.id)}
+            />
+          ))}
         </View>
-      </View>
-    </Modal>
+      </Section>
+
+      <Section title="Distance maximale">
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: spacing.sm,
+          }}
+        >
+          {DISTANCE_OPTIONS.map((option) => (
+            <Chip
+              key={option.label}
+              label={option.label}
+              selected={draft.maxDistanceKm === option.value}
+              onPress={() =>
+                setDraft((current) => ({
+                  ...current,
+                  maxDistanceKm: option.value,
+                }))
+              }
+            />
+          ))}
+        </View>
+      </Section>
+
+      <Section title="Trier par">
+        <View style={{ gap: spacing.sm }}>
+          {SORT_OPTIONS.map((option) => {
+            const selected = draft.sort === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    sort: option.value,
+                  }))
+                }
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.md,
+                  minHeight: 56,
+                  paddingHorizontal: spacing.lg,
+                  borderRadius: radius.lg,
+                  borderWidth: 1.5,
+                  borderColor: selected ? theme.primary.main : theme.divider,
+                  backgroundColor: selected
+                    ? theme.primary.soft
+                    : theme.surface.base,
+                }}
+              >
+                <View
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: radius.full,
+                    borderWidth: 2,
+                    borderColor: selected ? theme.primary.main : theme.border,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {selected ? (
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: radius.full,
+                        backgroundColor: theme.primary.main,
+                      }}
+                    />
+                  ) : null}
+                </View>
+                <Text style={[typography.body, { color: theme.foreground.white }]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Section>
+    </BottomSheet>
   );
 }
 

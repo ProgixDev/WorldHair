@@ -21,6 +21,8 @@ interface OnboardingSlideProps {
   total: number;
   onPrimary: () => void;
   onSecondary?: () => void;
+  /** True while the primary CTA is waiting on something (the GPS permission prompt). */
+  primaryLoading?: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ export function OnboardingSlide({
   total,
   onPrimary,
   onSecondary,
+  primaryLoading = false,
 }: OnboardingSlideProps) {
   const { width, gutter, onboardingArtHeight, space } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -67,6 +70,7 @@ export function OnboardingSlide({
           label={slide.cta.label}
           icon={slide.cta.icon}
           onPress={onPrimary}
+          loading={primaryLoading}
           background={SLIDE_CTA.background}
           color={SLIDE_CTA.label}
         />
