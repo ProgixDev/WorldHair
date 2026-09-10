@@ -64,8 +64,8 @@ export class EnvironmentVariables {
   // server/README.md ("Environment") for why: mail/ is a fixed module shared
   // by both variants, unmodified, so both variants' EnvironmentVariables must
   // supply every key it reads.
-  @IsIn(['json', 'smtp', 'relay'])
-  MAIL_TRANSPORT: 'json' | 'smtp' | 'relay' = 'json';
+  @IsIn(['json', 'smtp', 'relay', 'resend'])
+  MAIL_TRANSPORT: 'json' | 'smtp' | 'relay' | 'resend' = 'json';
 
   @IsString()
   @IsOptional()
@@ -98,6 +98,15 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   MAIL_RELAY_SECRET = '';
+
+  /**
+   * Resend API key (`re_…`), required when MAIL_TRANSPORT=resend. Sends over
+   * HTTPS rather than SMTP, which is what makes this variant work on hosts
+   * that block outbound SMTP ports entirely (Render's free tier does).
+   */
+  @IsString()
+  @IsOptional()
+  RESEND_API_KEY = '';
 
   @IsString()
   @IsNotEmpty()

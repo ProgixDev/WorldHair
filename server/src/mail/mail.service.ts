@@ -6,17 +6,20 @@ import { coiffeurApplicationDecidedMail, passwordResetMail, verificationMail } f
 import { buildMailTransport } from './mail.transport';
 
 /**
- * Three transports, selected by `MAIL_TRANSPORT`:
+ * Four transports, selected by `MAIL_TRANSPORT`:
  *
  * - `json` (default): renders the message instead of sending it — the dev/test
  *   default, no credentials needed.
  * - `smtp`: sends directly via nodemailer against `MAIL_HOST`/`MAIL_PORT`/etc.
+ * - `resend`: POSTs to Resend's HTTPS API. **This is the production transport.**
+ *   Render blocks outbound SMTP ports (25/465/587) on its free tier, so
+ *   `smtp` cannot work there at all — and neither can `relay`, since the web
+ *   app it would relay through is on Render too. HTTPS is the only way out,
+ *   which is what this does.
  * - `relay`: POSTs the rendered mail as JSON to `MAIL_RELAY_URL` with an
- *   `x-mail-relay-secret` header, instead of sending it itself. This exists
- *   because some server hosts have unreliable outbound SMTP — relaying
- *   through another deployment (e.g. a `/api/mail` route on a web app hosted
- *   somewhere with reliable outbound mail, such as Vercel) sidesteps that
- *   entirely. The relay endpoint is expected to do the actual nodemailer send.
+ *   `x-mail-relay-secret` header, letting another deployment do the actual
+ *   nodemailer send. Only useful when that other host has working outbound
+ *   SMTP — prefer `resend` unless you specifically have such a host.
  */
 @Injectable()
 export class MailService implements OnModuleDestroy {
@@ -26,8 +29,15 @@ export class MailService implements OnModuleDestroy {
   constructor(private readonly config: ConfigService<EnvironmentVariables, true>) {
     const mode = config.get('MAIL_TRANSPORT', { infer: true });
 
-    // Relay mode has no local SMTP client to reach — the relay endpoint sends
-    // the mail instead, so no transporter is built for it. See sendViaRelay().
+    // Neither HTTP transport builds a nodemailer client — they POST the
+    // rendered mail instead. See sendViaResend() / sendViaRelay().
+    if (mode === 'resend') {
+      if (!config.get('RESEND_API_KEY', { infer: true })) {
+        throw new Error('RESEND_API_KEY is required when MAIL_TRANSPORT=resend');
+      }
+      return;
+    }
+
     if (mode === 'relay') {
       if (
         !config.get('MAIL_RELAY_URL', { infer: true }) ||
@@ -82,8 +92,12 @@ export class MailService implements OnModuleDestroy {
   ): Promise<void> {
     const from = this.config.get('MAIL_FROM', { infer: true });
 
+    const mode = this.config.get('MAIL_TRANSPORT', { infer: true });
+
     try {
-      if (this.config.get('MAIL_TRANSPORT', { infer: true }) === 'relay') {
+      if (mode === 'resend') {
+        await this.sendViaResend(from, to, mail);
+      } else if (mode === 'relay') {
         await this.sendViaRelay(from, to, mail);
       } else {
         await this.transporter!.sendMail({ from, to, ...mail });
@@ -91,6 +105,34 @@ export class MailService implements OnModuleDestroy {
     } catch (error) {
       // A mail failure must not fail the HTTP request that triggered it.
       this.logger.error(`Failed to send "${mail.subject}" to ${to}`, error as Error);
+    }
+  }
+
+  /**
+   * Resend's HTTPS API (POST https://api.resend.com/emails). `to` is an array
+   * per its schema even for a single recipient. A non-2xx carries a JSON body
+   * explaining why — surfaced in the thrown message so the logged failure in
+   * `send()` says something more useful than the bare status code.
+   */
+  private async sendViaResend(
+    from: string,
+    to: string,
+    mail: { subject: string; text: string; html: string },
+  ): Promise<void> {
+    const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ from, to: [to], ...mail }),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Resend responded with ${res.status}${detail ? `: ${detail}` : ''}`);
     }
   }
 
