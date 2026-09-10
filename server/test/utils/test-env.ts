@@ -16,6 +16,9 @@ export function applyTestEnv(overrides: Record<string, string> = {}): void {
     RESET_TOKEN_TTL_MINUTES: '60',
     MAIL_TRANSPORT: 'json',
     MAIL_FROM: 'App <no-reply@test.local>',
+    // Valid Standard Webhooks secret shape (v1,whsec_<base64>) — real specs
+    // sign against this with `standardwebhooks`' own Webhook.sign().
+    SEND_EMAIL_HOOK_SECRET: 'v1,whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
     ...overrides,
   });
 }

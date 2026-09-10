@@ -82,6 +82,17 @@ export class MailService implements OnModuleDestroy {
     await this.send(to, coiffeurApplicationDecidedMail(status, reviewMessage));
   }
 
+  /**
+   * Sends an already-rendered mail as-is — the seam `EmailHookService` uses
+   * for the templates that don't have their own named `send*` method
+   * (email-change confirmation, magic link, password-reset link). Named
+   * distinctly from the private `send()` it wraps so a caller can't confuse
+   * "already rendered" with "give me a `to` and I'll pick the template".
+   */
+  async sendRendered(to: string, mail: { subject: string; text: string; html: string }): Promise<void> {
+    await this.send(to, mail);
+  }
+
   onModuleDestroy(): void {
     this.transporter?.close();
   }

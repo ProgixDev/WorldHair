@@ -5,7 +5,11 @@ import { configureApp } from './bootstrap';
 import { EnvironmentVariables } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: exposes req.rawBody (the exact bytes received) alongside the
+  // normal parsed req.body — needed by EmailHookController to verify
+  // Supabase's Standard Webhooks signature, which is computed over the raw
+  // bytes and fails against any re-serialized copy.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   configureApp(app);
 

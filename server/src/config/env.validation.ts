@@ -134,6 +134,16 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   EXPO_ACCESS_TOKEN = '';
+
+  /**
+   * Signs Supabase's "Send Email" Auth Hook (Dashboard → Authentication →
+   * Auth Hooks). Format `v1,whsec_<base64>`, from that hook's "Generate
+   * Secret" button. Supports `|`-separated secrets during rotation — see
+   * auth/email-hook.service.ts.
+   */
+  @IsString()
+  @IsOptional()
+  SEND_EMAIL_HOOK_SECRET = '';
 }
 
 /**

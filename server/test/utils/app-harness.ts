@@ -46,7 +46,9 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
 
   const moduleRef = await (options.customize?.(builder) ?? builder).compile();
 
-  const app = moduleRef.createNestApplication({ logger: false });
+  // rawBody: mirrors main.ts — the email-hook e2e spec needs req.rawBody to
+  // sign against.
+  const app = moduleRef.createNestApplication({ logger: false, rawBody: true });
   configureApp(app);
   await app.init();
 
