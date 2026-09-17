@@ -124,9 +124,41 @@ export class SubscriptionsService {
     return this.update(profileId, { status: 'cancelled' });
   }
 
+  /**
+   * Flips status back on. When the lapsed period is still in the future
+   * (cancelled mid-trial/mid-cycle) that's all it takes. Once the end date
+   * is actually past, flipping status alone leaves that stale date behind —
+   * `isSubscriptionExpired` reads it again next render and the block never
+   * lifts — so a genuinely expired subscription also gets a fresh end date.
+   */
   async reactivate(profileId: string): Promise<Subscription> {
     const current = await this.getOrCreateMine(profileId);
-    return this.update(profileId, { status: current.trialEndsAt ? 'trial' : 'active' });
+    const nextStatus: SubscriptionStatus = current.trialEndsAt ? 'trial' : 'active';
+
+    const now = new Date();
+    const currentEndsAt = new Date(
+      current.status === 'trial' && current.trialEndsAt ? current.trialEndsAt : current.renewsAt,
+    );
+    if (currentEndsAt.getTime() >= now.getTime()) {
+      return this.update(profileId, { status: nextStatus });
+    }
+
+    if (nextStatus === 'trial') {
+      const trialEndsAt = new Date(now.getTime() + 30 * 86_400_000).toISOString();
+      return this.update(profileId, {
+        status: nextStatus,
+        trial_ends_at: trialEndsAt,
+        renews_at: trialEndsAt,
+      });
+    }
+
+    const renewsAt = new Date(now);
+    if (current.plan === 'yearly') {
+      renewsAt.setFullYear(renewsAt.getFullYear() + 1);
+    } else {
+      renewsAt.setMonth(renewsAt.getMonth() + 1);
+    }
+    return this.update(profileId, { status: nextStatus, renews_at: renewsAt.toISOString() });
   }
 
   async listAllForAdmin(): Promise<AdminSubscriptionSummary[]> {

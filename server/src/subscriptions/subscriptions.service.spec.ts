@@ -57,6 +57,35 @@ describe('SubscriptionsService', () => {
     expect(reactivated.status).toBe('trial');
   });
 
+  it('reactivate() pushes a lapsed trial end date into the future so it actually un-expires', async () => {
+    supabase.seedSubscription({
+      profileId: 'coiffeur-1',
+      status: 'cancelled',
+      trialEndsAt: new Date(Date.now() - 86_400_000).toISOString(),
+      renewsAt: new Date(Date.now() - 86_400_000).toISOString(),
+    });
+
+    const reactivated = await service.reactivate('coiffeur-1');
+
+    expect(reactivated.status).toBe('trial');
+    expect(new Date(reactivated.trialEndsAt as string).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(reactivated.renewsAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('reactivate() moves a lapsed, trial-less subscription to active with a fresh renewal date', async () => {
+    supabase.seedSubscription({
+      profileId: 'coiffeur-1',
+      status: 'cancelled',
+      trialEndsAt: null,
+      renewsAt: new Date(Date.now() - 86_400_000).toISOString(),
+    });
+
+    const reactivated = await service.reactivate('coiffeur-1');
+
+    expect(reactivated.status).toBe('active');
+    expect(new Date(reactivated.renewsAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
   it('listAllForAdmin() shows "not_started" for a coiffeur who never opened the subscription screen', async () => {
     supabase.addUser('token-coiffeur-2', { id: 'coiffeur-2', email: 'camille@example.com', email_confirmed_at: '2024-01-01T00:00:00Z' }, 'coiffeur', {
       firstName: 'Camille',
