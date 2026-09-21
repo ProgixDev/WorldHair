@@ -619,6 +619,12 @@ export class FakeSupabaseService {
     profileId: string;
     firstName?: string;
     lastName?: string;
+    phone?: string;
+    salonName?: string;
+    description?: string;
+    addressLine?: string | null;
+    postalCode?: string | null;
+    city?: string | null;
     status?: string;
     shopProfileComplete?: boolean;
   }): void {
@@ -628,13 +634,13 @@ export class FakeSupabaseService {
       profile_id: params.profileId,
       first_name: params.firstName ?? existing?.first_name ?? '',
       last_name: params.lastName ?? existing?.last_name ?? '',
-      phone: existing?.phone ?? '',
-      salon_name: existing?.salon_name ?? '',
-      description: existing?.description ?? '',
+      phone: params.phone ?? existing?.phone ?? '',
+      salon_name: params.salonName ?? existing?.salon_name ?? '',
+      description: params.description ?? existing?.description ?? '',
       practice_zone: existing?.practice_zone ?? 'salon',
-      address_line: existing?.address_line ?? null,
-      postal_code: existing?.postal_code ?? null,
-      city: existing?.city ?? null,
+      address_line: params.addressLine !== undefined ? params.addressLine : (existing?.address_line ?? null),
+      postal_code: params.postalCode !== undefined ? params.postalCode : (existing?.postal_code ?? null),
+      city: params.city !== undefined ? params.city : (existing?.city ?? null),
       invoice_document_path: existing?.invoice_document_path ?? null,
       travel_radius_km: existing?.travel_radius_km ?? null,
       identity_document_path: existing?.identity_document_path ?? 'x',
@@ -864,21 +870,41 @@ export class FakeSupabaseService {
     return {
       select: () => new FakeSelectQuery<SalonProfileRow>(() => [...rows.values()]),
 
-      /** Eager write (unlike coiffeur_applications' upsert above) — simpler, and nothing here needs the lazy-until-awaited shape. */
-      upsert: (row: Record<string, unknown>) => {
+      /**
+       * Supports both call shapes real code uses: chained with
+       * `.select().single()` (updateProfile) and awaited bare
+       * (seedProfileFromApplication) — the latter also passes
+       * `ignoreDuplicates`, which here is a true no-op against an existing
+       * row, same as PostgREST's `resolution=ignore-duplicates`: no row
+       * comes back, `.single()` would 404 on it, so it must never be
+       * chained by a caller that skipped.
+       */
+      upsert: (
+        row: Record<string, unknown>,
+        options?: { onConflict?: string; ignoreDuplicates?: boolean },
+      ) => {
         const profileId = row.profile_id as string;
         const existing = rows.get(profileId);
+        const skip = Boolean(options?.ignoreDuplicates && existing);
         // Mirrors real Postgres column defaults on a fresh insert — SalonService's
         // own patch never sets these (rating/review_count/badges are seed/system-only).
         const defaults = existing
           ? {}
           : { latitude: null, longitude: null, rating: 0, review_count: 0, badges: [] };
-        const merged = { ...defaults, ...existing, ...row } as SalonProfileRow;
-        rows.set(profileId, merged);
+        const merged = skip ? (existing as SalonProfileRow) : ({ ...defaults, ...existing, ...row } as SalonProfileRow);
+        if (!skip) rows.set(profileId, merged);
+
         return {
           select: () => ({
-            single: async (): Promise<QueryResult> => ({ data: merged, error: null }),
+            single: async (): Promise<QueryResult> =>
+              skip ? { data: null, error: { message: 'no rows found' } } : { data: merged, error: null },
           }),
+          then<TResult1 = QueryResult, TResult2 = never>(
+            onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+            onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+          ): PromiseLike<TResult1 | TResult2> {
+            return Promise.resolve({ data: skip ? null : merged, error: null }).then(onfulfilled, onrejected);
+          },
         };
       },
     };

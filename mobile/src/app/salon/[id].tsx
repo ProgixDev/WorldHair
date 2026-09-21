@@ -320,6 +320,7 @@ export default function SalonDetail() {
                     }}
                     contentFit="cover"
                     transition={200}
+                    onError={(e) => console.warn("Gallery photo failed to load", uri, e.error)}
                   />
                 ))}
                 <View style={{ width: gutter }} />

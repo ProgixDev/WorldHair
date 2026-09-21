@@ -48,6 +48,41 @@ describe('SalonService', () => {
 
       expect(updated).toMatchObject({ salonName: 'Studio W', city: 'Paris', tagline: 'Coupe & couleur' });
     });
+
+    it('seedProfileFromApplication() fills a fresh profile', async () => {
+      await service.seedProfileFromApplication(USER_ID, {
+        salonName: 'Studio W',
+        description: 'Coupe & couleur',
+        phone: '+33612345678',
+        addressLine: '12 rue des Lilas',
+        postalCode: '75011',
+        city: 'Paris',
+      });
+
+      await expect(service.getProfile(USER_ID)).resolves.toMatchObject({
+        salonName: 'Studio W',
+        description: 'Coupe & couleur',
+        phone: '+33612345678',
+        addressLine: '12 rue des Lilas',
+        postalCode: '75011',
+        city: 'Paris',
+      });
+    });
+
+    it('seedProfileFromApplication() never overwrites an existing profile', async () => {
+      await service.updateProfile(USER_ID, { salonName: 'Already renamed' });
+
+      await service.seedProfileFromApplication(USER_ID, {
+        salonName: 'Studio W',
+        description: '',
+        phone: '',
+        addressLine: null,
+        postalCode: null,
+        city: null,
+      });
+
+      await expect(service.getProfile(USER_ID)).resolves.toMatchObject({ salonName: 'Already renamed' });
+    });
   });
 
   describe('availability', () => {

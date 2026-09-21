@@ -442,6 +442,9 @@ export default function ProSalonPage() {
                       }}
                       contentFit="cover"
                       transition={200}
+                      onError={(e) =>
+                        console.warn("Gallery photo failed to load", photo.url, e.error)
+                      }
                     />
                     <Pressable
                       onPress={() => removeGalleryPhoto(photo)}
