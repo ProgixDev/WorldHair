@@ -12,6 +12,7 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
+import { AuthError } from "../../services/auth";
 import { isValidName } from "../../utils/validation";
 
 export default function ProfileSetup() {
@@ -54,8 +55,12 @@ export default function ProfileSetup() {
       });
       if (isEditing && router.canGoBack()) router.back();
       else router.replace(ROUTES.discover as never);
-    } catch {
-      setFormError("Enregistrement impossible. Réessayez.");
+    } catch (err) {
+      setFormError(
+        err instanceof AuthError
+          ? err.message
+          : "Enregistrement impossible. Réessayez.",
+      );
     } finally {
       setSaving(false);
     }

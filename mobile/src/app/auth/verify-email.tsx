@@ -18,7 +18,9 @@ import {
 import { AuthError } from "../../services/auth";
 import { isValidVerificationCode } from "../../utils/validation";
 
-const RESEND_COOLDOWN_S = 30;
+// Matches Supabase's own per-user window between signup emails — any
+// shorter and the button re-enables only to be refused with a 429.
+const RESEND_COOLDOWN_S = 60;
 
 export default function VerifyEmail() {
   const router = useRouter();
@@ -84,8 +86,12 @@ export default function VerifyEmail() {
       await resendCode(email);
       setResent(true);
       setCooldown(RESEND_COOLDOWN_S);
-    } catch {
-      setError("Envoi impossible. Réessayez dans un instant.");
+    } catch (err) {
+      setError(
+        err instanceof AuthError
+          ? err.message
+          : "Envoi impossible. Réessayez dans un instant.",
+      );
     }
   };
 

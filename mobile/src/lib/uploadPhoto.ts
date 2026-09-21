@@ -25,13 +25,15 @@ export async function uploadUserPhoto(
   localUri: string,
   mimeType?: string | null,
 ): Promise<string> {
-  const path = `${userId}/${kind}.${extensionFor(localUri, mimeType)}`;
-  const response = await fetch(localUri);
-  const blob = await response.blob();
+  const extension = extensionFor(localUri, mimeType);
+  const path = `${userId}/${kind}.${extension}`;
+  // ArrayBuffer, not Blob: Supabase documents Blob/File/FormData uploads as
+  // not working in React Native (they fail or land as 0-byte objects).
+  const body = await (await fetch(localUri)).arrayBuffer();
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+  const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     upsert: true,
-    contentType: mimeType ?? blob.type ?? "image/jpeg",
+    contentType: mimeType ?? (extension === "png" ? "image/png" : "image/jpeg"),
   });
   if (error) throw error;
 

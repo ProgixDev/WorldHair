@@ -88,6 +88,7 @@ export type AuthErrorCode =
   | "WEAK_PASSWORD"
   | "INVALID_CODE"
   | "NO_SESSION"
+  | "RATE_LIMITED"
   | "STORAGE";
 
 export class AuthError extends Error {
@@ -337,7 +338,20 @@ export async function signInWithProvider(
 
 export async function resendVerificationCode(email: string): Promise<void> {
   const { error } = await supabase.auth.resend({ type: "signup", email: email.trim() });
-  if (error) throw new AuthError("STORAGE", error.message);
+  if (!error) return;
+
+  // Two different 429s share one code: the per-user window ("...after 42
+  // seconds") and the project-wide hourly cap on auth emails (no wait given).
+  if (error.status === 429) {
+    const seconds = /after (\d+) seconds?/.exec(error.message)?.[1];
+    throw new AuthError(
+      "RATE_LIMITED",
+      seconds
+        ? `Patientez ${seconds} s avant de renvoyer un code.`
+        : "Trop d'envois récents. Réessayez dans quelques minutes.",
+    );
+  }
+  throw new AuthError("STORAGE", error.message);
 }
 
 export async function verifyEmail(email: string, code: string): Promise<Session> {
@@ -380,7 +394,8 @@ export async function saveParticulierProfile(
       photo_url: photoUrl,
     })
     .eq("id", user.id);
-  if (error) throw new AuthError("STORAGE", error.message);
+  if (error)
+    throw new AuthError("STORAGE", "Enregistrement du profil impossible. Réessayez.");
 
   const session = await buildSession();
   if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");

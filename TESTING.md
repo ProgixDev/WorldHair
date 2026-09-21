@@ -25,12 +25,12 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Slide 3 "Activer ma position" → real system permission prompt appears
 - [x] Slide 3 "Choisir une ville" → alternate path works
 - [x] Slide 4 text/image reflect whatever's set in `/admin/contenu`
-- [ ] Sign up with email+password, pick **Particulier**
+- [x] Sign up with email+password, pick **Particulier**
 - [ ] Sign up with email+password, pick **Coiffeur**
-- [ ] Google/Apple button — expect it to fail (⚠️ mocked, no OAuth app registered)
-- [ ] 6-digit code arrives by email, auto-submits on the 6th digit
+- [x] Google/Apple button — expect it to fail (⚠️ mocked, no OAuth app registered)
+- [x] 6-digit code arrives by email, auto-submits on the 6th digit
 - [ ] "Renvoyer le code" locked for 30s, then works
-- [ ] Profile setup: first name, last name, photo (optional, uploads)
+- [x] Profile setup: first name, last name, photo (optional, uploads)
 
 ### `/discover`
 - [x] Full-screen map + salon carousel, sorted by distance
