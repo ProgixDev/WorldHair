@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { AuthHeader } from "../../../components/ui/AuthHeader";
 import { Button } from "../../../components/ui/Button";
+import { PhoneField } from "../../../components/ui/PhoneField";
 import { Screen } from "../../../components/ui/Screen";
 import { TextField } from "../../../components/ui/TextField";
 import { useResponsive } from "../../../constants/responsive";
@@ -12,7 +13,8 @@ import {
   PRO_WIZARD_STEPS,
   useProApplication,
 } from "../../../features/pro/ProApplicationContext";
-import { isValidName, isValidPhoneFr } from "../../../utils/validation";
+import type { CountryCode } from "libphonenumber-js/min";
+import { isValidName, isValidPhoneForCountry } from "../../../utils/validation";
 
 /** Step 1 of the coiffeur signup: who you are. */
 export default function ProIdentity() {
@@ -30,8 +32,8 @@ export default function ProIdentity() {
     const next: typeof errors = {};
     if (!isValidName(draft.firstName)) next.firstName = "Prénom requis.";
     if (!isValidName(draft.lastName)) next.lastName = "Nom requis.";
-    if (!isValidPhoneFr(draft.phone))
-      next.phone = "Numéro de téléphone français invalide.";
+    if (!isValidPhoneForCountry(draft.phone, draft.phoneCountry as CountryCode))
+      next.phone = "Numéro de téléphone invalide pour ce pays.";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -77,15 +79,12 @@ export default function ProIdentity() {
             icon="account-outline"
             error={errors.lastName}
           />
-          <TextField
+          <PhoneField
             label="Téléphone"
             value={draft.phone}
             onChangeText={(phone) => update({ phone })}
-            placeholder="06 12 34 56 78"
-            keyboardType="phone-pad"
-            autoComplete="tel"
-            textContentType="telephoneNumber"
-            icon="phone-outline"
+            country={draft.phoneCountry}
+            onChangeCountry={(phoneCountry) => update({ phoneCountry })}
             error={errors.phone}
             helper="Utilisé uniquement pour la validation de votre dossier."
           />

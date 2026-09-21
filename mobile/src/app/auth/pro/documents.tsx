@@ -1,5 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { parsePhoneNumber } from "libphonenumber-js/min";
+import type { CountryCode } from "libphonenumber-js/min";
 import React, { useState } from "react";
 import { Text, View } from "react-native";
 import { AuthHeader } from "../../../components/ui/AuthHeader";
@@ -17,6 +19,7 @@ import {
   PRO_WIZARD_STEPS,
   useProApplication,
 } from "../../../features/pro/ProApplicationContext";
+import { phoneCountryFor } from "../../../utils/phoneCountries";
 
 /** Step 3 of the coiffeur signup: identity document + diploma, then submit. */
 export default function ProDocuments() {
@@ -48,10 +51,19 @@ export default function ProDocuments() {
     setFormError(null);
     setSubmitting(true);
     try {
+      // Canonical E.164 (e.g. "+213612345678") rather than the raw national
+      // digits — unambiguous regardless of which country was picked on step
+      // 1, and what the server now validates against (see
+      // server/src/coiffeur/dto/submit-application.dto.ts).
+      const phone =
+        parsePhoneNumber(draft.phone.trim(), draft.phoneCountry as CountryCode)
+          ?.number ??
+        "+" + phoneCountryFor(draft.phoneCountry).dialCode + draft.phone.trim();
+
       await submitProApplication({
         firstName: draft.firstName.trim(),
         lastName: draft.lastName.trim(),
-        phone: draft.phone.trim(),
+        phone,
         salonName: draft.salonName.trim(),
         description: draft.description.trim(),
         practiceZone: draft.practiceZone,

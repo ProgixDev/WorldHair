@@ -15,7 +15,7 @@ function salonDto(
   return {
     firstName: 'Sofia',
     lastName: 'Benali',
-    phone: '06 12 34 56 78',
+    phone: '+33612345678',
     salonName: 'Studio W',
     practiceZone: PracticeZone.Salon,
     addressLine: '12 rue des Lilas',
@@ -36,7 +36,7 @@ function domicileDto(
   return {
     firstName: 'Sofia',
     lastName: 'Benali',
-    phone: '06 12 34 56 78',
+    phone: '+33612345678',
     salonName: 'Sofia à domicile',
     practiceZone: PracticeZone.Domicile,
     travelRadiusKm: 15,

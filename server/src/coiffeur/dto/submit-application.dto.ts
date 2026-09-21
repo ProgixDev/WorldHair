@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsPhoneNumber,
   IsString,
   Matches,
   Max,
@@ -17,8 +18,6 @@ export enum PracticeZone {
   Domicile = 'domicile',
 }
 
-/** Tolerant of spaces, dots, dashes and +33 — same shape as the mobile app's own validator. */
-const PHONE_FR_PATTERN = /^(?:\+33|0)\s*[1-9](?:[\s.-]*\d{2}){4}$/;
 const POSTAL_CODE_FR_PATTERN = /^\d{5}$/;
 
 /**
@@ -39,8 +38,12 @@ export class SubmitCoiffeurApplicationDto {
   @MaxLength(50)
   lastName!: string;
 
-  @IsString()
-  @Matches(PHONE_FR_PATTERN, { message: 'phone must be a valid French phone number' })
+  // No region argument: the mobile app's own country picker (issue: phone
+  // country code selection) always sends a full E.164 number — "+" plus the
+  // calling code — so there's an intl. calling code to validate against
+  // regardless of which country the applicant picked. This used to be
+  // French-only.
+  @IsPhoneNumber()
   phone!: string;
 
   @IsString()

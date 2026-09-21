@@ -1,8 +1,9 @@
+import { isValidPhoneNumber } from "libphonenumber-js/min";
+import type { CountryCode } from "libphonenumber-js/min";
+
 /** Pure form validators — no React, no I/O, so they stay trivially testable. */
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
-/** FR mobile/landline, tolerant of spaces, dots, dashes and +33. */
-const PHONE_FR_RE = /^(?:\+33|0)\s*[1-9](?:[\s.-]*\d{2}){4}$/;
 const POSTAL_FR_RE = /^\d{5}$/;
 
 export function isValidEmail(value: string): boolean {
@@ -37,8 +38,12 @@ export function isValidName(value: string): boolean {
   return value.trim().length >= 2;
 }
 
-export function isValidPhoneFr(value: string): boolean {
-  return PHONE_FR_RE.test(value.trim());
+/** National-format number, validated against the given country's real dialing rules. */
+export function isValidPhoneForCountry(
+  value: string,
+  country: CountryCode,
+): boolean {
+  return isValidPhoneNumber(value.trim(), country);
 }
 
 export function isValidPostalCodeFr(value: string): boolean {

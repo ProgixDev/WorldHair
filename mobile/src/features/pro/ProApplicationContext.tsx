@@ -4,7 +4,10 @@ import type { PracticeZone, ProDocument } from "../../services/auth";
 export interface ProApplicationDraft {
   firstName: string;
   lastName: string;
+  /** National number, digits only — no dial code (see phoneCountry). */
   phone: string;
+  /** ISO 3166-1 alpha-2, e.g. "FR" — which country's dial code/rules phone belongs to. */
+  phoneCountry: string;
   salonName: string;
   description: string;
   practiceZone: PracticeZone;
@@ -22,6 +25,7 @@ const EMPTY_DRAFT: ProApplicationDraft = {
   firstName: "",
   lastName: "",
   phone: "",
+  phoneCountry: "FR",
   salonName: "",
   description: "",
   practiceZone: "salon",
