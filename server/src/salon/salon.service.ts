@@ -1,7 +1,11 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../database/supabase.service';
 import { AvailabilityDayDto } from './dto/availability-day.dto';
+import { AddGalleryPhotoDto } from './dto/gallery-photo.dto';
 import { Specialty } from './dto/update-salon-profile.dto';
+
+/** Horizontal strip on the salon page — a handful of curated shots, not an unbounded album. */
+const GALLERY_MAX_PHOTOS = 12;
 
 export interface SalonProfile {
   salonName: string;

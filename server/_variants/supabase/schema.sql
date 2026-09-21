@@ -484,6 +484,38 @@ execute procedure public.set_updated_at ();
 -- keep despite the linter flagging it as unused on a brand-new, empty table.
 create index coiffeur_services_profile_id_idx on public.coiffeur_services (profile_id);
 
+-- "Réalisations" work-photo gallery on the public salon page — a handful of
+-- photos the coiffeur curates themselves, distinct from the single cover
+-- photo on coiffeur_profiles. Storage lives in the existing public
+-- `user-photos` bucket at `{uid}/gallery/<file>` — its policies below only
+-- key off the FIRST path segment (auth.uid()), so the extra `gallery/`
+-- subfolder needs no new bucket or policy. This table is just the ordered,
+-- deletable index of what's been uploaded there; rows are never updated,
+-- only inserted or deleted (see src/salon/salon.service.ts).
+create table public.coiffeur_gallery_photos (
+  id uuid primary key default gen_random_uuid (),
+  profile_id uuid not null references public.profiles (id) on delete cascade,
+  url text not null,
+  storage_path text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.coiffeur_gallery_photos enable row level security;
+
+create policy "Coiffeurs can insert their own gallery photos"
+  on public.coiffeur_gallery_photos for insert
+  with check ((select auth.uid ()) = profile_id);
+
+create policy "Coiffeurs can delete their own gallery photos"
+  on public.coiffeur_gallery_photos for delete
+  using ((select auth.uid ()) = profile_id);
+
+create policy "Anyone can view gallery photos"
+  on public.coiffeur_gallery_photos for select
+  using (true);
+
+create index coiffeur_gallery_photos_profile_id_idx on public.coiffeur_gallery_photos (profile_id);
+
 -- "Rendez-vous / Agenda" (TODO.md). One row per booking, spanning its whole
 -- lifecycle (pending -> confirmed/refused, confirmed -> cancelled). "done" is
 -- NOT a stored status — the API derives it (confirmed + already past) at

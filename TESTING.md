@@ -85,18 +85,18 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 ## Mobile — stylist (coiffeur)
 
 ### Sign-up (4 steps)
-- [ ] Step 1 Identity — first name, last name, FR phone validated
-- [ ] Step 2 Salon — name, description
-- [ ] Step 3 Zone, **En salon** — address + postcode + city + invoice required
-- [ ] Step 3 Zone, **À domicile** — travel radius in km
-- [ ] Step 4 Documents — ID + diploma + KBIS all required, "I certify" checkbox required
-- [ ] Lands on `/auth/pending` after submit
+- [x] Step 1 Identity — first name, last name, FR phone validated
+- [x] Step 2 Salon — name, description
+- [x] Step 3 Zone, **En salon** — address + postcode + city + invoice required
+- [x] Step 3 Zone, **À domicile** — travel radius in km
+- [x] Step 4 Documents — ID + diploma + KBIS all required, "I certify" checkbox required
+- [x] Lands on `/auth/pending` after submit
 
 ### Review states
-- [ ] Pending state shown correctly
-- [ ] Rejected state shows the exact reason the admin typed
-- [ ] Refresh button redirects on its own once admin approves
-- [ ] Mandatory shop completion (cover photo + hours, ≥1 day open) — salon invisible to booking until done
+- [x] Pending state shown correctly
+- [x] Rejected state shows the exact reason the admin typed
+- [x] Refresh button redirects on its own once admin approves
+- [x] Mandatory shop completion (cover photo + hours, ≥1 day open) — salon invisible to booking until done
 
 ### `/pro/dashboard`
 - [ ] 4 KPIs populate
@@ -133,15 +133,15 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 ## Web
 
 ### Landing `/`
-- [ ] 6 sections render, anchors work (Fonctionnalités / Coiffeurs / Comment ça marche / Avis)
-- [ ] Header goes transparent → navy on scroll
-- [ ] Hamburger menu appears below 640px
-- [ ] "Compte" button → `/login`
+- [x] 6 sections render, anchors work (Fonctionnalités / Coiffeurs / Comment ça marche / Avis)
+- [x] Header goes transparent → navy on scroll
+- [x] Hamburger menu appears below 640px
+- [x] "Compte" button → `/login`
 - [ ] ⚠️ `/particuliers`, `/coiffeurs`, legal notice, terms — not built yet, don't expect them
 
 ### `/login`
-- [ ] Non-admin account rejected **and** signed out
-- [ ] No session → every `/admin/*` redirects here
+- [x] Non-admin account rejected **and** signed out
+- [x] No session → every `/admin/*` redirects here
 
 ### `/admin`
 - [ ] Stats + bookings chart (day/week/month toggle)
