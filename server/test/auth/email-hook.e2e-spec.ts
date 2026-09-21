@@ -62,12 +62,15 @@ describe('auth/email-hook (e2e)', () => {
   it('accepts a validly-signed Supabase Send Email Hook payload', async () => {
     const { body, headers } = signedRequest(signupPayload('sofia@example.com', '112233'));
 
+    // Exactly 200, not Nest's @Post() default of 201: Supabase only accepts
+    // 200/202/204 from a hook and treats anything else as a failed send —
+    // it then 500s the signup and rolls the new user back.
     await request(server)
       .post('/auth/email-hook')
       .set('Content-Type', 'application/json')
       .set(headers)
       .send(body)
-      .expect(201, { received: true });
+      .expect(200, { received: true });
   });
 
   it('rejects an unsigned request', async () => {
@@ -100,6 +103,6 @@ describe('auth/email-hook (e2e)', () => {
       .set('Content-Type', 'application/json')
       .set(headers)
       .send(body)
-      .expect(201);
+      .expect(200);
   });
 });

@@ -274,7 +274,7 @@ export async function signUpWithEmail(params: {
   password: string;
   role: UserRole;
 }): Promise<void> {
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email: params.email.trim(),
     password: params.password,
   });
@@ -286,6 +286,11 @@ export async function signUpWithEmail(params: {
       throw new AuthError("WEAK_PASSWORD", "Mot de passe trop court.");
     throw new AuthError("STORAGE", error.message);
   }
+  // With "Confirm email" on, Supabase never returns "already registered" —
+  // an existing address gets a fake user with no identities and no email is
+  // sent (anti-enumeration). Surface it, or the verify screen waits forever.
+  if (data.user && data.user.identities?.length === 0)
+    throw new AuthError("EMAIL_IN_USE", "Un compte existe déjà avec cet email.");
   // `params.role` is only ever a client-side hint for which onboarding wizard
   // to land in post-verification (see features/auth/routing.ts and
   // services/preferences.ts's setSignupIntent) — the database's `profiles.role`

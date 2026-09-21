@@ -1,4 +1,4 @@
-import { Controller, Post, RawBodyRequest, Req } from '@nestjs/common';
+import { Controller, HttpCode, HttpStatus, Post, RawBodyRequest, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { EmailHookService } from './email-hook.service';
@@ -15,7 +15,10 @@ import { EmailHookService } from './email-hook.service';
 export class EmailHookController {
   constructor(private readonly emailHook: EmailHookService) {}
 
+  // Supabase accepts only 200/202/204 from a hook — Nest's @Post() default of
+  // 201 reads as a failed send, which 500s the signup and rolls the user back.
   @Post('email-hook')
+  @HttpCode(HttpStatus.OK)
   async handle(@Req() req: RawBodyRequest<Request>): Promise<{ received: true }> {
     // rawBody (see main.ts's NestFactory.create(..., { rawBody: true })) is
     // the exact bytes Supabase sent — signature verification needs those,
