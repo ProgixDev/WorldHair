@@ -23,7 +23,11 @@ const THEME_MODE_STORAGE_KEY = "@worldhair/theme_mode";
 const THEME_VARIANT_STORAGE_KEY = "@worldhair/theme_variant";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
+  // Default for a fresh install (nothing in AsyncStorage yet) — "light", not
+  // "system": Profile → Apparence still lets anyone switch to Dark or
+  // System, this only changes what a first-time user sees before they've
+  // touched that setting.
+  const [themeMode, setThemeModeState] = useState<ThemeMode>("light");
   const [variantId, setVariantIdState] = useState<string>("default");
   const [systemColorScheme, setSystemColorScheme] = useState<ColorSchemeName>(
     Appearance.getColorScheme(),
@@ -117,10 +121,10 @@ export function useTheme() {
   if (context === undefined) {
     // Return default theme if context is not available
     return {
-      theme: getThemeByVariantAndMode("default", "dark"),
-      themeMode: "system" as ThemeMode,
+      theme: getThemeByVariantAndMode("default", "light"),
+      themeMode: "light" as ThemeMode,
       variantId: "default",
-      isDark: true,
+      isDark: false,
       setThemeMode: () => {},
       setVariantId: () => {},
     };

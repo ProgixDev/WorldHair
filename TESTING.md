@@ -26,10 +26,10 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Slide 3 "Choisir une ville" → alternate path works
 - [x] Slide 4 text/image reflect whatever's set in `/admin/contenu`
 - [x] Sign up with email+password, pick **Particulier**
-- [ ] Sign up with email+password, pick **Coiffeur**
+- [x] Sign up with email+password, pick **Coiffeur**
 - [x] Google/Apple button — expect it to fail (⚠️ mocked, no OAuth app registered)
 - [x] 6-digit code arrives by email, auto-submits on the 6th digit
-- [ ] "Renvoyer le code" locked for 30s, then works
+- [x] "Renvoyer le code" locked for 30s, then works
 - [x] Profile setup: first name, last name, photo (optional, uploads)
 
 ### `/discover`
@@ -55,30 +55,30 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Your own review is signed "Vous"
 
 ### Booking (4 steps)
-- [ ] Service → Slot → Payment → Confirmation, all 4 steps reachable
-- [ ] Struck-through slots: past times, already-yours times, taken-by-someone-else times
-- [ ] Payment step: simulated (⚠️ 900ms, always succeeds), card `•••• 4242`
-- [ ] Ends on "Demande envoyée." — status is *pending*, not confirmed
-- [ ] Ad pop-up appears when `booking_confirmation` is enabled
+- [x] Service → Slot → Payment → Confirmation, all 4 steps reachable
+- [x] Struck-through slots: past times, already-yours times, taken-by-someone-else times
+- [x] Payment step: simulated (⚠️ 900ms, always succeeds), card `•••• 4242`
+- [x] Ends on "Demande envoyée." — status is *pending*, not confirmed
+- [x] Ad pop-up appears when `booking_confirmation` is enabled
 
 ### `/appointments`
-- [ ] Upcoming tab: "Modifier" reopens the flow, skips payment
-- [ ] Upcoming tab: "Annuler" cancels
-- [ ] History tab: "Laisser un avis" → then shows "Avis envoyé"
-- [ ] Cancelled/refused appointments greyed out, no action buttons
+- [x] Upcoming tab: "Modifier" reopens the flow, skips payment
+- [x] Upcoming tab: "Annuler" cancels
+- [x] History tab: "Laisser un avis" → then shows "Avis envoyé"
+- [x] Cancelled/refused appointments greyed out, no action buttons
 
 ### Review
-- [ ] 5-star rating required, submit blocked without it
-- [ ] 7 tag chips, comment field caps at 500 chars
-- [ ] Server rejects a review on an unfinished appointment
-- [ ] Server rejects a second review on the same appointment
+- [x] 5-star rating required, submit blocked without it
+- [x] 7 tag chips, comment field caps at 500 chars
+- [x] Server rejects a review on an unfinished appointment
+- [x] Server rejects a second review on the same appointment
 
 ### `/profile`
-- [ ] Counters, next appointment, visited salons all populate
-- [ ] J-1 / H-1 reminder toggles persist after app restart
-- [ ] Theme switch: light / dark / system
-- [ ] Sign out works
-- [ ] "Rejouer l'onboarding" resets to onboarding screen
+- [x] Counters, next appointment, visited salons all populate
+- [x] J-1 / H-1 reminder toggles persist after app restart
+- [x] Theme switch: light / dark / system
+- [x] Sign out works
+- [x] "Rejouer l'onboarding" resets to onboarding screen
 
 ---
 

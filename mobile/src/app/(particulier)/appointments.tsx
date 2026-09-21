@@ -12,6 +12,7 @@ import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useSalonSummary } from "../../features/salons/api";
 import {
+  BookingError,
   cancelAppointment,
   isUpcoming,
   listAppointments,
@@ -85,6 +86,20 @@ export default function Appointments() {
             setBusyId(appointment.id);
             try {
               await cancelAppointment(appointment.id);
+              refresh();
+            } catch (err) {
+              // Was an uncaught promise rejection before — the request
+              // failing (e.g. it was already cancelled/refused elsewhere in
+              // the meantime) silently did nothing from the user's
+              // perspective, no error shown at all.
+              Alert.alert(
+                "Annulation impossible",
+                err instanceof BookingError
+                  ? err.message
+                  : "Réessayez dans un instant.",
+              );
+              // The list may now be stale (that's the likely reason the
+              // cancel itself failed) — refresh so it reflects reality.
               refresh();
             } finally {
               setBusyId(null);

@@ -33,7 +33,11 @@ export interface UserReview {
   createdAt: string;
 }
 
-export type BookingErrorCode = "UNKNOWN_SERVICE" | "SLOT_TAKEN" | "NOT_FOUND";
+export type BookingErrorCode =
+  | "UNKNOWN_SERVICE"
+  | "SLOT_TAKEN"
+  | "ALREADY_INACTIVE"
+  | "NOT_FOUND";
 
 export class BookingError extends Error {
   readonly code: BookingErrorCode;
@@ -45,10 +49,24 @@ export class BookingError extends Error {
   }
 }
 
+function extractServerMessage(err: unknown): string {
+  if (!isAxiosError(err)) return "";
+  const body = err.response?.data as { message?: string | string[] } | undefined;
+  const message = body?.message;
+  if (Array.isArray(message)) return message.join(" ");
+  return typeof message === "string" ? message : "";
+}
+
 /**
  * The server's own rejection messages are English and meant for logs/devs
  * (see AppointmentsService) — this maps a failed request to a French,
- * user-facing one instead of surfacing them verbatim.
+ * user-facing one, based on the ACTUAL reason the server gave rather than
+ * the HTTP status alone: a 400 covers several unrelated cases (slot taken,
+ * outside opening hours, inside the lunch break, the appointment no longer
+ * being active, a past date, ...), and blindly mapping every 400 to "this
+ * slot is no longer available" — the previous behavior — showed that exact
+ * message when *cancelling* an already-cancelled/refused appointment, which
+ * makes no sense for a cancel action at all.
  */
 function mapBookingError(err: unknown): never {
   if (isAxiosError(err)) {
@@ -56,13 +74,40 @@ function mapBookingError(err: unknown): never {
       throw new BookingError("UNKNOWN_SERVICE", "Salon ou prestation introuvable.");
     }
     if (err.response?.status === 400) {
+      const message = extractServerMessage(err);
+
+      if (message.includes("can no longer be modified")) {
+        throw new BookingError(
+          "ALREADY_INACTIVE",
+          "Ce rendez-vous a déjà été annulé, refusé ou modifié.",
+        );
+      }
+      if (message.includes("opening hours")) {
+        throw new BookingError(
+          "SLOT_TAKEN",
+          "Cet horaire est en dehors des heures d'ouverture du salon.",
+        );
+      }
+      if (message.includes("break")) {
+        throw new BookingError(
+          "SLOT_TAKEN",
+          "Cet horaire tombe pendant la pause du salon.",
+        );
+      }
+      if (message.includes("valid date in the future")) {
+        throw new BookingError(
+          "SLOT_TAKEN",
+          "Choisissez une date et une heure dans le futur.",
+        );
+      }
+      // Default 400: genuinely "someone else already took this slot".
       throw new BookingError(
         "SLOT_TAKEN",
         "Ce créneau n'est plus disponible. Choisissez un autre horaire.",
       );
     }
   }
-  throw new BookingError("NOT_FOUND", "Réservation impossible. Réessayez.");
+  throw new BookingError("NOT_FOUND", "Une erreur est survenue. Réessayez.");
 }
 
 function delay(ms = 500): Promise<void> {
