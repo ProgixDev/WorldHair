@@ -186,6 +186,49 @@ export class SalonService {
     return data ? mapProfile(data as ProfileRow) : EMPTY_PROFILE;
   }
 
+  /**
+   * Pre-fills "Mon salon" with what the coiffeur already typed during
+   * signup (salonName/description/phone/address — see
+   * SubmitCoiffeurApplicationDto) the moment their application is validated,
+   * so the editor doesn't start blank even though it reads a completely
+   * separate table (coiffeur_applications is the one-time KYC snapshot;
+   * this is the ongoing, particulier-facing profile). `ignoreDuplicates`
+   * makes this a true no-op if a row already exists — e.g. a re-validation
+   * after the coiffeur has already customized their profile must never
+   * clobber it.
+   */
+  async seedProfileFromApplication(
+    userId: string,
+    application: {
+      salonName: string;
+      description: string;
+      phone: string;
+      addressLine: string | null;
+      postalCode: string | null;
+      city: string | null;
+    },
+  ): Promise<void> {
+    // No `.select()` chained: with `ignoreDuplicates`, PostgREST returns no
+    // row at all when an existing one was skipped — chaining `.single()`
+    // would then throw on the exact "already seeded" case this is meant to
+    // handle silently.
+    const { error } = await this.supabase.client.from('coiffeur_profiles').upsert(
+      {
+        profile_id: userId,
+        salon_name: application.salonName,
+        description: application.description,
+        phone: application.phone,
+        address_line: application.addressLine ?? '',
+        postal_code: application.postalCode ?? '',
+        city: application.city ?? '',
+      },
+      { onConflict: 'profile_id', ignoreDuplicates: true },
+    );
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+  }
+
   async updateProfile(userId: string, patch: Partial<SalonProfile>): Promise<SalonProfile> {
     const row: Record<string, unknown> = { profile_id: userId };
     if (patch.salonName !== undefined) row.salon_name = patch.salonName;
