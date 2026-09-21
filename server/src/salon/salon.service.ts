@@ -105,6 +105,24 @@ interface ServiceRow {
   specialty: string;
 }
 
+export interface SalonGalleryPhoto {
+  id: string;
+  url: string;
+  storagePath: string;
+}
+
+interface GalleryPhotoRow {
+  id: string;
+  profile_id: string;
+  url: string;
+  storage_path: string;
+  created_at: string;
+}
+
+function mapGalleryPhoto(row: GalleryPhotoRow): SalonGalleryPhoto {
+  return { id: row.id, url: row.url, storagePath: row.storage_path };
+}
+
 function mapProfile(row: ProfileRow): SalonProfile {
   return {
     salonName: row.salon_name,
@@ -305,5 +323,55 @@ export class SalonService {
     if (!count) {
       throw new NotFoundException('Service not found');
     }
+  }
+
+  // ─── Gallery ("Réalisations") ────────────────────────────────────────────
+
+  async listGalleryPhotos(userId: string): Promise<SalonGalleryPhoto[]> {
+    const { data, error } = await this.supabase.client
+      .from('coiffeur_gallery_photos')
+      .select()
+      .eq('profile_id', userId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return (data as GalleryPhotoRow[]).map(mapGalleryPhoto);
+  }
+
+  async addGalleryPhoto(userId: string, dto: AddGalleryPhotoDto): Promise<SalonGalleryPhoto[]> {
+    const existing = await this.listGalleryPhotos(userId);
+    if (existing.length >= GALLERY_MAX_PHOTOS) {
+      throw new BadRequestException(`${GALLERY_MAX_PHOTOS} photos maximum.`);
+    }
+
+    const { error } = await this.supabase.client
+      .from('coiffeur_gallery_photos')
+      .insert({
+        profile_id: userId,
+        url: dto.url,
+        storage_path: dto.storagePath,
+      })
+      .select()
+      .single();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return this.listGalleryPhotos(userId);
+  }
+
+  async deleteGalleryPhoto(userId: string, photoId: string): Promise<SalonGalleryPhoto[]> {
+    const { error, count } = await this.supabase.client
+      .from('coiffeur_gallery_photos')
+      .delete({ count: 'exact' })
+      .eq('id', photoId)
+      .eq('profile_id', userId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!count) {
+      throw new NotFoundException('Photo not found');
+    }
+    return this.listGalleryPhotos(userId);
   }
 }

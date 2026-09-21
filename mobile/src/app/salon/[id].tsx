@@ -15,13 +15,7 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import {
-  avatarFor,
-  coverFor,
-  coverPlaceholder,
-  galleryFor,
-  galleryPlaceholder,
-} from "../../features/salons/images";
+import { avatarFor, coverFor, coverPlaceholder } from "../../features/salons/images";
 import { fetchSalonById } from "../../features/salons/api";
 import { formatDistance, haversineKm } from "../../features/salons/geo";
 import { specialtyLabel } from "../../features/salons/types";
@@ -295,40 +289,43 @@ export default function SalonDetail() {
             </Text>
           </View>
 
-          {/* Galerie */}
-          <View style={{ gap: spacing.md }}>
-            <Text
-              style={[typography.overline, { color: theme.foreground.gray }]}
-            >
-              RÉALISATIONS
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: spacing.sm }}
-              style={{ marginHorizontal: -gutter }}
-            >
-              <View style={{ width: gutter }} />
-              {galleryFor(salon.id, 8).map((image, index) => (
-                <Image
-                  key={image.uri}
-                  source={image}
-                  placeholder={galleryPlaceholder(salon.id, index)}
-                  placeholderContentFit="cover"
-                  cachePolicy="memory-disk"
-                  style={{
-                    width: 132,
-                    height: 168,
-                    borderRadius: radius.lg,
-                    backgroundColor: theme.surface.sunken,
-                  }}
-                  contentFit="cover"
-                  transition={200}
-                />
-              ))}
-              <View style={{ width: gutter }} />
-            </ScrollView>
-          </View>
+          {/* Galerie — omitted rather than filled with stock photos when the
+              coiffeur hasn't added any yet; showing unrelated pictures as if
+              they were this salon's work would be the same bug already fixed
+              for the cover (see features/salons/images.ts's doc comment). */}
+          {salon.gallery.length > 0 ? (
+            <View style={{ gap: spacing.md }}>
+              <Text
+                style={[typography.overline, { color: theme.foreground.gray }]}
+              >
+                RÉALISATIONS
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: spacing.sm }}
+                style={{ marginHorizontal: -gutter }}
+              >
+                <View style={{ width: gutter }} />
+                {salon.gallery.map((uri) => (
+                  <Image
+                    key={uri}
+                    source={{ uri }}
+                    cachePolicy="memory-disk"
+                    style={{
+                      width: 132,
+                      height: 168,
+                      borderRadius: radius.lg,
+                      backgroundColor: theme.surface.sunken,
+                    }}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                ))}
+                <View style={{ width: gutter }} />
+              </ScrollView>
+            </View>
+          ) : null}
 
           {/* Prestations */}
           <Section title="Prestations">

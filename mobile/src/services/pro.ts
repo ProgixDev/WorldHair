@@ -1,8 +1,14 @@
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
-import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
+import {
+  isRemoteUrl,
+  removeGalleryPhotoFile,
+  uploadGalleryPhoto,
+  uploadUserPhoto,
+} from "../lib/uploadPhoto";
 import type {
   AvailabilityDay,
+  GalleryPhoto,
   PlanId,
   ProAppointment,
   ProAppointmentStatus,
@@ -52,6 +58,8 @@ interface SalonProfileResponse {
   phone: string;
   specialties: ProProfile["specialties"];
   coverUrl: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 /** The one particulier-facing display field (see pro/account.tsx) this table doesn't itself store — pulled from the coiffeur's own application. */
@@ -87,6 +95,8 @@ export async function getProProfile(): Promise<ProProfile> {
     phone: data.phone,
     specialties: data.specialties,
     coverUri: data.coverUrl,
+    latitude: data.latitude,
+    longitude: data.longitude,
   };
 }
 
@@ -107,6 +117,8 @@ export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
     phone: profile.phone,
     specialties: profile.specialties,
     coverUrl: coverUrl ?? undefined,
+    latitude: profile.latitude,
+    longitude: profile.longitude,
   });
 
   return {
@@ -114,6 +126,8 @@ export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
     tagline: data.tagline,
     description: data.description,
     coverUri: data.coverUrl,
+    latitude: data.latitude,
+    longitude: data.longitude,
   };
 }
 
@@ -171,6 +185,35 @@ export async function saveProService(service: ProService): Promise<ProService[]>
 export async function deleteProService(serviceId: string): Promise<ProService[]> {
   await apiClient.delete(`/salon/me/services/${serviceId}`);
   return listProServices();
+}
+
+// ─── Gallery ("Réalisations") ────────────────────────────────────────────────
+
+export async function listGalleryPhotos(): Promise<GalleryPhoto[]> {
+  const { data } = await apiClient.get<GalleryPhoto[]>("/salon/me/gallery");
+  return data;
+}
+
+/** Uploads straight to Storage (same pattern as the cover photo), then indexes it server-side. */
+export async function addGalleryPhoto(
+  localUri: string,
+  mimeType?: string | null,
+): Promise<GalleryPhoto[]> {
+  const userId = await currentUserId();
+  const { url, storagePath } = await uploadGalleryPhoto(userId, localUri, mimeType);
+  const { data } = await apiClient.post<GalleryPhoto[]>("/salon/me/gallery", {
+    url,
+    storagePath,
+  });
+  return data;
+}
+
+export async function deleteGalleryPhoto(photo: GalleryPhoto): Promise<GalleryPhoto[]> {
+  // Best-effort: the server's own row delete below is what the UI actually
+  // reflects, so a Storage hiccup here never blocks the photo from going away.
+  await removeGalleryPhotoFile(photo.storagePath).catch(() => undefined);
+  const { data } = await apiClient.delete<GalleryPhoto[]>(`/salon/me/gallery/${photo.id}`);
+  return data;
 }
 
 // ─── Availability ──────────────────────────────────────────────────────────

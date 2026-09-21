@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import type {
   AvailabilityDay,
+  GalleryPhoto,
   PlanId,
   ProAppointment,
   ProAppointmentStatus,
@@ -21,6 +22,7 @@ import * as pro from "../services/pro";
 interface ProContextValue {
   profile: ProProfile | null;
   services: ProService[];
+  gallery: GalleryPhoto[];
   availability: AvailabilityDay[];
   appointments: ProAppointment[];
   subscription: Subscription | null;
@@ -30,6 +32,8 @@ interface ProContextValue {
   saveProfile: (profile: ProProfile) => Promise<void>;
   saveService: (service: ProService) => Promise<void>;
   deleteService: (serviceId: string) => Promise<void>;
+  addGalleryPhoto: (localUri: string, mimeType?: string | null) => Promise<void>;
+  deleteGalleryPhoto: (photo: GalleryPhoto) => Promise<void>;
   saveAvailability: (availability: AvailabilityDay[]) => Promise<void>;
   setAppointmentStatus: (
     id: string,
@@ -51,6 +55,7 @@ const ProContext = createContext<ProContextValue | undefined>(undefined);
 export function ProProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<ProProfile | null>(null);
   const [services, setServices] = useState<ProService[]>([]);
+  const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
   const [availability, setAvailability] = useState<AvailabilityDay[]>([]);
   const [appointments, setAppointments] = useState<ProAppointment[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -61,6 +66,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     const [
       nextProfile,
       nextServices,
+      nextGallery,
       nextAvailability,
       nextAppointments,
       nextSubscription,
@@ -68,6 +74,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     ] = await Promise.all([
       pro.getProProfile(),
       pro.listProServices(),
+      pro.listGalleryPhotos(),
       pro.getAvailability(),
       pro.listProAppointments(),
       pro.getSubscription(),
@@ -76,6 +83,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
 
     setProfile(nextProfile);
     setServices(nextServices);
+    setGallery(nextGallery);
     setAvailability(nextAvailability);
     setAppointments(nextAppointments);
     setSubscription(nextSubscription);
@@ -91,6 +99,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     () => ({
       profile,
       services,
+      gallery,
       availability,
       appointments,
       subscription,
@@ -102,6 +111,10 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
         setServices(await pro.saveProService(service)),
       deleteService: async (serviceId) =>
         setServices(await pro.deleteProService(serviceId)),
+      addGalleryPhoto: async (localUri, mimeType) =>
+        setGallery(await pro.addGalleryPhoto(localUri, mimeType)),
+      deleteGalleryPhoto: async (photo) =>
+        setGallery(await pro.deleteGalleryPhoto(photo)),
       saveAvailability: async (next) =>
         setAvailability(await pro.saveAvailability(next)),
       setAppointmentStatus: async (id, status) =>
@@ -119,6 +132,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     [
       profile,
       services,
+      gallery,
       availability,
       appointments,
       subscription,

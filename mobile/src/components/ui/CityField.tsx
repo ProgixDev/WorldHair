@@ -10,6 +10,8 @@ interface CityFieldProps {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
+  /** The picked city's coordinates — pro/salon.tsx uses this to geocode the salon for the particulier map/radius search. */
+  onPickCoords?: (coords: { latitude: number; longitude: number }) => void;
   placeholder?: string;
   error?: string;
   helper?: string;
@@ -21,14 +23,12 @@ interface CityFieldProps {
  * worldwide, via Mapbox) instead of a keyboard — the same picking experience
  * as onboarding's/`/discover`'s "Choisir une ville", reused here for a
  * salon's own address city rather than a particulier's fallback location.
- * Only the label text is kept (`city.latitude/longitude` aren't tracked on
- * a salon application/profile today), same as every other address field on
- * these two screens.
  */
 export function CityField({
   label,
   value,
   onChangeText,
+  onPickCoords,
   placeholder = "Choisir une ville",
   error,
   helper,
@@ -99,6 +99,7 @@ export function CityField({
         onClose={() => setPickerOpen(false)}
         onPick={(city) => {
           onChangeText(city.label);
+          onPickCoords?.({ latitude: city.latitude, longitude: city.longitude });
           setPickerOpen(false);
         }}
       />

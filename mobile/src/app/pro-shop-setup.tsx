@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AvailabilityRow } from "../components/pro/AvailabilityEditor";
+import { ServiceEditor } from "../components/pro/ServiceEditor";
 import { Button } from "../components/ui/Button";
 import { useResponsive } from "../constants/responsive";
 import { radius, spacing } from "../constants/spacing";
@@ -22,8 +23,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { ProProvider, usePro } from "../contexts/ProContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { ROUTES } from "../features/auth/routing";
-import type { AvailabilityDay } from "../features/pro/types";
+import type { AvailabilityDay, ProService } from "../features/pro/types";
 import { coverFor, coverPlaceholder } from "../features/salons/images";
+import { newServiceId } from "../services/pro";
+import { formatDuration, formatPrice } from "../utils/date";
 
 /**
  * Mandatory first-login screen after admin approval (issue #7): the coiffeur
@@ -45,13 +48,22 @@ function ProShopSetup() {
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
   const { completeShopProfile } = useAuth();
-  const { profile, availability, isLoading, saveProfile, saveAvailability } =
-    usePro();
+  const {
+    profile,
+    services,
+    availability,
+    isLoading,
+    saveProfile,
+    saveService,
+    deleteService,
+    saveAvailability,
+  } = usePro();
 
   const [coverUri, setCoverUri] = useState<string | null | undefined>(
     undefined,
   );
   const [draft, setDraft] = useState<AvailabilityDay[] | null>(null);
+  const [editing, setEditing] = useState<ProService | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -78,6 +90,20 @@ function ProShopSetup() {
 
   const hasOpenDay = draft.some((day) => day.open);
 
+  const removeService = (service: ProService) =>
+    Alert.alert(
+      "Supprimer cette prestation ?",
+      service.name + " ne sera plus réservable.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: () => void deleteService(service.id),
+        },
+      ],
+    );
+
   const pickCover = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -98,6 +124,10 @@ function ProShopSetup() {
   };
 
   const handleFinish = async () => {
+    if (services.length === 0) {
+      setError("Ajoutez au moins une prestation.");
+      return;
+    }
     if (!hasOpenDay) {
       setError("Ouvrez au moins un jour dans la semaine.");
       return;
@@ -193,9 +223,121 @@ function ProShopSetup() {
             <Text
               style={[typography.body, { color: theme.foreground.gray }]}
             >
-              Avant de retrouver votre espace, ajoutez une photo et vos
-              horaires — vos clients en ont besoin pour vous trouver.
+              Avant de retrouver votre espace, ajoutez une photo, vos
+              prestations et vos horaires — vos clients en ont besoin pour
+              vous trouver et vous réserver.
             </Text>
+          </View>
+
+          <View style={{ gap: spacing.md }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text
+                style={[typography.overline, { color: theme.foreground.gray }]}
+              >
+                {"PRESTATIONS (" + services.length + ")"}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  setEditing({
+                    id: newServiceId(),
+                    name: "",
+                    price: 40,
+                    durationMin: 45,
+                    specialty: profile.specialties[0] ?? "coupe",
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel="Ajouter une prestation"
+                hitSlop={8}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.xs,
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="plus-circle"
+                  size={18}
+                  color={theme.primary.main}
+                />
+                <Text style={[typography.label, { color: theme.primary.main }]}>
+                  Ajouter
+                </Text>
+              </Pressable>
+            </View>
+
+            {services.length === 0 ? (
+              <View
+                style={{
+                  padding: spacing.lg,
+                  borderRadius: radius.xl,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: theme.border,
+                }}
+              >
+                <Text
+                  style={[
+                    typography.bodySmall,
+                    { color: theme.foreground.gray },
+                  ]}
+                >
+                  Aucune prestation. Ajoutez-en une pour être réservable.
+                </Text>
+              </View>
+            ) : (
+              services.map((service) => (
+                <Pressable
+                  key={service.id}
+                  onPress={() => setEditing(service)}
+                  onLongPress={() => removeService(service)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.md,
+                    padding: spacing.lg,
+                    borderRadius: radius.xl,
+                    backgroundColor: theme.surface.raised,
+                    borderWidth: 1,
+                    borderColor: theme.divider,
+                  }}
+                >
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text
+                      style={[
+                        typography.bodyMedium,
+                        { color: theme.foreground.white },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {service.name}
+                    </Text>
+                    <Text
+                      style={[
+                        typography.caption,
+                        { color: theme.foreground.gray },
+                      ]}
+                    >
+                      {formatDuration(service.durationMin)}
+                    </Text>
+                  </View>
+                  <Text style={[typography.h2, { color: theme.accent.warm }]}>
+                    {formatPrice(service.price)}
+                  </Text>
+                  <MaterialCommunityIcons
+                    name="pencil-outline"
+                    size={19}
+                    color={theme.foreground.gray}
+                  />
+                </Pressable>
+              ))
+            )}
           </View>
 
           <View style={{ gap: spacing.md }}>
@@ -247,6 +389,15 @@ function ProShopSetup() {
           loading={submitting}
         />
       </View>
+
+      <ServiceEditor
+        service={editing}
+        onClose={() => setEditing(null)}
+        onSave={async (service) => {
+          await saveService(service);
+          setEditing(null);
+        }}
+      />
     </View>
   );
 }

@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomSheet } from "../../components/ui/BottomSheet";
+import { ServiceEditor } from "../../components/pro/ServiceEditor";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { CityField } from "../../components/ui/CityField";
@@ -24,7 +24,7 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import type { ProProfile, ProService } from "../../features/pro/types";
+import type { GalleryPhoto, ProProfile, ProService } from "../../features/pro/types";
 import { coverFor, coverPlaceholder } from "../../features/salons/images";
 import {
   SPECIALTIES,
@@ -34,7 +34,8 @@ import {
 import { newServiceId } from "../../services/pro";
 import { formatDuration, formatPrice, minutesToTime } from "../../utils/date";
 
-const DURATION_STEP = 15;
+/** Mirrors GALLERY_MAX_PHOTOS in server/src/salon/salon.service.ts. */
+const GALLERY_MAX = 12;
 
 /**
  * "Mon salon": the public page as the coiffeur edits it — cover, pitch,
@@ -48,16 +49,21 @@ export default function ProSalonPage() {
   const {
     profile,
     services,
+    gallery,
     availability,
     isLoading,
     saveProfile,
     saveService,
     deleteService,
+    addGalleryPhoto,
+    deleteGalleryPhoto,
   } = usePro();
 
   const [draft, setDraft] = useState<ProProfile | null>(null);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<ProService | null>(null);
+  const [addingPhoto, setAddingPhoto] = useState(false);
+  const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile && !draft) setDraft(profile);
@@ -106,6 +112,56 @@ export default function ProSalonPage() {
     if (!result.canceled && result.assets.length > 0)
       patch({ coverUri: result.assets[0].uri });
   };
+
+  const pickGalleryPhoto = async () => {
+    if (gallery.length >= GALLERY_MAX) {
+      Alert.alert(
+        "Galerie complète",
+        GALLERY_MAX + " photos maximum — retirez-en une avant d'en ajouter une nouvelle.",
+      );
+      return;
+    }
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Accès aux photos refusé",
+        "Autorisez l'accès à vos photos pour ajouter une réalisation.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+
+    setAddingPhoto(true);
+    try {
+      const asset = result.assets[0];
+      await addGalleryPhoto(asset.uri, asset.mimeType);
+    } catch {
+      Alert.alert("Envoi impossible", "Réessayez.");
+    } finally {
+      setAddingPhoto(false);
+    }
+  };
+
+  const removeGalleryPhoto = (photo: GalleryPhoto) =>
+    Alert.alert("Retirer cette photo ?", undefined, [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Retirer",
+        style: "destructive",
+        onPress: async () => {
+          setRemovingPhotoId(photo.id);
+          try {
+            await deleteGalleryPhoto(photo);
+          } finally {
+            setRemovingPhotoId(null);
+          }
+        },
+      },
+    ]);
 
   const save = async () => {
     setSaving(true);
@@ -275,6 +331,9 @@ export default function ProSalonPage() {
                 label="Ville"
                 value={draft.city}
                 onChangeText={(city) => patch({ city })}
+                onPickCoords={({ latitude, longitude }) =>
+                  patch({ latitude, longitude })
+                }
                 style={{ flex: 1.6 }}
               />
             </View>
@@ -302,6 +361,120 @@ export default function ProSalonPage() {
                 ))}
               </View>
             </View>
+          </View>
+
+          {/* ── Gallery ("Réalisations") ───────────────────────────────── */}
+          <View style={{ gap: spacing.md }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text
+                style={[typography.overline, { color: theme.foreground.gray }]}
+              >
+                {"RÉALISATIONS (" + gallery.length + ")"}
+              </Text>
+              <Pressable
+                onPress={pickGalleryPhoto}
+                disabled={addingPhoto}
+                accessibilityRole="button"
+                accessibilityLabel="Ajouter une photo"
+                hitSlop={8}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.xs,
+                  opacity: addingPhoto ? 0.6 : 1,
+                }}
+              >
+                {addingPhoto ? (
+                  <ActivityIndicator size="small" color={theme.primary.main} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="plus-circle"
+                    size={18}
+                    color={theme.primary.main}
+                  />
+                )}
+                <Text style={[typography.label, { color: theme.primary.main }]}>
+                  Ajouter
+                </Text>
+              </Pressable>
+            </View>
+
+            {gallery.length === 0 ? (
+              <View
+                style={{
+                  padding: spacing.lg,
+                  borderRadius: radius.xl,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: theme.border,
+                }}
+              >
+                <Text
+                  style={[
+                    typography.bodySmall,
+                    { color: theme.foreground.gray },
+                  ]}
+                >
+                  Aucune photo. Montrez vos réalisations à vos futurs clients.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: spacing.sm }}
+              >
+                {gallery.map((photo) => (
+                  <View key={photo.id} style={{ width: 110, height: 140 }}>
+                    <Image
+                      source={{ uri: photo.url }}
+                      cachePolicy="memory-disk"
+                      style={{
+                        flex: 1,
+                        borderRadius: radius.lg,
+                        backgroundColor: theme.surface.sunken,
+                      }}
+                      contentFit="cover"
+                      transition={200}
+                    />
+                    <Pressable
+                      onPress={() => removeGalleryPhoto(photo)}
+                      disabled={removingPhotoId === photo.id}
+                      accessibilityRole="button"
+                      accessibilityLabel="Retirer cette photo"
+                      hitSlop={8}
+                      style={{
+                        position: "absolute",
+                        top: spacing.xs,
+                        right: spacing.xs,
+                        width: 26,
+                        height: 26,
+                        borderRadius: radius.full,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: theme.surface.glass,
+                      }}
+                    >
+                      {removingPhotoId === photo.id ? (
+                        <ActivityIndicator size="small" color={theme.foreground.white} />
+                      ) : (
+                        <MaterialCommunityIcons
+                          name="close"
+                          size={15}
+                          color={theme.foreground.white}
+                        />
+                      )}
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
 
           {/* ── Services ───────────────────────────────────────────────── */}
@@ -517,187 +690,6 @@ export default function ProSalonPage() {
           setEditing(null);
         }}
       />
-    </View>
-  );
-}
-
-function ServiceEditor({
-  service,
-  onClose,
-  onSave,
-}: {
-  service: ProService | null;
-  onClose: () => void;
-  onSave: (service: ProService) => Promise<void>;
-}) {
-  const { theme } = useTheme();
-  const [draft, setDraft] = useState<ProService | null>(service);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => setDraft(service), [service]);
-
-  if (!draft) return null;
-
-  const valid = draft.name.trim().length >= 2 && draft.price > 0;
-
-  return (
-    <BottomSheet
-      visible={service !== null}
-      title={service?.name ? "Modifier la prestation" : "Nouvelle prestation"}
-      onClose={onClose}
-      footer={
-        <>
-          <Button
-            label="Annuler"
-            variant="outline"
-            onPress={onClose}
-            style={{ flex: 1 }}
-          />
-          <Button
-            label="Enregistrer"
-            onPress={async () => {
-              setSaving(true);
-              try {
-                await onSave({ ...draft, name: draft.name.trim() });
-              } finally {
-                setSaving(false);
-              }
-            }}
-            disabled={!valid}
-            loading={saving}
-            background={theme.primary.main}
-            color={theme.primary.on}
-            style={{ flex: 1.3 }}
-          />
-        </>
-      }
-    >
-      <TextField
-        label="Nom de la prestation"
-        value={draft.name}
-        onChangeText={(name) => setDraft({ ...draft, name })}
-        placeholder="Coupe & brushing"
-        autoCapitalize="sentences"
-      />
-
-      <View style={{ flexDirection: "row", gap: spacing.md }}>
-        <Stepper
-          label="Prix"
-          value={formatPrice(draft.price)}
-          onMinus={() =>
-            setDraft({ ...draft, price: Math.max(5, draft.price - 5) })
-          }
-          onPlus={() => setDraft({ ...draft, price: draft.price + 5 })}
-        />
-        <Stepper
-          label="Durée"
-          value={formatDuration(draft.durationMin)}
-          onMinus={() =>
-            setDraft({
-              ...draft,
-              durationMin: Math.max(15, draft.durationMin - DURATION_STEP),
-            })
-          }
-          onPlus={() =>
-            setDraft({
-              ...draft,
-              durationMin: Math.min(360, draft.durationMin + DURATION_STEP),
-            })
-          }
-        />
-      </View>
-
-      <View style={{ gap: spacing.sm }}>
-        <Text style={[typography.label, { color: theme.foreground.gray }]}>
-          Famille
-        </Text>
-        <View
-          style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}
-        >
-          {SPECIALTIES.map((specialty) => (
-            <Chip
-              key={specialty.id}
-              label={specialty.label}
-              selected={draft.specialty === specialty.id}
-              onPress={() => setDraft({ ...draft, specialty: specialty.id })}
-            />
-          ))}
-        </View>
-      </View>
-
-      <TextField
-        label="Détail (optionnel)"
-        value={draft.description ?? ""}
-        onChangeText={(description) => setDraft({ ...draft, description })}
-        placeholder="Shampooing, coupe et coiffage"
-        autoCapitalize="sentences"
-        multiline
-        maxLength={140}
-      />
-    </BottomSheet>
-  );
-}
-
-function Stepper({
-  label,
-  value,
-  onMinus,
-  onPlus,
-}: {
-  label: string;
-  value: string;
-  onMinus: () => void;
-  onPlus: () => void;
-}) {
-  const { theme } = useTheme();
-  return (
-    <View style={{ flex: 1, gap: spacing.xs }}>
-      <Text style={[typography.label, { color: theme.foreground.gray }]}>
-        {label}
-      </Text>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: spacing.md,
-          minHeight: 56,
-          borderRadius: radius.lg,
-          borderWidth: 1,
-          borderColor: theme.border,
-          backgroundColor: theme.surface.base,
-        }}
-      >
-        <Pressable
-          onPress={onMinus}
-          accessibilityRole="button"
-          accessibilityLabel={label + " diminuer"}
-          hitSlop={8}
-        >
-          <MaterialCommunityIcons
-            name="minus-circle-outline"
-            size={22}
-            color={theme.primary.main}
-          />
-        </Pressable>
-        <Text
-          style={[typography.bodyMedium, { color: theme.foreground.white }]}
-        >
-          {value}
-        </Text>
-        <Pressable
-          onPress={onPlus}
-          accessibilityRole="button"
-          accessibilityLabel={label + " augmenter"}
-          hitSlop={8}
-        >
-          <MaterialCommunityIcons
-            name="plus-circle-outline"
-            size={22}
-            color={theme.primary.main}
-          />
-        </Pressable>
-      </View>
     </View>
   );
 }

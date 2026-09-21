@@ -93,6 +93,14 @@ interface ServiceRow {
   specialty: string;
 }
 
+interface GalleryPhotoRow {
+  id: string;
+  profile_id: string;
+  url: string;
+  storage_path: string;
+  created_at: string;
+}
+
 interface AppointmentRow {
   id: string;
   particulier_id: string;
@@ -367,6 +375,7 @@ export class FakeSupabaseService {
   private readonly salonProfiles = new Map<string, SalonProfileRow>();
   private readonly availability = new Map<string, AvailabilityRow>();
   private readonly services = new Map<string, ServiceRow>();
+  private readonly galleryPhotos = new Map<string, GalleryPhotoRow>();
   private readonly appointments = new Map<string, AppointmentRow>();
   private readonly reviews = new Map<string, ReviewRow>();
   private readonly pushTokens = new Map<string, PushTokenRow>();
@@ -449,6 +458,9 @@ export class FakeSupabaseService {
       if (table === 'coiffeur_services') {
         return this.servicesTable();
       }
+      if (table === 'coiffeur_gallery_photos') {
+        return this.galleryPhotosTable();
+      }
       if (table === 'appointments') {
         return this.appointmentsTable();
       }
@@ -522,6 +534,7 @@ export class FakeSupabaseService {
     this.salonProfiles.clear();
     this.availability.clear();
     this.services.clear();
+    this.galleryPhotos.clear();
     this.appointments.clear();
     this.reviews.clear();
     this.pushTokens.clear();
@@ -925,6 +938,35 @@ export class FakeSupabaseService {
 
       delete: () =>
         new FakeMutationQuery<ServiceRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          rows.delete(existing.id);
+          return { data: existing, count: 1 };
+        }),
+    };
+  }
+
+  private galleryPhotosTable() {
+    const rows = this.galleryPhotos;
+
+    return {
+      select: () => new FakeSelectQuery<GalleryPhotoRow>(() => [...rows.values()]),
+
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async (): Promise<QueryResult> => {
+            const id = randomUUID();
+            const created = { ...row, id, created_at: new Date().toISOString() } as GalleryPhotoRow;
+            rows.set(id, created);
+            return { data: created, error: null };
+          },
+        }),
+      }),
+
+      delete: () =>
+        new FakeMutationQuery<GalleryPhotoRow>((matches) => {
           const existing = [...rows.values()].find(matches);
           if (!existing) {
             return { data: null, count: 0 };

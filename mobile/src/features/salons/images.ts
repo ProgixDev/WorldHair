@@ -65,33 +65,6 @@ export function coverPlaceholder(id: string): ImageSourcePropType {
   return { uri: coverUrl(id, PLACEHOLDER_WIDTH) };
 }
 
-function gallerySeed(salonId: string, index: number): string {
-  return salonId + "-" + index;
-}
-
-/** Work-gallery strip on the salon page — always distinct per slot. */
-export function galleryFor(salonId: string, count = 8): { uri: string }[] {
-  return Array.from({ length: count }, (_, index) => ({
-    uri:
-      "https://picsum.photos/seed/" +
-      encodeURIComponent(gallerySeed(salonId, index)) +
-      "/500/500",
-  }));
-}
-
-/** Same-seed tiny version of one `galleryFor` slot — see coverPlaceholder's doc comment. */
-export function galleryPlaceholder(salonId: string, index: number): { uri: string } {
-  return {
-    uri:
-      "https://picsum.photos/seed/" +
-      encodeURIComponent(gallerySeed(salonId, index)) +
-      "/" +
-      PLACEHOLDER_WIDTH +
-      "/" +
-      PLACEHOLDER_WIDTH,
-  };
-}
-
 /** Deterministic face for a review author. */
 export function avatarFor(name: string, salonId = ""): { uri: string } {
   return {

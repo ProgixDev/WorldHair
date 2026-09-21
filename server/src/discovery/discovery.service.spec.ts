@@ -11,12 +11,13 @@ const LYON = { lat: 45.764, lng: 4.8357 };
 
 describe('DiscoveryService', () => {
   let supabase: FakeSupabaseService;
+  let salon: SalonService;
   let discovery: DiscoveryService;
 
   beforeEach(() => {
     supabase = new FakeSupabaseService();
     const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, new EventEmitter2());
-    const salon = new SalonService(supabase as unknown as SupabaseService);
+    salon = new SalonService(supabase as unknown as SupabaseService);
     discovery = new DiscoveryService(supabase as unknown as SupabaseService, applications, salon);
   });
 
@@ -170,6 +171,15 @@ describe('DiscoveryService', () => {
       expect(detail).toMatchObject({ id: 'p1', salonName: 'Studio W', stylist: 'Sofia Benali' });
       expect(detail.services).toHaveLength(1);
       expect(detail.availability).toHaveLength(7);
+      expect(detail.gallery).toEqual([]);
+    });
+
+    it("includes the coiffeur's own gallery photos, as plain urls", async () => {
+      supabase.seedValidatedSalon({ profileId: 'p1', firstName: 'Sofia', lastName: 'Benali', salonName: 'Studio W' });
+      await salon.addGalleryPhoto('p1', { url: 'https://x/1.jpg', storagePath: 'p1/gallery/1.jpg' });
+
+      const detail = await discovery.getById('p1');
+      expect(detail.gallery).toEqual(['https://x/1.jpg']);
     });
 
     it("404s a coiffeur who hasn't been validated yet", async () => {

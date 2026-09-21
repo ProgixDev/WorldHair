@@ -28,6 +28,7 @@ export interface SalonSummary {
 export interface SalonDetail extends SalonSummary {
   services: SalonServiceItem[];
   availability: AvailabilityDay[];
+  gallery: string[];
 }
 
 export interface SalonSearchResult {
@@ -168,9 +169,10 @@ export class DiscoveryService {
     }
     const row = data as ProfileRow;
 
-    const [services, availability] = await Promise.all([
+    const [services, availability, gallery] = await Promise.all([
       this.salon.listServices(profileId),
       this.salon.getAvailability(profileId),
+      this.salon.listGalleryPhotos(profileId),
     ]);
 
     return {
@@ -194,6 +196,7 @@ export class DiscoveryService {
       distanceKm: null,
       services,
       availability,
+      gallery: gallery.map((photo) => photo.url),
     };
   }
 }

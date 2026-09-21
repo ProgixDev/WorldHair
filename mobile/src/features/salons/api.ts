@@ -46,6 +46,7 @@ interface AvailabilityResponse {
 interface SalonDetailResponse extends SalonSummaryResponse {
   services: SalonServiceResponse[];
   availability: AvailabilityResponse[];
+  gallery: string[];
 }
 
 interface SalonSearchResponse {
@@ -94,7 +95,7 @@ function toReview(review: ReviewResponse): Review {
 
 function toSalon(
   summary: SalonSummaryResponse,
-  extra?: { services: Service[]; hours: OpeningDay[]; reviews: Review[] },
+  extra?: { services: Service[]; hours: OpeningDay[]; reviews: Review[]; gallery: string[] },
 ): Salon {
   return {
     id: summary.id,
@@ -117,6 +118,7 @@ function toSalon(
     services: extra?.services ?? [],
     reviews: extra?.reviews ?? [],
     hours: extra?.hours ?? [],
+    gallery: extra?.gallery ?? [],
   };
 }
 
@@ -137,7 +139,12 @@ export async function fetchSalonById(id: string): Promise<Salon | undefined> {
       apiClient.get<SalonDetailResponse>(`/salons/${id}`),
       fetchSalonReviews(id),
     ]);
-    return toSalon(data, { services: data.services.map(toService), hours: toHours(data.availability), reviews });
+    return toSalon(data, {
+      services: data.services.map(toService),
+      hours: toHours(data.availability),
+      reviews,
+      gallery: data.gallery,
+    });
   } catch {
     return undefined;
   }

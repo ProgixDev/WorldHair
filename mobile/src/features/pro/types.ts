@@ -15,6 +15,9 @@ export interface ProProfile {
   specialties: SpecialtyId[];
   /** Locally picked cover photo; falls back to the catalogue image. */
   coverUri?: string | null;
+  /** Set when the coiffeur picks their city via CityField — feeds the particulier map/radius search. Null until then. */
+  latitude: number | null;
+  longitude: number | null;
 }
 
 /** One weekday of the agenda. Minutes from midnight, `null` when closed. */
@@ -88,3 +91,10 @@ export const PLANS: {
 ];
 
 export type ProService = Service;
+
+/** One "Réalisations" work photo — see pro/salon.tsx and salon/[id].tsx. */
+export interface GalleryPhoto {
+  id: string;
+  url: string;
+  storagePath: string;
+}

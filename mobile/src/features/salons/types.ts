@@ -72,6 +72,8 @@ export interface Salon {
   services: Service[];
   reviews: Review[];
   hours: OpeningDay[];
+  /** "Réalisations" — work photos the coiffeur curates themselves; empty until they add any. */
+  gallery: string[];
 }
 
 /** Salon + everything the UI derives from the user's position. */

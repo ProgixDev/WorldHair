@@ -3,9 +3,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { ReplaceAvailabilityDto } from './dto/availability-day.dto';
+import { AddGalleryPhotoDto } from './dto/gallery-photo.dto';
 import { CreateServiceDto, UpdateServiceDto } from './dto/service.dto';
 import { UpdateSalonProfileDto } from './dto/update-salon-profile.dto';
-import { AvailabilityDay, SalonProfile, SalonService, SalonServiceItem } from './salon.service';
+import { AvailabilityDay, SalonGalleryPhoto, SalonProfile, SalonService, SalonServiceItem } from './salon.service';
 
 /**
  * The coiffeur's own "Mon salon" workspace — presentation page, weekly
@@ -71,5 +72,26 @@ export class SalonController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     return this.salon.deleteService(current.id, id);
+  }
+
+  @Get('gallery')
+  listGalleryPhotos(@CurrentUser() current: AuthenticatedUser): Promise<SalonGalleryPhoto[]> {
+    return this.salon.listGalleryPhotos(current.id);
+  }
+
+  @Post('gallery')
+  addGalleryPhoto(
+    @CurrentUser() current: AuthenticatedUser,
+    @Body() dto: AddGalleryPhotoDto,
+  ): Promise<SalonGalleryPhoto[]> {
+    return this.salon.addGalleryPhoto(current.id, dto);
+  }
+
+  @Delete('gallery/:id')
+  deleteGalleryPhoto(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<SalonGalleryPhoto[]> {
+    return this.salon.deleteGalleryPhoto(current.id, id);
   }
 }

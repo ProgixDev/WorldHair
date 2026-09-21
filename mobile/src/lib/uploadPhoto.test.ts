@@ -1,10 +1,11 @@
 import { supabase } from "./supabase";
-import { uploadUserPhoto } from "./uploadPhoto";
+import { removeGalleryPhotoFile, uploadGalleryPhoto, uploadUserPhoto } from "./uploadPhoto";
 
 jest.mock("./supabase", () => {
   const bucket = {
     upload: jest.fn(),
     getPublicUrl: jest.fn(),
+    remove: jest.fn(),
   };
   return { supabase: { storage: { from: jest.fn(() => bucket) } } };
 });
@@ -12,6 +13,7 @@ jest.mock("./supabase", () => {
 const bucket = supabase.storage.from("user-photos") as unknown as {
   upload: jest.Mock;
   getPublicUrl: jest.Mock;
+  remove: jest.Mock;
 };
 
 describe("uploadUserPhoto", () => {
@@ -19,6 +21,7 @@ describe("uploadUserPhoto", () => {
 
   beforeEach(() => {
     bucket.upload.mockReset().mockResolvedValue({ data: {}, error: null });
+    bucket.remove.mockReset().mockResolvedValue({ data: {}, error: null });
     bucket.getPublicUrl
       .mockReset()
       .mockReturnValue({ data: { publicUrl: "https://cdn.example/u1/avatar.jpg" } });
@@ -49,5 +52,43 @@ describe("uploadUserPhoto", () => {
     await expect(uploadUserPhoto("u1", "avatar", "file:///cache/pick.jpg")).resolves.toBe(
       "https://cdn.example/u1/avatar.jpg",
     );
+  });
+});
+
+describe("uploadGalleryPhoto", () => {
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff]).buffer;
+
+  beforeEach(() => {
+    bucket.upload.mockReset().mockResolvedValue({ data: {}, error: null });
+    bucket.getPublicUrl
+      .mockReset()
+      .mockReturnValue({ data: { publicUrl: "https://cdn.example/u1/gallery/abc.jpg" } });
+    global.fetch = jest.fn().mockResolvedValue({
+      arrayBuffer: async () => bytes,
+    }) as unknown as typeof fetch;
+  });
+
+  it("uploads under a distinct gallery/ path and returns both the url and that path", async () => {
+    const result = await uploadGalleryPhoto("u1", "file:///cache/pick.jpg");
+
+    const [path, body] = bucket.upload.mock.calls[0];
+    expect(path).toMatch(/^u1\/gallery\/.+\.jpg$/);
+    expect(body).toBeInstanceOf(ArrayBuffer);
+    expect(result).toEqual({ url: "https://cdn.example/u1/gallery/abc.jpg", storagePath: path });
+  });
+
+  it("two uploads never collide on the same path", async () => {
+    const first = await uploadGalleryPhoto("u1", "file:///cache/pick.jpg");
+    const second = await uploadGalleryPhoto("u1", "file:///cache/pick.jpg");
+
+    expect(first.storagePath).not.toBe(second.storagePath);
+  });
+});
+
+describe("removeGalleryPhotoFile", () => {
+  it("removes the given storage path from the bucket", async () => {
+    await removeGalleryPhotoFile("u1/gallery/abc.jpg");
+
+    expect(bucket.remove).toHaveBeenCalledWith(["u1/gallery/abc.jpg"]);
   });
 });

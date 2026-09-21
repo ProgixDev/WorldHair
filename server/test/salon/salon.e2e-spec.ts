@@ -132,4 +132,41 @@ describe('salon (e2e)', () => {
       .send({ price: 99 })
       .expect(404);
   });
+
+  it('adds and deletes a gallery photo', async () => {
+    const added = await request(server)
+      .post('/salon/me/gallery')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ url: 'https://x/1.jpg', storagePath: 'coiffeur-1/gallery/1.jpg' })
+      .expect(201);
+    expect(added.body).toEqual([expect.objectContaining({ url: 'https://x/1.jpg' })]);
+
+    const photoId = added.body[0].id;
+    await request(server)
+      .delete(`/salon/me/gallery/${photoId}`)
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .expect(200);
+
+    const afterDelete = await request(server)
+      .get('/salon/me/gallery')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .expect(200);
+    expect(afterDelete.body).toEqual([]);
+  });
+
+  it("404s deleting another coiffeur's gallery photo", async () => {
+    const otherToken = 'coiffeur-token-3';
+    harness.supabase.addUser(otherToken, { id: 'coiffeur-3', email: 'other2@example.com', email_confirmed_at: null }, 'coiffeur');
+
+    const added = await request(server)
+      .post('/salon/me/gallery')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ url: 'https://x/1.jpg', storagePath: 'coiffeur-1/gallery/1.jpg' })
+      .expect(201);
+
+    await request(server)
+      .delete(`/salon/me/gallery/${added.body[0].id}`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(404);
+  });
 });

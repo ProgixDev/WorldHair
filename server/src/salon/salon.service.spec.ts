@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonService } from './salon.service';
@@ -156,6 +156,49 @@ describe('SalonService', () => {
       });
 
       await expect(service.deleteService(OTHER_USER_ID, created.id)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('gallery', () => {
+    it('listGalleryPhotos() starts empty', async () => {
+      await expect(service.listGalleryPhotos(USER_ID)).resolves.toEqual([]);
+    });
+
+    it('addGalleryPhoto() then listGalleryPhotos() shows it, oldest first', async () => {
+      await service.addGalleryPhoto(USER_ID, { url: 'https://x/1.jpg', storagePath: 'u1/gallery/1.jpg' });
+      await service.addGalleryPhoto(USER_ID, { url: 'https://x/2.jpg', storagePath: 'u1/gallery/2.jpg' });
+
+      const photos = await service.listGalleryPhotos(USER_ID);
+      expect(photos.map((p) => p.url)).toEqual(['https://x/1.jpg', 'https://x/2.jpg']);
+    });
+
+    it('addGalleryPhoto() refuses past the cap', async () => {
+      for (let i = 0; i < 12; i++) {
+        await service.addGalleryPhoto(USER_ID, { url: `https://x/${i}.jpg`, storagePath: `u1/gallery/${i}.jpg` });
+      }
+
+      await expect(
+        service.addGalleryPhoto(USER_ID, { url: 'https://x/13.jpg', storagePath: 'u1/gallery/13.jpg' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('deleteGalleryPhoto() removes it', async () => {
+      const [photo] = await service.addGalleryPhoto(USER_ID, {
+        url: 'https://x/1.jpg',
+        storagePath: 'u1/gallery/1.jpg',
+      });
+
+      await service.deleteGalleryPhoto(USER_ID, photo.id);
+      await expect(service.listGalleryPhotos(USER_ID)).resolves.toEqual([]);
+    });
+
+    it("deleteGalleryPhoto() 404s on another coiffeur's photo", async () => {
+      const [photo] = await service.addGalleryPhoto(USER_ID, {
+        url: 'https://x/1.jpg',
+        storagePath: 'u1/gallery/1.jpg',
+      });
+
+      await expect(service.deleteGalleryPhoto(OTHER_USER_ID, photo.id)).rejects.toThrow(NotFoundException);
     });
   });
 });
