@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { OnboardingSlide } from "../../components/onboarding/OnboardingSlide";
-import { CityPicker } from "../../components/particulier/CityPicker";
+import { CityPicker } from "../../components/ui/CityPicker";
 import { useResponsive } from "../../constants/responsive";
 import { useLocation } from "../../contexts/LocationContext";
 import { ROUTES } from "../../features/auth/routing";

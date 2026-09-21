@@ -11,7 +11,7 @@ import { spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { ROUTES, nextRouteForSession } from "../../features/auth/routing";
+import { ROUTES, resolveNextRoute } from "../../features/auth/routing";
 import { AuthError, type DemoPersona } from "../../services/auth";
 import { isValidEmail } from "../../utils/validation";
 
@@ -47,7 +47,7 @@ export default function SignIn() {
     setPending("email");
     try {
       const session = await signIn(email, password);
-      router.replace(nextRouteForSession(session, true) as never);
+      router.replace((await resolveNextRoute(session, true)) as never);
     } catch (error) {
       setFormError(
         error instanceof AuthError
@@ -64,7 +64,7 @@ export default function SignIn() {
     setPending(provider);
     try {
       const session = await signInWithProvider(provider);
-      router.replace(nextRouteForSession(session, true) as never);
+      router.replace((await resolveNextRoute(session, true)) as never);
     } catch {
       setFormError("Connexion impossible. Réessayez.");
     } finally {
@@ -77,7 +77,7 @@ export default function SignIn() {
     setDemoPending(persona);
     try {
       const session = await signInAsDemo(persona);
-      router.replace(nextRouteForSession(session, true) as never);
+      router.replace((await resolveNextRoute(session, true)) as never);
     } catch {
       setFormError("Connexion démo impossible.");
     } finally {

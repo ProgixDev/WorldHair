@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
+import { CityField } from "../../components/ui/CityField";
 import { Group, RowShell } from "../../components/ui/SettingsList";
 import { TextField } from "../../components/ui/TextField";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -270,11 +271,10 @@ export default function ProSalonPage() {
                 maxLength={5}
                 style={{ flex: 1 }}
               />
-              <TextField
+              <CityField
                 label="Ville"
                 value={draft.city}
                 onChangeText={(city) => patch({ city })}
-                autoCapitalize="words"
                 style={{ flex: 1.6 }}
               />
             </View>

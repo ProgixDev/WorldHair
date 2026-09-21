@@ -202,6 +202,18 @@ create policy "Coiffeurs can upload their own documents"
     and (storage.foldername (name))[1] = auth.uid ()::text
   );
 
+-- Without this, only the FIRST upload of a given `kind` succeeds (a plain
+-- insert). Any re-upload to that same `{uid}/<kind>.<ext>` path — which the
+-- client always does via `upsert: true` (UploadSlot.tsx) — is an update
+-- under the hood, and is silently denied by RLS without this policy. Same
+-- gotcha already documented and fixed for `user-photos` below.
+create policy "Coiffeurs can replace their own documents"
+  on storage.objects for update
+  using (
+    bucket_id = 'coiffeur-documents'
+    and (storage.foldername (name))[1] = auth.uid ()::text
+  );
+
 create policy "Coiffeurs can view their own documents"
   on storage.objects for select
   using (

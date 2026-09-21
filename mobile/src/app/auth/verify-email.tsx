@@ -10,11 +10,8 @@ import { spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { ROUTES, nextRouteForSession } from "../../features/auth/routing";
-import {
-  clearSignupIntent,
-  getSignupIntent,
-} from "../../services/preferences";
+import { ROUTES, resolveNextRoute } from "../../features/auth/routing";
+import { getSignupIntent } from "../../services/preferences";
 import { AuthError } from "../../services/auth";
 import { isValidVerificationCode } from "../../utils/validation";
 
@@ -60,14 +57,15 @@ export default function VerifyEmail() {
 
       // Honor the role picked at sign-up: a freshly-verified account is
       // still role "particulier" in the database until a coiffeur
-      // application is actually submitted (see services/auth.ts), so this
-      // is the one place that intent needs to be read back.
+      // application is actually submitted (see services/auth.ts). Kept
+      // (not cleared) here on purpose — the app resuming this same intent
+      // if it gets killed mid-wizard depends on it still being there; only
+      // a real submission clears it (see auth/pro/documents.tsx).
       const intent = await getSignupIntent();
-      await clearSignupIntent();
       if (intent === "coiffeur" && !next.application) {
         router.replace(ROUTES.proIdentity as never);
       } else {
-        router.replace(nextRouteForSession(next, true) as never);
+        router.replace((await resolveNextRoute(next, true)) as never);
       }
     } catch (err) {
       setError(

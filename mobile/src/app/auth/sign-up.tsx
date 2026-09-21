@@ -13,7 +13,7 @@ import { spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { ROUTES, nextRouteForSession } from "../../features/auth/routing";
+import { ROUTES, resolveNextRoute } from "../../features/auth/routing";
 import { setSignupIntent } from "../../services/preferences";
 import { AuthError, type UserRole } from "../../services/auth";
 import { checkPassword, isValidEmail } from "../../utils/validation";
@@ -78,7 +78,7 @@ export default function SignUp() {
     setPending(provider);
     try {
       const session = await signInWithProvider(provider);
-      router.replace(nextRouteForSession(session, true) as never);
+      router.replace((await resolveNextRoute(session, true)) as never);
     } catch {
       setFormError("Connexion impossible. Réessayez.");
     } finally {

@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import SplashScreen from "../components/ui/SplashScreen";
 import { useAuth } from "../contexts/AuthContext";
-import { nextRouteForSession } from "../features/auth/routing";
+import { resolveNextRoute } from "../features/auth/routing";
 import { hasSeenOnboarding } from "../services/preferences";
 
 /**
@@ -27,7 +27,13 @@ export default function Index() {
 
   useEffect(() => {
     if (!splashDone || isHydrating || onboardingSeen === null) return;
-    router.replace(nextRouteForSession(session, onboardingSeen) as never);
+    let cancelled = false;
+    resolveNextRoute(session, onboardingSeen).then((route) => {
+      if (!cancelled) router.replace(route as never);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [splashDone, isHydrating, onboardingSeen, session, router]);
 
   return <SplashScreen onAnimationComplete={() => setSplashDone(true)} />;

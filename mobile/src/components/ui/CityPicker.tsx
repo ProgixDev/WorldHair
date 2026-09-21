@@ -11,7 +11,7 @@ import {
   searchCities,
   type CitySuggestion,
 } from "../../features/salons/geocoding";
-import { BottomSheet } from "../ui/BottomSheet";
+import { BottomSheet } from "./BottomSheet";
 
 const SEARCH_DEBOUNCE_MS = 300;
 /** Below this, search the curated shortcuts only — not worth a network call per keystroke. */

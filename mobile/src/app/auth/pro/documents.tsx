@@ -19,6 +19,7 @@ import {
   PRO_WIZARD_STEPS,
   useProApplication,
 } from "../../../features/pro/ProApplicationContext";
+import { clearSignupIntent } from "../../../services/preferences";
 import { phoneCountryFor } from "../../../utils/phoneCountries";
 
 /** Step 3 of the coiffeur signup: identity document + diploma, then submit. */
@@ -81,6 +82,11 @@ export default function ProDocuments() {
           ...(draft.practiceZone === "salon" ? [draft.invoice!] : []),
         ],
       });
+      // Only cleared here, not right after email verification — this is
+      // what lets the app resume the wizard if it gets killed mid-flow
+      // instead of losing the coiffeur intent entirely. See routing.ts's
+      // resolveNextRoute.
+      await clearSignupIntent();
       reset();
       router.replace(ROUTES.pending as never);
     } catch {

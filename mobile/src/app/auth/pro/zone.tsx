@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { AuthHeader } from "../../../components/ui/AuthHeader";
 import { Button } from "../../../components/ui/Button";
+import { CityField } from "../../../components/ui/CityField";
 import { Screen } from "../../../components/ui/Screen";
 import {
   SegmentedControl,
@@ -117,13 +118,10 @@ export default function ProZone() {
                 error={errors.postalCode}
                 style={isExpanded ? { flex: 1 } : undefined}
               />
-              <TextField
+              <CityField
                 label="Ville"
                 value={draft.city}
                 onChangeText={(city) => update({ city })}
-                placeholder="Paris"
-                autoCapitalize="words"
-                textContentType="addressCity"
                 error={errors.city}
                 style={isExpanded ? { flex: 2 } : undefined}
               />

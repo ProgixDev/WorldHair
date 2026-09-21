@@ -51,16 +51,27 @@ async function uploadDocument(
   localUri: string,
   mimeType: string | null | undefined,
 ): Promise<string> {
+  // getSession(), not getUser(): the former reads the already-persisted
+  // local session (same as buildSession() in services/auth.ts), the latter
+  // round-trips to the auth server — a call that can lose a race right after
+  // an app reload, when the JS context (and its network stack) has only just
+  // come back up but the local session was already restored from storage.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) throw new Error("Aucune session active.");
 
   const path = `${user.id}/${kind}.${extensionFor(name, mimeType)}`;
-  const response = await fetch(localUri);
-  const blob = await response.blob();
+  // ArrayBuffer, not Blob: Supabase's own docs and its official Expo/React
+  // Native tutorial both fetch(uri).then(r => r.arrayBuffer()) — Blob/File/
+  // FormData uploads are documented as not working reliably in React Native
+  // (they fail or land as 0-byte objects). lib/uploadPhoto.ts already does
+  // this correctly for avatar/salon-cover uploads; this one didn't, which is
+  // why a document upload (e.g. "Facture société") could silently fail.
+  const body = await (await fetch(localUri)).arrayBuffer();
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+  const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     contentType: mimeType ?? undefined,
     upsert: true,
   });
@@ -127,7 +138,8 @@ export function UploadSlot({
         size: asset.fileSize ?? null,
         storagePath,
       });
-    } catch {
+    } catch (error) {
+      console.error("UploadSlot photo upload failed", kind, error);
       reject("Envoi impossible. Réessayez.");
     } finally {
       setBusy(false);
@@ -166,7 +178,8 @@ export function UploadSlot({
         size: asset.size ?? null,
         storagePath,
       });
-    } catch {
+    } catch (error) {
+      console.error("UploadSlot file upload failed", kind, error);
       reject("Envoi impossible. Réessayez.");
     } finally {
       setBusy(false);

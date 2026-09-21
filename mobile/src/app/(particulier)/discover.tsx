@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CityPicker } from "../../components/particulier/CityPicker";
+import { CityPicker } from "../../components/ui/CityPicker";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { SalonCard } from "../../components/particulier/SalonCard";
 import { AdBanner } from "../../components/ui/AdBanner";
