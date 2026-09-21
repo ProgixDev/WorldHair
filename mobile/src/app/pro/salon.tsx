@@ -181,11 +181,20 @@ export default function ProSalonPage() {
     if (draft.postalCode && !isValidPostalCodeFr(draft.postalCode))
       next.postalCode = "Code postal à 5 chiffres.";
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (next.postalCode) {
+      // Also as an alert: the inline error sits right under the floating
+      // save bar and is easy to miss — tapping save must never look like a
+      // no-op.
+      Alert.alert("Code postal invalide", next.postalCode);
+      return;
+    }
 
     setSaving(true);
     try {
-      await saveProfile(draft);
+      // Reset to what's actually stored, not just what was typed — the server
+      // normalizes (uploaded cover URL, phone format), and a leftover
+      // mismatch kept the save bar up forever, as if nothing had saved.
+      setDraft(await saveProfile(draft));
     } catch {
       Alert.alert("Enregistrement impossible", "Vérifiez vos informations et réessayez.");
     } finally {

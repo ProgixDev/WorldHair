@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsIn,
+  IsISO31661Alpha2,
   IsLatitude,
   IsLongitude,
   IsOptional,
@@ -64,6 +65,11 @@ export class UpdateSalonProfileDto {
   @ValidateIf((dto: UpdateSalonProfileDto) => Boolean(dto.phone))
   @Matches(/^\+[1-9]\d{6,14}$/, { message: 'phone must be a valid E.164 number' })
   phone?: string;
+
+  /** The country picked for `phone` — kept because the E.164 number alone can't say which one (a calling code can be shared). */
+  @IsOptional()
+  @IsISO31661Alpha2()
+  phoneCountry?: string;
 
   @IsOptional()
   @IsArray()

@@ -25,11 +25,19 @@ describe('SalonService', () => {
         postalCode: '',
         city: '',
         phone: '',
+        phoneCountry: null,
         specialties: [],
         coverUrl: null,
         latitude: null,
         longitude: null,
       });
+    });
+
+    it('updateProfile() keeps the picked phone country alongside the number', async () => {
+      const updated = await service.updateProfile(USER_ID, { phone: '+15550001234', phoneCountry: 'CA' });
+
+      expect(updated).toMatchObject({ phone: '+15550001234', phoneCountry: 'CA' });
+      await expect(service.getProfile(USER_ID)).resolves.toMatchObject({ phoneCountry: 'CA' });
     });
 
     it('updateProfile() creates the row on first save and getProfile() then returns it', async () => {

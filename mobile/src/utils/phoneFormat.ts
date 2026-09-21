@@ -1,27 +1,52 @@
-import type { CountryCode } from "libphonenumber-js/min";
-import { parsePhoneNumber } from "libphonenumber-js/min";
+import type { CountryCode, PhoneNumber } from "libphonenumber-js/min";
+import {
+  getCountryCallingCode,
+  isSupportedCountry,
+  parsePhoneNumber,
+} from "libphonenumber-js/min";
 import { phoneCountryFor } from "./phoneCountries";
 
-const DEFAULT_PHONE_COUNTRY = "FR";
+const DEFAULT_PHONE_COUNTRY: CountryCode = "FR";
+
+/**
+ * The country to show for a parsed number. The one the coiffeur picked wins
+ * whenever it's consistent with the number's calling code: a calling code can
+ * be shared (+1 covers ~25 countries), and for an unassigned range the library
+ * can't narrow it down on its own at all — it reports every +1 country as
+ * equally possible. Without a usable pick, the library's own answer, then the
+ * calling code's main country (US for +1) — never a different calling code.
+ */
+function countryFor(parsed: PhoneNumber, preferred: string | null | undefined): CountryCode {
+  if (
+    preferred &&
+    isSupportedCountry(preferred) &&
+    getCountryCallingCode(preferred) === parsed.countryCallingCode
+  )
+    return preferred;
+  return parsed.country ?? parsed.getPossibleCountries()[0] ?? DEFAULT_PHONE_COUNTRY;
+}
 
 /**
  * Splits a stored E.164 number (or "") the same way the signup wizard keeps
  * it — country + national digits, no dial code — so PhoneField (which only
- * ever displays/edits that split form) can show it. See services/pro.ts's
- * getProProfile and app/auth/pro/identity.tsx's ProApplicationContext draft.
+ * ever displays/edits that split form) can show it. `preferredCountry` is the
+ * country stored alongside the number (coiffeur_profiles.phone_country).
  */
-export function splitPhone(e164: string): { phone: string; phoneCountry: string } {
-  if (!e164) return { phone: "", phoneCountry: DEFAULT_PHONE_COUNTRY };
-  const fallback = { phone: e164.replace(/\D/g, ""), phoneCountry: DEFAULT_PHONE_COUNTRY };
+export function splitPhone(
+  e164: string,
+  preferredCountry?: string | null,
+): { phone: string; phoneCountry: string } {
+  const hint =
+    preferredCountry && isSupportedCountry(preferredCountry) ? preferredCountry : DEFAULT_PHONE_COUNTRY;
+  if (!e164) return { phone: "", phoneCountry: hint };
+  const fallback = { phone: e164.replace(/\D/g, ""), phoneCountry: hint };
   try {
-    // A default country is required even for a "+"-prefixed number here:
-    // parsePhoneNumber's "never throws" contract only covers a malformed
-    // number, not a missing country hint — a legacy, non-E.164 value (typed
-    // before this field used PhoneField) has neither a "+" nor a hint, and
-    // throws ParseError('INVALID_COUNTRY') without one. The hint is ignored
-    // for a real "+"-prefixed number, so it's harmless for the normal case.
-    const parsed = parsePhoneNumber(e164, DEFAULT_PHONE_COUNTRY as CountryCode);
-    return parsed?.country ? { phone: parsed.nationalNumber, phoneCountry: parsed.country } : fallback;
+    // The hint matters for a legacy, non-E.164 value (typed before this field
+    // used PhoneField): without one, parsePhoneNumber throws
+    // ParseError('INVALID_COUNTRY') — its "never throws" contract only covers
+    // a malformed number. It's ignored for a real "+"-prefixed number.
+    const parsed = parsePhoneNumber(e164, hint);
+    return parsed ? { phone: parsed.nationalNumber, phoneCountry: countryFor(parsed, preferredCountry) } : fallback;
   } catch {
     return fallback;
   }

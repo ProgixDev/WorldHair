@@ -253,6 +253,12 @@ create table public.coiffeur_profiles (
   postal_code text not null default '',
   city text not null default '',
   phone text not null default '',
+  -- The country the coiffeur picked for `phone` (ISO 3166-1 alpha-2). Not
+  -- derivable from the E.164 number alone: a calling code can be shared
+  -- (+1 covers ~25 countries), and for an unassigned range the phone
+  -- library can't narrow it down at all. Null for rows that predate it —
+  -- the app infers from the number then.
+  phone_country text check (phone_country ~ '^[A-Z]{2}$'),
   specialties text[] not null default '{}',
   cover_url text,
   -- Nullable: a coiffeur's location is only known once they (or a seed

@@ -92,17 +92,25 @@ describe('salon (e2e)', () => {
     // Not @IsPhoneNumber(): a real, working number can still fall outside
     // formal per-country numbering-plan assignment tables (VOIP, newer
     // allocations, etc). This editor only enforces the E.164 *shape*.
-    const unassignedButRealShape = await request(server)
+    const unassignedArea = await request(server)
       .patch('/salon/me')
       .set('Authorization', `Bearer ${coiffeurToken}`)
-      .send({ phone: '+15555765993' })
+      .send({ phone: '+15550001234', phoneCountry: 'CA' })
       .expect(200);
-    expect(unassignedButRealShape.body).toMatchObject({ phone: '+15555765993' });
+    expect(unassignedArea.body).toMatchObject({ phone: '+15550001234', phoneCountry: 'CA' });
 
     await request(server)
       .patch('/salon/me')
       .set('Authorization', `Bearer ${coiffeurToken}`)
       .send({ phone: 'not-a-phone' })
+      .expect(400);
+  });
+
+  it('rejects a phone country that is not an ISO 3166-1 alpha-2 code', async () => {
+    await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ phoneCountry: 'Canada' })
       .expect(400);
   });
 

@@ -57,10 +57,42 @@ interface SalonProfileResponse {
   postalCode: string;
   city: string;
   phone: string;
+  phoneCountry: string | null;
   specialties: ProProfile["specialties"];
   coverUrl: string | null;
   latitude: number | null;
   longitude: number | null;
+}
+
+/**
+ * One mapping for both the initial read and a save's response, so a save
+ * hands back exactly what's now stored — pro/salon.tsx resets its draft to it.
+ * `salonId`/`stylist` aren't part of this table (see getStylistName).
+ */
+function toProProfile(
+  data: SalonProfileResponse,
+  salonId: string,
+  stylist: string,
+): ProProfile {
+  const { phone, phoneCountry } = splitPhone(data.phone, data.phoneCountry);
+  return {
+    // Used only as a deterministic image-hashing seed (coverFor/avatarFor) —
+    // there's no shared mock-catalogue salon to point at anymore.
+    salonId,
+    name: data.salonName,
+    stylist,
+    tagline: data.tagline,
+    description: data.description,
+    addressLine: data.addressLine,
+    postalCode: data.postalCode,
+    city: data.city,
+    phone,
+    phoneCountry,
+    specialties: data.specialties,
+    coverUri: data.coverUrl,
+    latitude: data.latitude,
+    longitude: data.longitude,
+  };
 }
 
 /** The one particulier-facing display field (see pro/account.tsx) this table doesn't itself store — pulled from the coiffeur's own application. */
@@ -81,26 +113,7 @@ export async function getProProfile(): Promise<ProProfile> {
     currentUserId(),
     getStylistName(),
   ]);
-  const { phone, phoneCountry } = splitPhone(data.phone);
-
-  return {
-    // Used only as a deterministic image-hashing seed (coverFor/avatarFor) —
-    // there's no shared mock-catalogue salon to point at anymore.
-    salonId: userId,
-    name: data.salonName,
-    stylist,
-    tagline: data.tagline,
-    description: data.description,
-    addressLine: data.addressLine,
-    postalCode: data.postalCode,
-    city: data.city,
-    phone,
-    phoneCountry,
-    specialties: data.specialties,
-    coverUri: data.coverUrl,
-    latitude: data.latitude,
-    longitude: data.longitude,
-  };
+  return toProProfile(data, userId, stylist);
 }
 
 export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
@@ -118,23 +131,14 @@ export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
     postalCode: profile.postalCode,
     city: profile.city,
     phone: joinPhone(profile.phone, profile.phoneCountry),
+    phoneCountry: profile.phoneCountry,
     specialties: profile.specialties,
     coverUrl: coverUrl ?? undefined,
     latitude: profile.latitude ?? undefined,
     longitude: profile.longitude ?? undefined,
   });
-  const { phone, phoneCountry } = splitPhone(data.phone);
 
-  return {
-    ...profile,
-    tagline: data.tagline,
-    description: data.description,
-    phone,
-    phoneCountry,
-    coverUri: data.coverUrl,
-    latitude: data.latitude,
-    longitude: data.longitude,
-  };
+  return toProProfile(data, profile.salonId, profile.stylist);
 }
 
 // ─── Services (prestations) ───────────────────────────────────────────────────

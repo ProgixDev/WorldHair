@@ -15,6 +15,8 @@ export interface SalonProfile {
   postalCode: string;
   city: string;
   phone: string;
+  /** ISO 3166-1 alpha-2 the coiffeur picked for `phone` — see schema.sql's coiffeur_profiles.phone_country. */
+  phoneCountry: string | null;
   specialties: Specialty[];
   coverUrl: string | null;
   latitude: number | null;
@@ -29,6 +31,7 @@ const EMPTY_PROFILE: SalonProfile = {
   postalCode: '',
   city: '',
   phone: '',
+  phoneCountry: null,
   specialties: [],
   coverUrl: null,
   latitude: null,
@@ -81,6 +84,7 @@ interface ProfileRow {
   postal_code: string;
   city: string;
   phone: string;
+  phone_country: string | null;
   specialties: string[];
   cover_url: string | null;
   latitude: number | null;
@@ -132,6 +136,7 @@ function mapProfile(row: ProfileRow): SalonProfile {
     postalCode: row.postal_code,
     city: row.city,
     phone: row.phone,
+    phoneCountry: row.phone_country ?? null,
     specialties: row.specialties as Specialty[],
     coverUrl: row.cover_url,
     latitude: row.latitude,
@@ -238,6 +243,7 @@ export class SalonService {
     if (patch.postalCode !== undefined) row.postal_code = patch.postalCode;
     if (patch.city !== undefined) row.city = patch.city;
     if (patch.phone !== undefined) row.phone = patch.phone;
+    if (patch.phoneCountry !== undefined) row.phone_country = patch.phoneCountry;
     if (patch.specialties !== undefined) row.specialties = patch.specialties;
     if (patch.coverUrl !== undefined) row.cover_url = patch.coverUrl;
     if (patch.latitude !== undefined) row.latitude = patch.latitude;

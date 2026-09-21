@@ -29,7 +29,8 @@ interface ProContextValue {
   reviews: Review[];
   isLoading: boolean;
   refresh: () => Promise<void>;
-  saveProfile: (profile: ProProfile) => Promise<void>;
+  /** Resolves with what's now stored — the server may normalize (uploaded cover URL, phone format). */
+  saveProfile: (profile: ProProfile) => Promise<ProProfile>;
   saveService: (service: ProService) => Promise<void>;
   deleteService: (serviceId: string) => Promise<void>;
   addGalleryPhoto: (localUri: string, mimeType?: string | null) => Promise<void>;
@@ -106,7 +107,11 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       reviews,
       isLoading,
       refresh,
-      saveProfile: async (next) => setProfile(await pro.saveProProfile(next)),
+      saveProfile: async (next) => {
+        const saved = await pro.saveProProfile(next);
+        setProfile(saved);
+        return saved;
+      },
       saveService: async (service) =>
         setServices(await pro.saveProService(service)),
       deleteService: async (serviceId) =>
