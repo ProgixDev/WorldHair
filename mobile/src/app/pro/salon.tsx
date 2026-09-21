@@ -167,6 +167,8 @@ export default function ProSalonPage() {
     setSaving(true);
     try {
       await saveProfile(draft);
+    } catch {
+      Alert.alert("Enregistrement impossible", "Vérifiez vos informations et réessayez.");
     } finally {
       setSaving(false);
     }

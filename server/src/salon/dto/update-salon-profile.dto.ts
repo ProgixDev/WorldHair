@@ -1,4 +1,15 @@
-import { IsArray, IsIn, IsLatitude, IsLongitude, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsIn,
+  IsLatitude,
+  IsLongitude,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 /** Mirrors the `coiffeur_profiles`/`coiffeur_services` check constraints in schema.sql. */
 export const SPECIALTIES = ['coupe', 'coloration', 'afro', 'tresses', 'barbier', 'soins', 'mariage'] as const;
@@ -26,7 +37,12 @@ export class UpdateSalonProfileDto {
   @MaxLength(200)
   addressLine?: string;
 
-  @IsOptional()
+  // Unlike the other optional fields, an empty string isn't "not provided"
+  // to a plain @IsOptional() — that only skips null/undefined, so a blank
+  // postal code (the editor has no required-field marker on it) still hit
+  // the format check and 400'd the whole save. @ValidateIf treats falsy the
+  // same as missing.
+  @ValidateIf((dto: UpdateSalonProfileDto) => Boolean(dto.postalCode))
   @Matches(/^\d{5}$/, { message: 'postalCode must be 5 digits' })
   postalCode?: string;
 

@@ -59,6 +59,22 @@ describe('salon (e2e)', () => {
       .expect(400);
   });
 
+  it('accepts a blank postal code (no required-field marker on it in the editor)', async () => {
+    await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ salonName: 'Studio W', postalCode: '' })
+      .expect(200);
+  });
+
+  it('still rejects a malformed, non-empty postal code', async () => {
+    await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ postalCode: 'abcde' })
+      .expect(400);
+  });
+
   it('returns a sensible default week, then the saved one after PUT', async () => {
     const defaults = await request(server)
       .get('/salon/me/availability')

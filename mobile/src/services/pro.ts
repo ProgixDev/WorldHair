@@ -117,8 +117,8 @@ export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
     phone: profile.phone,
     specialties: profile.specialties,
     coverUrl: coverUrl ?? undefined,
-    latitude: profile.latitude,
-    longitude: profile.longitude,
+    latitude: profile.latitude ?? undefined,
+    longitude: profile.longitude ?? undefined,
   });
 
   return {
