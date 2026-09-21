@@ -89,6 +89,16 @@ describe('salon (e2e)', () => {
       .expect(200);
     expect(updated.body).toMatchObject({ phone: '+33612345678' });
 
+    // Not @IsPhoneNumber(): a real, working number can still fall outside
+    // formal per-country numbering-plan assignment tables (VOIP, newer
+    // allocations, etc). This editor only enforces the E.164 *shape*.
+    const unassignedButRealShape = await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ phone: '+15555765993' })
+      .expect(200);
+    expect(unassignedButRealShape.body).toMatchObject({ phone: '+15555765993' });
+
     await request(server)
       .patch('/salon/me')
       .set('Authorization', `Bearer ${coiffeurToken}`)

@@ -4,7 +4,6 @@ import {
   IsLatitude,
   IsLongitude,
   IsOptional,
-  IsPhoneNumber,
   IsString,
   Matches,
   MaxLength,
@@ -52,13 +51,18 @@ export class UpdateSalonProfileDto {
   @MaxLength(100)
   city?: string;
 
-  // Same shape as SubmitCoiffeurApplicationDto's phone (full E.164, "+" plus
-  // the international calling code — the mobile PhoneField always sends
-  // that). @ValidateIf, not @IsOptional: this editor's phone field has no
+  // Deliberately NOT @IsPhoneNumber() (unlike SubmitCoiffeurApplicationDto's
+  // signup phone): that validates against formal per-country numbering-plan
+  // assignment tables, which reject real working numbers outside them (VOIP,
+  // newer allocations, etc. — confirmed against a real one during testing).
+  // Signup's stricter check makes sense there (an admin needs to reach the
+  // applicant to verify identity); this is just a public contact number on
+  // the coiffeur's own profile — only the E.164 *shape* is worth enforcing.
+  // @ValidateIf, not @IsOptional: this editor's phone field has no
   // required-field marker, so a blank string must be accepted the same way
   // postalCode's blank case is above, not treated as "provided but invalid".
   @ValidateIf((dto: UpdateSalonProfileDto) => Boolean(dto.phone))
-  @IsPhoneNumber()
+  @Matches(/^\+[1-9]\d{6,14}$/, { message: 'phone must be a valid E.164 number' })
   phone?: string;
 
   @IsOptional()

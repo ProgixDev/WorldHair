@@ -34,6 +34,7 @@ import {
 } from "../../features/salons/types";
 import { newServiceId } from "../../services/pro";
 import { formatDuration, formatPrice, minutesToTime } from "../../utils/date";
+import { isValidPostalCodeFr } from "../../utils/validation";
 
 /** Mirrors GALLERY_MAX_PHOTOS in server/src/salon/salon.service.ts. */
 const GALLERY_MAX = 12;
@@ -65,6 +66,7 @@ export default function ProSalonPage() {
   const [editing, setEditing] = useState<ProService | null>(null);
   const [addingPhoto, setAddingPhoto] = useState(false);
   const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ postalCode?: string }>({});
 
   useEffect(() => {
     if (profile && !draft) setDraft(profile);
@@ -165,6 +167,22 @@ export default function ProSalonPage() {
     ]);
 
   const save = async () => {
+    // Postal code is optional (no required-field marker) but genuinely has
+    // one correct shape (French postal codes are always 5 digits), so it's
+    // still worth catching here. Phone deliberately ISN'T checked against
+    // isValidPhoneForCountry here — that validates against formal
+    // per-country numbering-plan assignment, which rejects real working
+    // numbers it doesn't recognize (confirmed against a real one during
+    // testing). Unlike signup (identity verification), this is just a
+    // public contact number — joinPhone's own parse-or-fallback already
+    // produces a reasonable E.164 shape either way, and the server only
+    // checks that shape (see update-salon-profile.dto.ts).
+    const next: typeof errors = {};
+    if (draft.postalCode && !isValidPostalCodeFr(draft.postalCode))
+      next.postalCode = "Code postal à 5 chiffres.";
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+
     setSaving(true);
     try {
       await saveProfile(draft);
@@ -323,11 +341,13 @@ export default function ProSalonPage() {
               <TextField
                 label="Code postal"
                 value={draft.postalCode}
-                onChangeText={(postalCode) =>
-                  patch({ postalCode: postalCode.replace(/\D/g, "") })
-                }
+                onChangeText={(postalCode) => {
+                  patch({ postalCode: postalCode.replace(/\D/g, "") });
+                  setErrors((e) => ({ ...e, postalCode: undefined }));
+                }}
                 keyboardType="number-pad"
                 maxLength={5}
+                error={errors.postalCode}
                 style={{ flex: 1 }}
               />
               <CityField
