@@ -16,6 +16,7 @@ import { ServiceEditor } from "../../components/pro/ServiceEditor";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { CityField } from "../../components/ui/CityField";
+import { PhoneField } from "../../components/ui/PhoneField";
 import { Group, RowShell } from "../../components/ui/SettingsList";
 import { TextField } from "../../components/ui/TextField";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -304,12 +305,12 @@ export default function ProSalonPage() {
               autoCapitalize="sentences"
               helper={draft.description.length + "/400 caractères."}
             />
-            <TextField
+            <PhoneField
               label="Téléphone"
               value={draft.phone}
               onChangeText={(phone) => patch({ phone })}
-              keyboardType="phone-pad"
-              icon="phone-outline"
+              country={draft.phoneCountry}
+              onChangeCountry={(phoneCountry) => patch({ phoneCountry })}
             />
             <TextField
               label="Adresse"

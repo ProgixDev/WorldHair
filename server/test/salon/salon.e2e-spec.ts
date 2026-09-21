@@ -75,6 +75,27 @@ describe('salon (e2e)', () => {
       .expect(400);
   });
 
+  it('accepts a blank phone, a valid E.164 one, and rejects a malformed one', async () => {
+    await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ phone: '' })
+      .expect(200);
+
+    const updated = await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ phone: '+33612345678' })
+      .expect(200);
+    expect(updated.body).toMatchObject({ phone: '+33612345678' });
+
+    await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ phone: 'not-a-phone' })
+      .expect(400);
+  });
+
   it('returns a sensible default week, then the saved one after PUT', async () => {
     const defaults = await request(server)
       .get('/salon/me/availability')

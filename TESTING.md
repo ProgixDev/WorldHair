@@ -99,20 +99,20 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Mandatory shop completion (cover photo + hours, ≥1 day open) — salon invisible to booking until done
 
 ### `/pro/dashboard`
-- [ ] 4 KPIs populate
-- [ ] 8-week bar chart renders
-- [ ] Pending requests + today's appointments show
-- [ ] Subscription strip shows correct status
+- [x] 4 KPIs populate
+- [x] 8-week bar chart renders
+- [x] Pending requests + today's appointments show
+- [x] Subscription strip shows correct status
 
 ### `/pro/agenda`
-- [ ] Pending requests in red at top, Accept / Refuse both work
-- [ ] Day column blocks sized proportional to appointment duration
-- [ ] "Horaires" edits weekly hours (open / close / break)
+- [x] Pending requests in red at top, Accept / Refuse both work
+- [x] Day column blocks sized proportional to appointment duration
+- [x] "Horaires" edits weekly hours (open / close / break)
 
 ### `/pro/salon`
-- [ ] Public page fields editable and save
-- [ ] Service CRUD (create / edit / delete)
-- [ ] Price change here reflects immediately on the client side
+- [x] Public page fields editable and save
+- [x] Service CRUD (create / edit / delete)
+- [x] Price change here reflects immediately on the client side
 
 ### `/pro/reviews`
 - [ ] Reply to a review

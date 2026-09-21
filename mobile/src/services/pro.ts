@@ -17,6 +17,7 @@ import type {
   Subscription,
 } from "../features/pro/types";
 import type { Review } from "../features/salons/types";
+import { joinPhone, splitPhone } from "../utils/phoneFormat";
 
 /**
  * The coiffeur area's data layer — profile, prestations, weekly hours,
@@ -80,6 +81,7 @@ export async function getProProfile(): Promise<ProProfile> {
     currentUserId(),
     getStylistName(),
   ]);
+  const { phone, phoneCountry } = splitPhone(data.phone);
 
   return {
     // Used only as a deterministic image-hashing seed (coverFor/avatarFor) —
@@ -92,7 +94,8 @@ export async function getProProfile(): Promise<ProProfile> {
     addressLine: data.addressLine,
     postalCode: data.postalCode,
     city: data.city,
-    phone: data.phone,
+    phone,
+    phoneCountry,
     specialties: data.specialties,
     coverUri: data.coverUrl,
     latitude: data.latitude,
@@ -114,17 +117,20 @@ export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
     addressLine: profile.addressLine,
     postalCode: profile.postalCode,
     city: profile.city,
-    phone: profile.phone,
+    phone: joinPhone(profile.phone, profile.phoneCountry),
     specialties: profile.specialties,
     coverUrl: coverUrl ?? undefined,
     latitude: profile.latitude ?? undefined,
     longitude: profile.longitude ?? undefined,
   });
+  const { phone, phoneCountry } = splitPhone(data.phone);
 
   return {
     ...profile,
     tagline: data.tagline,
     description: data.description,
+    phone,
+    phoneCountry,
     coverUri: data.coverUrl,
     latitude: data.latitude,
     longitude: data.longitude,

@@ -11,7 +11,10 @@ export interface ProProfile {
   addressLine: string;
   postalCode: string;
   city: string;
+  /** National number only, digits — no dial code. Paired with phoneCountry, same split as the signup wizard (ProApplicationContext). */
   phone: string;
+  /** ISO 3166-1 alpha-2, e.g. "FR" — which country's dial code/rules `phone` is in. */
+  phoneCountry: string;
   specialties: SpecialtyId[];
   /** Locally picked cover photo; falls back to the catalogue image. */
   coverUri?: string | null;

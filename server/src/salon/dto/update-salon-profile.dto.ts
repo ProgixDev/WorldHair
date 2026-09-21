@@ -4,6 +4,7 @@ import {
   IsLatitude,
   IsLongitude,
   IsOptional,
+  IsPhoneNumber,
   IsString,
   Matches,
   MaxLength,
@@ -51,9 +52,13 @@ export class UpdateSalonProfileDto {
   @MaxLength(100)
   city?: string;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(30)
+  // Same shape as SubmitCoiffeurApplicationDto's phone (full E.164, "+" plus
+  // the international calling code — the mobile PhoneField always sends
+  // that). @ValidateIf, not @IsOptional: this editor's phone field has no
+  // required-field marker, so a blank string must be accepted the same way
+  // postalCode's blank case is above, not treated as "provided but invalid".
+  @ValidateIf((dto: UpdateSalonProfileDto) => Boolean(dto.phone))
+  @IsPhoneNumber()
   phone?: string;
 
   @IsOptional()
