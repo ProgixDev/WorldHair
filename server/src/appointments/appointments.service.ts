@@ -11,6 +11,7 @@ import type Stripe from 'stripe';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { Role } from '../common/types/role';
 import { isAccountActive } from '../common/utils/account-status';
+import { allPages } from '../common/utils/pages';
 import { formatParisDateTime } from '../common/utils/paris-time';
 import { slices } from '../common/utils/slices';
 import { findSalonSubscription, isSalonListed } from '../common/utils/subscription-status';
@@ -45,7 +46,8 @@ export interface AppointmentLine {
 
 export interface ParticulierAppointment {
   id: string;
-  salonId: string;
+  /** Null once the salon deleted its account: the booking stays in the client's history. */
+  salonId: string | null;
   salonName: string;
   /** First prestation — kept for older app versions; `services` has them all. */
   serviceId: string | null;
@@ -93,7 +95,8 @@ export interface HeldAppointment {
 export interface CoiffeurAppointment {
   id: string;
   serviceId: string | null;
-  clientId: string;
+  /** Null once the client deleted their account: the booking stays in the salon's history. */
+  clientId: string | null;
   clientName: string;
   startsAt: string;
   durationMin: number;
@@ -138,8 +141,9 @@ interface AppointmentServiceRow {
 
 export interface AppointmentRow {
   id: string;
-  particulier_id: string;
-  coiffeur_id: string;
+  /** Null once that side deleted their account (TODO.md Phase 8): the booking stays, anonymized. */
+  particulier_id: string | null;
+  coiffeur_id: string | null;
   service_id: string | null;
   service_name: string;
   price: string | number;
@@ -194,6 +198,24 @@ export function derivedStatus(
 ): AppointmentStatus {
   if (row.status === 'confirmed' && endTimeMs(row) < now.getTime()) return 'done';
   return row.status as AppointmentStatus;
+}
+
+/** What a booking whose side deleted their account reads as (TODO.md Phase 8). */
+export const DELETED_SALON = 'Salon supprimé';
+export const DELETED_CLIENT = 'Client supprimé';
+
+/**
+ * The salon of a booking still to come — it always has one: deleting an
+ * account cancels its bookings first. A past one may have lost it.
+ */
+function salonOf(row: AppointmentRow): string {
+  if (!row.coiffeur_id) throw new BadRequestException('This salon has left WorldHair');
+  return row.coiffeur_id;
+}
+
+function clientOf(row: AppointmentRow): string {
+  if (!row.particulier_id) throw new BadRequestException('This client has left WorldHair');
+  return row.particulier_id;
 }
 
 function isActive(row: AppointmentRow): boolean {
@@ -410,7 +432,7 @@ export class AppointmentsService {
       const intent = payment ? await this.payments.paidIntent(payment) : null;
       if (payment && intent) row = await this.finalizePayment(row, payment, intent);
     }
-    const profile = await this.salon.getProfile(row.coiffeur_id);
+    const profile = await this.salon.getProfile(salonOf(row));
     return this.mapParticulier(row, profile.salonName, profile.cancellationNoticeMinutes);
   }
 
@@ -522,7 +544,7 @@ export class AppointmentsService {
     if (payment.status !== 'succeeded') await this.payments.markSucceeded(payment, intent);
     if (row.status !== 'awaiting_payment') return row;
 
-    const profile = await this.salon.getProfile(row.coiffeur_id);
+    const profile = await this.salon.getProfile(salonOf(row));
     const status = profile.confirmationMode === 'instant' ? 'confirmed' : 'pending';
     const { data, error } = await this.supabase.client
       .from('appointments')
@@ -609,12 +631,13 @@ export class AppointmentsService {
     const rows = (await this.rowsWhere('particulier_id', particulierId, WITH_LINES)).filter(
       (row) => row.status !== 'awaiting_payment',
     );
-    const salons = await this.salonsFor([...new Set(rows.map((row) => row.coiffeur_id))]);
+    const salons = await this.salonsFor([...new Set(rows.flatMap((row) => (row.coiffeur_id ? [row.coiffeur_id] : [])))]);
     const now = new Date();
     return rows
       .map((row) => {
-        const salon = salons.get(row.coiffeur_id);
-        return this.mapParticulier(row, salon?.name ?? '', salon?.cancellationNoticeMinutes ?? 0, now);
+        const salon = row.coiffeur_id ? salons.get(row.coiffeur_id) : undefined;
+        const name = row.coiffeur_id ? (salon?.name ?? '') : DELETED_SALON;
+        return this.mapParticulier(row, name, salon?.cancellationNoticeMinutes ?? 0, now);
       })
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   }
@@ -626,11 +649,11 @@ export class AppointmentsService {
     }
     this.assertStillActive(row);
     this.assertNotPast(row);
-    const profile = await this.salon.getProfile(row.coiffeur_id);
+    const profile = await this.salon.getProfile(salonOf(row));
     this.assertBeforeDeadline(row, profile.cancellationNoticeMinutes);
 
     const startsAt = this.parseDate(startsAtIso);
-    const rules = await this.rulesFor(row.coiffeur_id, {
+    const rules = await this.rulesFor(salonOf(row), {
       particulierId,
       excludeAppointmentId: id,
       bookingNoticeMinutes: profile.bookingNoticeMinutes,
@@ -658,7 +681,7 @@ export class AppointmentsService {
     this.assertNotPast(row);
     // The salon's deadline binds the client only — a salon can always cancel (the client is notified).
     if (currentUserId === row.particulier_id) {
-      const profile = await this.salon.getProfile(row.coiffeur_id);
+      const profile = await this.salon.getProfile(salonOf(row));
       this.assertBeforeDeadline(row, profile.cancellationNoticeMinutes);
     }
     // Only while still active: the salon may have refused it, or the job expired it, meanwhile.
@@ -678,6 +701,65 @@ export class AppointmentsService {
       serviceName: row.service_name,
       startsAt: row.starts_at,
     });
+  }
+
+  // ─── Account deletion ────────────────────────────────────────────────────
+
+  /**
+   * An account being deleted (TODO.md Phase 8): its slots held for a
+   * payment go back to everyone, and every booking still to come — as the
+   * client or as the salon — is cancelled and refunded in full, the other
+   * side told. Those already started stay, anonymized with the account.
+   * Releasing a hold asks Stripe: one it can't answer now stops the deletion.
+   */
+  async closeBookingsOf(userId: string, now = new Date()): Promise<void> {
+    for (const column of ['particulier_id', 'coiffeur_id'] as const) {
+      for (const row of await this.openRowsWhere(column, userId, ['awaiting_payment'])) {
+        await this.releaseRow(row);
+      }
+    }
+    for (const column of ['particulier_id', 'coiffeur_id'] as const) {
+      for (const row of await this.openRowsWhere(column, userId, ['pending', 'confirmed'])) {
+        const toCome = row.status === 'pending' || new Date(row.starts_at).getTime() > now.getTime();
+        if (toCome) await this.cancelForDeletion(row, column === 'particulier_id' ? 'client' : 'salon', userId);
+      }
+    }
+  }
+
+  private async cancelForDeletion(row: AppointmentRow, side: 'client' | 'salon', userId: string): Promise<void> {
+    try {
+      await this.updateWhileStatus(row.id, ['pending', 'confirmed'], { status: 'cancelled', cancelled_by: side }, 'Changed meanwhile');
+    } catch (err) {
+      // Cancelled or refused meanwhile, by the other side: nothing left to do.
+      if (err instanceof BadRequestException) return;
+      throw err;
+    }
+    await this.refundAfter(row.id, side === 'client' ? 'client_cancelled' : 'salon_cancelled');
+    this.events.emit('appointment.cancelled', {
+      appointmentId: row.id,
+      coiffeurId: salonOf(row),
+      particulierId: clientOf(row),
+      cancelledByUserId: userId,
+      serviceName: row.service_name,
+      startsAt: row.starts_at,
+    });
+  }
+
+  private async openRowsWhere(
+    column: 'particulier_id' | 'coiffeur_id',
+    userId: string,
+    statuses: string[],
+  ): Promise<AppointmentRow[]> {
+    return allPages<AppointmentRow>((from, to) =>
+      this.supabase.client
+        .from('appointments')
+        .select()
+        .eq(column, userId)
+        .in('status', statuses)
+        .order('starts_at')
+        .order('id')
+        .range(from, to),
+    );
   }
 
   // ─── Admin: disputes ─────────────────────────────────────────────────────
@@ -754,7 +836,7 @@ export class AppointmentsService {
         throw new ForbiddenException();
       }
       durationMin = row.duration_min;
-      particulierId = row.particulier_id;
+      particulierId = row.particulier_id ?? undefined;
       excludeAppointmentId = row.id;
       if (callerId === row.coiffeur_id) bookingNoticeMinutes = 0;
     } else if (query.serviceIds && query.serviceIds.length > 0) {
@@ -784,11 +866,12 @@ export class AppointmentsService {
     const rows = (await this.rowsWhere('coiffeur_id', coiffeurId, WITH_LINES))
       .filter((row) => row.status !== 'awaiting_payment')
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
-    const names = await this.particulierNamesFor([...new Set(rows.map((row) => row.particulier_id))]);
+    const names = await this.particulierNamesFor([...new Set(rows.flatMap((row) => (row.particulier_id ? [row.particulier_id] : [])))]);
 
     const seen = new Set<string>();
     const now = new Date();
     const mapped = rows.map((row) => {
+      if (!row.particulier_id) return this.mapCoiffeur(row, DELETED_CLIENT, false, now);
       const isNewClient = !seen.has(row.particulier_id);
       seen.add(row.particulier_id);
       return this.mapCoiffeur(row, names.get(row.particulier_id) ?? 'Client', isNewClient, now);
@@ -836,7 +919,7 @@ export class AppointmentsService {
 
     const startsAt = this.parseDate(startsAtIso);
     const rules = await this.rulesFor(coiffeurId, {
-      particulierId: row.particulier_id,
+      particulierId: row.particulier_id ?? undefined,
       excludeAppointmentId: id,
       bookingNoticeMinutes: 0,
     });
@@ -960,16 +1043,21 @@ export class AppointmentsService {
     throw new BadRequestException(REFUSAL_MESSAGES[refusal]);
   }
 
+  /** Every booking of this side, however many: page after page (PostgREST answers 1 000 rows at most). */
   private async rowsWhere(
     column: 'particulier_id' | 'coiffeur_id',
     value: string,
     columns = '*',
   ): Promise<AppointmentRow[]> {
-    const { data, error } = await this.supabase.client.from('appointments').select(columns).eq(column, value);
-    if (error) {
-      throw new InternalServerErrorException(error.message);
-    }
-    return data as unknown as AppointmentRow[];
+    return allPages<AppointmentRow>((from, to) =>
+      this.supabase.client
+        .from('appointments')
+        .select(columns)
+        .eq(column, value)
+        .order('starts_at')
+        .order('id')
+        .range(from, to),
+    );
   }
 
   /**
@@ -1123,7 +1211,7 @@ export class AppointmentsService {
       services: lines,
       status: derivedStatus(row, now),
       attendance: (row.attendance as Attendance | null | undefined) ?? null,
-      modifiableUntil: modifiableUntil(row, cancellationNoticeMinutes),
+      modifiableUntil: row.coiffeur_id ? modifiableUntil(row, cancellationNoticeMinutes) : null,
       movedBySalon: row.moved_by_salon ?? false,
       payment: clientPayment(row),
       cancelledBy: row.cancelled_by ?? null,

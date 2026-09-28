@@ -150,6 +150,8 @@ export class CoiffeurApplicationsService {
       review_message: null,
       submitted_at: new Date().toISOString(),
       reviewed_at: null,
+      // Documents deleted 90 days after a rejection (DocumentRetentionJob): this submission comes with new uploads.
+      documents_purged_at: null,
     };
 
     const { data, error } = await this.supabase.client

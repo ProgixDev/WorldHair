@@ -96,6 +96,17 @@ describe('AdminStatsService', () => {
     expect(stats.points[isoDayOfWeek].revenue).toBe(50);
   });
 
+  it('counts every booking of the range, past the 1 000 rows PostgREST answers at most', async () => {
+    const todayNoonIso = parisToday(12);
+    for (let i = 0; i < 1005; i++) {
+      supabase.seedAppointment({ particulierId: 'p1', coiffeurId: 'c1', startsAt: todayNoonIso, status: 'confirmed', createdAt: todayNoonIso });
+    }
+
+    const stats = await service.getBookingStats('week');
+
+    expect(stats.points.reduce((sum, p) => sum + p.confirmed, 0)).toBe(1005);
+  });
+
   it('an appointment created well before the range window is not counted', async () => {
     const longAgoIso = new Date(Date.UTC(2000, 0, 1)).toISOString();
     supabase.seedAppointment({

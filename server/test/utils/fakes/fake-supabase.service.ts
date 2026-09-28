@@ -14,6 +14,10 @@ interface ProfileRow {
   photo_url: string | null;
   role: string;
   account_status: string;
+  /** Unset on rows seeded before it mattered: read as null. */
+  terms_accepted_at?: string | null;
+  terms_version?: string | null;
+  created_at?: string;
 }
 
 interface QueryResult {
@@ -43,6 +47,7 @@ interface CoiffeurApplicationRow {
   shop_profile_complete: boolean;
   submitted_at: string;
   reviewed_at: string | null;
+  documents_purged_at?: string | null;
 }
 
 interface SalonProfileRow {
@@ -124,8 +129,9 @@ interface GalleryPhotoRow {
 
 interface AppointmentRow {
   id: string;
-  particulier_id: string;
-  coiffeur_id: string;
+  /** Null once that side deleted their account (on delete set null). */
+  particulier_id: string | null;
+  coiffeur_id: string | null;
   service_id: string | null;
   service_name: string;
   price: number;
@@ -156,7 +162,8 @@ interface AppointmentServiceRow {
 interface ReviewRow {
   id: string;
   appointment_id: string;
-  particulier_id: string;
+  /** Null once its author deleted their account. */
+  particulier_id: string | null;
   coiffeur_id: string;
   rating: number;
   tags: string[];
@@ -236,8 +243,9 @@ interface PayoutAccountRow {
 interface PaymentRow {
   id: string;
   appointment_id: string;
-  particulier_id: string;
-  coiffeur_id: string;
+  /** Null once that side deleted their account. */
+  particulier_id: string | null;
+  coiffeur_id: string | null;
   /** Known once the client paid on Stripe's page. */
   payment_intent_id: string | null;
   checkout_session_id: string | null;
@@ -561,6 +569,8 @@ export class FakeSupabaseService {
   private readonly payments = new Map<string, PaymentRow>();
   private readonly favorites = new Map<string, FavoriteRow>();
   private readonly reviewReports: ReviewReportRow[] = [];
+  /** Storage objects by bucket: their paths. */
+  private readonly storageObjects = new Map<string, Set<string>>();
   private lastFavoriteAt = 0;
   private lastReportAt = 0;
 
@@ -616,7 +626,7 @@ export class FakeSupabaseService {
           if (tokenEntry) {
             this.authUsersByToken.delete(tokenEntry[0]);
           }
-          this.profiles.delete(id);
+          this.deleteProfile(id);
           return { data: {}, error: null };
         },
       },
@@ -703,7 +713,6 @@ export class FakeSupabaseService {
       throw new Error(`FakeSupabaseService: unsupported rpc "${fn}"`);
     },
     storage: {
-      /** Only the one bucket/call any code under test actually uses so far. */
       from: (bucket: string) => ({
         createSignedUrls: async (paths: string[], expiresIn: number) => ({
           data: paths.map((path) => ({
@@ -712,6 +721,24 @@ export class FakeSupabaseService {
           })),
           error: null,
         }),
+        /** One folder's entries, like Storage: files, and sub-folders with a null id. */
+        list: async (prefix = '', options?: { limit?: number; offset?: number }) => {
+          const folder = prefix ? `${prefix.replace(/\/$/, '')}/` : '';
+          const entries = new Map<string, { name: string; id: string | null }>();
+          for (const path of this.storageObjects.get(bucket) ?? []) {
+            if (!path.startsWith(folder)) continue;
+            const [name, ...rest] = path.slice(folder.length).split('/');
+            entries.set(name, { name, id: rest.length > 0 ? null : `${bucket}/${path}` });
+          }
+          const offset = options?.offset ?? 0;
+          const page = [...entries.values()].slice(offset, offset + (options?.limit ?? 100));
+          return { data: page, error: null };
+        },
+        remove: async (paths: string[]) => {
+          const objects = this.storageObjects.get(bucket);
+          const removed = paths.filter((path) => objects?.delete(path));
+          return { data: removed.map((name) => ({ name })), error: null };
+        },
       }),
     },
   };
@@ -763,6 +790,111 @@ export class FakeSupabaseService {
     this.payments.clear();
     this.favorites.clear();
     this.reviewReports.length = 0;
+    this.storageObjects.clear();
+  }
+
+  /** Test convenience: a file in Storage, as the app's upload would have left it. */
+  seedStorageObject(bucket: string, path: string): void {
+    const objects = this.storageObjects.get(bucket) ?? new Set<string>();
+    objects.add(path);
+    this.storageObjects.set(bucket, objects);
+  }
+
+  /** Test convenience: every path still in a bucket. */
+  storagePaths(bucket: string): string[] {
+    return [...(this.storageObjects.get(bucket) ?? [])];
+  }
+
+  /** Test convenience: a profile row as it stands, for assertions. */
+  profileFor(id: string): ProfileRow | undefined {
+    return this.profiles.get(id);
+  }
+
+  /** Test convenience: the terms this user accepted, as the sign-up trigger or the API left them. */
+  seedTermsAcceptance(profileId: string, version: string | null, acceptedAt: string | null = version ? new Date().toISOString() : null): void {
+    const existing = this.profiles.get(profileId);
+    if (!existing) {
+      throw new Error(`FakeSupabaseService: no profile "${profileId}"`);
+    }
+    this.profiles.set(profileId, { ...existing, terms_version: version, terms_accepted_at: acceptedAt });
+  }
+
+  /** Test convenience: a review row as it stands. */
+  reviewFor(id: string): ReviewRow | undefined {
+    return this.reviews.get(id);
+  }
+
+  /** Test convenience: a coiffeur's application row as it stands. */
+  applicationFor(profileId: string): CoiffeurApplicationRow | undefined {
+    return [...this.coiffeurApplications.values()].find((row) => row.profile_id === profileId);
+  }
+
+  /**
+   * Mirrors schema.sql's foreign keys when a profile goes (the auth user
+   * deleted): bookings, payments and reviews stay without that side
+   * (on delete set null); a salon's own data, its reviews, and everything
+   * else of that account go (on delete cascade).
+   */
+  private deleteProfile(id: string): void {
+    this.profiles.delete(id);
+    for (const [key, row] of this.appointments) {
+      if (row.particulier_id === id || row.coiffeur_id === id) {
+        this.appointments.set(key, {
+          ...row,
+          particulier_id: row.particulier_id === id ? null : row.particulier_id,
+          coiffeur_id: row.coiffeur_id === id ? null : row.coiffeur_id,
+        });
+      }
+    }
+    for (const [key, row] of this.payments) {
+      if (row.particulier_id === id || row.coiffeur_id === id) {
+        this.payments.set(key, {
+          ...row,
+          particulier_id: row.particulier_id === id ? null : row.particulier_id,
+          coiffeur_id: row.coiffeur_id === id ? null : row.coiffeur_id,
+        });
+      }
+    }
+    for (const [key, row] of this.reviews) {
+      if (row.coiffeur_id === id) {
+        this.reviews.delete(key);
+      } else if (row.particulier_id === id) {
+        this.reviews.set(key, { ...row, particulier_id: null });
+      }
+    }
+    const reviewIds = new Set(this.reviews.keys());
+    for (let i = this.reviewReports.length - 1; i >= 0; i--) {
+      const report = this.reviewReports[i];
+      if (report.reporter_id === id || !reviewIds.has(report.review_id)) this.reviewReports.splice(i, 1);
+    }
+    for (const [key, row] of this.favorites) {
+      if (row.particulier_id === id || row.coiffeur_id === id) this.favorites.delete(key);
+    }
+    for (const [key, row] of this.coiffeurApplications) {
+      if (row.profile_id === id) this.coiffeurApplications.delete(key);
+    }
+    this.salonProfiles.delete(id);
+    for (const [key, row] of this.availability) {
+      if (row.profile_id === id) this.availability.delete(key);
+    }
+    for (const [key, row] of this.services) {
+      if (row.profile_id === id) this.services.delete(key);
+    }
+    for (const [key, row] of this.galleryPhotos) {
+      if (row.profile_id === id) this.galleryPhotos.delete(key);
+    }
+    for (const [key, row] of this.timeOff) {
+      if (row.profile_id === id) this.timeOff.delete(key);
+    }
+    this.payoutAccounts.delete(id);
+    this.subscriptions.delete(id);
+    for (const [key, row] of this.pushTokens) {
+      if (row.user_id === id) this.pushTokens.delete(key);
+    }
+    this.notificationPreferences.delete(id);
+    for (const [key, row] of this.notificationsLog) {
+      if (row.user_id === id) this.notificationsLog.delete(key);
+    }
   }
 
   /** Test convenience: a report already on file, as if filed earlier. */
@@ -796,6 +928,32 @@ export class FakeSupabaseService {
     return this.reviewReports.filter((report) => report.review_id === reviewId);
   }
 
+  /** Test convenience: a review as the app would have left it, visible. */
+  seedReview(params: { appointmentId: string; particulierId: string; coiffeurId: string; rating: number; comment?: string; tags?: string[] }): string {
+    const id = randomUUID();
+    this.reviews.set(id, {
+      id,
+      appointment_id: params.appointmentId,
+      particulier_id: params.particulierId,
+      coiffeur_id: params.coiffeurId,
+      rating: params.rating,
+      tags: params.tags ?? [],
+      comment: params.comment ?? '',
+      coiffeur_reply: null,
+      replied_at: null,
+      status: 'visible',
+      report_reason: null,
+      reported_at: null,
+      created_at: new Date().toISOString(),
+    });
+    return id;
+  }
+
+  /** Test convenience: a heart on a salon, as the app's would have left it. */
+  seedFavorite(particulierId: string, coiffeurId: string): void {
+    this.favorites.set(`${particulierId}:${coiffeurId}`, { particulier_id: particulierId, coiffeur_id: coiffeurId, created_at: new Date().toISOString() });
+  }
+
   /** Test convenience: a client's favorites, for assertions. */
   favoritesOf(particulierId: string): string[] {
     return [...this.favorites.values()].filter((row) => row.particulier_id === particulierId).map((row) => row.coiffeur_id);
@@ -809,8 +967,8 @@ export class FakeSupabaseService {
    */
   seedAppointment(params: {
     id?: string;
-    particulierId: string;
-    coiffeurId: string;
+    particulierId: string | null;
+    coiffeurId: string | null;
     serviceId?: string | null;
     serviceName?: string;
     price?: number;
@@ -1044,6 +1202,8 @@ export class FakeSupabaseService {
     shopProfileComplete?: boolean;
     practiceZone?: 'salon' | 'domicile';
     travelRadiusKm?: number | null;
+    reviewedAt?: string | null;
+    documentsPurgedAt?: string | null;
   }): void {
     const existing = this.coiffeurApplications.get(params.profileId);
     this.coiffeurApplications.set(params.profileId, {
@@ -1067,7 +1227,8 @@ export class FakeSupabaseService {
       review_message: existing?.review_message ?? null,
       shop_profile_complete: params.shopProfileComplete ?? existing?.shop_profile_complete ?? false,
       submitted_at: existing?.submitted_at ?? new Date().toISOString(),
-      reviewed_at: existing?.reviewed_at ?? null,
+      reviewed_at: params.reviewedAt !== undefined ? params.reviewedAt : (existing?.reviewed_at ?? null),
+      documents_purged_at: params.documentsPurgedAt !== undefined ? params.documentsPurgedAt : (existing?.documents_purged_at ?? null),
     });
   }
 
@@ -1190,7 +1351,8 @@ export class FakeSupabaseService {
     const due = [...this.payments.values()]
       .map((payment) => ({ payment, appointment: this.appointments.get(payment.appointment_id) }))
       .filter(({ payment, appointment }) => {
-        const account = this.payoutAccounts.get(payment.coiffeur_id);
+        // Like the SQL's join: a salon whose account is gone has no payout account.
+        const account = payment.coiffeur_id ? this.payoutAccounts.get(payment.coiffeur_id) : undefined;
         return (
           payment.status === 'succeeded' &&
           payment.transfer_id === null &&
@@ -1255,9 +1417,10 @@ export class FakeSupabaseService {
       .filter((row) => to == null || new Date(row.starts_at).getTime() < new Date(to).getTime())
       .map((row) => ({
         row,
-        profile: this.salonProfiles.get(row.coiffeur_id),
+        // Left joins: an account since deleted leaves its side empty.
+        profile: row.coiffeur_id ? this.salonProfiles.get(row.coiffeur_id) : undefined,
         application: [...this.coiffeurApplications.values()].find((app) => app.profile_id === row.coiffeur_id),
-        clientProfile: this.profiles.get(row.particulier_id),
+        clientProfile: row.particulier_id ? this.profiles.get(row.particulier_id) : undefined,
         payment: [...this.payments.values()].find((payment) => payment.appointment_id === row.id),
       }))
       .filter(({ profile, application }) =>
@@ -1547,12 +1710,14 @@ export class FakeSupabaseService {
       update: (patch: Partial<CoiffeurApplicationRow>) => ({
         eq: (column: keyof CoiffeurApplicationRow, value: unknown) => {
           const apply = (): CoiffeurApplicationRow | null => {
-            const existing = [...apps.values()].find((row) => row[column] === value);
-            if (!existing) {
+            // Rows are keyed by profile id when seeded, by id when upserted: update in place, under whichever key.
+            const found = [...apps.entries()].find(([, row]) => row[column] === value);
+            if (!found) {
               return null;
             }
+            const [key, existing] = found;
             const updated = { ...existing, ...patch };
-            apps.set(existing.id, updated);
+            apps.set(key, updated);
             return updated;
           };
           return {

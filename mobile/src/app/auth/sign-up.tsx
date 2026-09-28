@@ -16,6 +16,7 @@ import { ROUTES } from "../../features/auth/routing";
 import { setSignupIntent } from "../../services/preferences";
 import { AuthError, type UserRole } from "../../services/auth";
 import { checkPassword, isValidEmail } from "../../utils/validation";
+import { openLegalPage } from "../../features/legal/terms";
 
 export default function SignUp() {
   const router = useRouter();
@@ -135,11 +136,19 @@ export default function SignUp() {
               style={[typography.bodySmall, { color: theme.foreground.gray }]}
             >
               J&apos;accepte les{" "}
-              <Text style={{ color: theme.primary.main }}>
+              <Text
+                style={{ color: theme.primary.main, textDecorationLine: "underline" }}
+                onPress={() => void openLegalPage("cgu")}
+                accessibilityRole="link"
+              >
                 conditions générales
               </Text>{" "}
               et la{" "}
-              <Text style={{ color: theme.primary.main }}>
+              <Text
+                style={{ color: theme.primary.main, textDecorationLine: "underline" }}
+                onPress={() => void openLegalPage("confidentialite")}
+                accessibilityRole="link"
+              >
                 politique de confidentialité
               </Text>
               .

@@ -168,6 +168,23 @@ describe('AdminAppointmentsService', () => {
       await expect(admin.detail('no-such-booking', NOW)).rejects.toThrow(NotFoundException);
     });
 
+    it('keeps a booking whose client, or salon, deleted their account — without them', async () => {
+      const id = seed({ startsAt: at(29, 10) });
+      supabase.seedPayment({ appointmentId: id, particulierId: CAMILLE, coiffeurId: STUDIO, amount: 40 });
+      await supabase.client.auth.admin.deleteUser(CAMILLE);
+
+      await expect(admin.list(page)).resolves.toMatchObject({ items: [{ id, client: { id: null, name: 'Client supprimé' } }] });
+      await expect(admin.detail(id, NOW)).resolves.toMatchObject({
+        client: { id: null, name: 'Client supprimé', email: null },
+        payment: { amount: 40 },
+      });
+
+      supabase.seedValidatedSalon({ profileId: 'coiffeur-3', firstName: 'Léa', lastName: 'Martin', salonName: 'Atelier Léa' });
+      const other = seed({ coiffeurId: 'coiffeur-3', particulierId: AWA, startsAt: at(28, 10) });
+      await supabase.client.auth.admin.deleteUser('coiffeur-3');
+      await expect(admin.detail(other, NOW)).resolves.toMatchObject({ salon: { id: null, name: 'Salon supprimé', email: null } });
+    });
+
     it("doesn't show a slot held while its client pays: it isn't a booking yet", async () => {
       const held = seed({ status: 'awaiting_payment' });
 

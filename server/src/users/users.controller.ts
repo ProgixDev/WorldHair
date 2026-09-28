@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Patch } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, NotFoundException, Patch, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -18,6 +18,19 @@ export class UsersController {
     }
 
     return toUserDto(current, profile);
+  }
+
+  /** « J'accepte » the CGU and privacy policy in force (TODO.md Phase 8). */
+  @Post('me/terms')
+  @HttpCode(200)
+  async acceptTerms(@CurrentUser() current: AuthenticatedUser): Promise<UserDto> {
+    const updated = await this.users.acceptTerms(current.id);
+
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+
+    return toUserDto(current, updated);
   }
 
   @Patch('me')

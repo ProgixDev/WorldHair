@@ -319,6 +319,15 @@ describe('SubscriptionsService', () => {
       expect(sendEnded).toHaveBeenCalledWith('sofia@example.com');
     });
 
+    it("ignores Stripe's news about a coiffeur whose account is gone (TODO.md Phase 8)", async () => {
+      stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'canceled', profileId: COIFFEUR_ID });
+      await supabase.client.auth.admin.deleteUser(COIFFEUR_ID);
+
+      await expect(service.handleStripeEvent(stripeEvent('customer.subscription.deleted', { id: 'sub_1' }))).resolves.toBeUndefined();
+
+      expect(supabase.subscriptionFor(COIFFEUR_ID)).toBeUndefined();
+    });
+
     it('keeps the salon listed while Stripe retries a failed payment, and warns the coiffeur', async () => {
       supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' });
       stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'past_due', profileId: COIFFEUR_ID });

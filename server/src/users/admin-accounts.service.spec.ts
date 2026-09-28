@@ -42,6 +42,17 @@ describe('AdminAccountsService', () => {
     });
   });
 
+  it('list() returns every account, past the 1 000 rows PostgREST answers at most', async () => {
+    for (let i = 0; i < 1005; i++) {
+      supabase.addUser(`token-${i}`, { id: `client-${i}`, email: `c${i}@example.com`, email_confirmed_at: null }, 'particulier', {
+        firstName: 'Client',
+        lastName: String(i),
+      });
+    }
+
+    await expect(service.list('particulier')).resolves.toHaveLength(1006);
+  });
+
   it('list() filters by role', async () => {
     const accounts = await service.list('coiffeur');
 

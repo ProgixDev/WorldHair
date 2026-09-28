@@ -64,7 +64,8 @@ export interface CreateReviewInput {
 interface ReviewRow {
   id: string;
   appointment_id: string;
-  particulier_id: string;
+  /** Null once its author deleted their account: the review stays, as « Ancien client ». */
+  particulier_id: string | null;
   coiffeur_id: string;
   rating: number;
   tags: string[];
@@ -75,6 +76,14 @@ interface ReviewRow {
   report_reason: string | null;
   reported_at: string | null;
   created_at: string;
+}
+
+/** How a review whose author deleted their account signs (TODO.md Phase 8). */
+const FORMER_CLIENT = 'Ancien client';
+
+/** The authors still with an account. */
+function authorsOf(rows: ReviewRow[]): string[] {
+  return rows.flatMap((row) => (row.particulier_id ? [row.particulier_id] : []));
 }
 
 interface ProfileNameRow {
@@ -294,7 +303,7 @@ export class ReviewsService {
   private async forModeration(rows: ReviewRow[]): Promise<ModeratedReviewDto[]> {
     const reports = await this.reportsOn(rows.map((row) => row.id));
     const people = await this.profilesFor([
-      ...new Set([...rows.map((row) => row.particulier_id), ...reports.map((report) => report.reporter_id)]),
+      ...new Set([...authorsOf(rows), ...reports.map((report) => report.reporter_id)]),
     ]);
     const salons = await this.salonNamesFor([
       ...new Set([
@@ -313,11 +322,14 @@ export class ReviewsService {
       .slice()
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((row) => {
-        const author = people.get(row.particulier_id);
+        const author = row.particulier_id ? people.get(row.particulier_id) : undefined;
         return {
-          ...this.map(row, this.formatAuthorName(author?.first_name ?? '', author?.last_name ?? '')),
+          ...this.map(
+            row,
+            row.particulier_id ? this.formatAuthorName(author?.first_name ?? '', author?.last_name ?? '') : FORMER_CLIENT,
+          ),
           salonName: salons.get(row.coiffeur_id) || nameOf(row.coiffeur_id) || 'Salon',
-          authorFullName: nameOf(row.particulier_id) || 'Client',
+          authorFullName: row.particulier_id ? nameOf(row.particulier_id) || 'Client' : FORMER_CLIENT,
           reports: (reportsOf.get(row.id) ?? []).map((report) => {
             const role = people.get(report.reporter_id)?.role ?? 'particulier';
             return {
@@ -444,11 +456,17 @@ export class ReviewsService {
   }
 
   private async mapAll(rows: ReviewRow[], reportedByMe = new Set<string>()): Promise<ReviewDto[]> {
-    const names = await this.authorNamesFor([...new Set(rows.map((row) => row.particulier_id))]);
+    const names = await this.authorNamesFor([...new Set(authorsOf(rows))]);
     return rows
       .slice()
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .map((row) => this.map(row, names.get(row.particulier_id) ?? 'Client', reportedByMe.has(row.id)));
+      .map((row) =>
+        this.map(
+          row,
+          row.particulier_id ? (names.get(row.particulier_id) ?? 'Client') : FORMER_CLIENT,
+          reportedByMe.has(row.id),
+        ),
+      );
   }
 
   private map(row: ReviewRow, authorName: string, reportedByMe = false): ReviewDto {

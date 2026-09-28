@@ -15,10 +15,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const NAV_LINKS = [
-  { href: "#fonctionnalites", label: "Fonctionnalités" },
-  { href: "#coiffeurs", label: "Coiffeurs" },
-  { href: "#parcours", label: "Comment ça marche" },
-  { href: "#avis", label: "Avis" },
+  // From the home page's own sections — also from the legal pages.
+  { href: "/#fonctionnalites", label: "Fonctionnalités" },
+  { href: "/#coiffeurs", label: "Coiffeurs" },
+  { href: "/#parcours", label: "Comment ça marche" },
+  { href: "/#avis", label: "Avis" },
 ];
 
 export function Header() {

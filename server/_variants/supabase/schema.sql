@@ -33,6 +33,11 @@ create table public.profiles (
   -- server/src/admin-users/.
   role text not null default 'particulier' check (role in ('particulier', 'coiffeur', 'admin', 'admin_limited')),
   account_status text not null default 'active' check (account_status in ('active', 'suspended', 'banned')),
+  -- The CGU and privacy policy this user accepted (TODO.md Phase 8): at
+  -- sign-up (handle_new_user, from the app's sign-up metadata), then again
+  -- through the API whenever their version changes (server/src/users/terms.ts).
+  terms_accepted_at timestamptz,
+  terms_version text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -64,14 +69,20 @@ create policy "Users can update their own profile"
 -- Only ever invoked by the trigger below, never directly — EXECUTE is
 -- revoked from PUBLIC so it can't be called as a PostgREST RPC endpoint
 -- despite being SECURITY DEFINER.
+-- The sign-up form's « J'accepte les CGU » box sends the version accepted
+-- (mobile/src/features/legal/terms.ts): recorded with the time, as the
+-- database sees it.
 create function public.handle_new_user ()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  accepted text := left(nullif(btrim(new.raw_user_meta_data ->> 'terms_version'), ''), 20);
 begin
-  insert into public.profiles (id) values (new.id);
+  insert into public.profiles (id, terms_accepted_at, terms_version)
+  values (new.id, case when accepted is not null then now() end, accepted);
   return new;
 end;
 $$;
@@ -159,6 +170,10 @@ create table public.coiffeur_applications (
   shop_profile_complete boolean not null default false,
   submitted_at timestamptz not null default now(),
   reviewed_at timestamptz,
+  -- Set when a rejected coiffeur's documents were deleted from storage, 90
+  -- days after the rejection (TODO.md Phase 8, DocumentRetentionJob). A new
+  -- submission, with its new uploads, clears it.
+  documents_purged_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint practice_zone_fields check (
@@ -429,8 +444,12 @@ alter table public.coiffeur_time_off enable row level security;
 -- read time, so there's no cron/background job needed to transition it.
 create table public.appointments (
   id uuid primary key default gen_random_uuid (),
-  particulier_id uuid not null references public.profiles (id) on delete cascade,
-  coiffeur_id uuid not null references public.profiles (id) on delete cascade,
+  -- Null once that side deleted their account (TODO.md Phase 8): the booking
+  -- stays, anonymized — the other side's history, the salon's revenue and
+  -- WorldHair's accounting (10 years) don't change. Every booking still to
+  -- come was cancelled and refunded first (AccountDeletionService).
+  particulier_id uuid references public.profiles (id) on delete set null,
+  coiffeur_id uuid references public.profiles (id) on delete set null,
   -- Nullable + a snapshot alongside: a coiffeur editing/deleting a service
   -- later must never retroactively change what a past booking says it was.
   service_id uuid references public.coiffeur_services (id) on delete set null,
@@ -571,8 +590,9 @@ execute procedure public.set_updated_at ();
 create table public.payments (
   id uuid primary key default gen_random_uuid (),
   appointment_id uuid not null unique references public.appointments (id) on delete cascade,
-  particulier_id uuid not null references public.profiles (id) on delete cascade,
-  coiffeur_id uuid not null references public.profiles (id) on delete cascade,
+  -- Null once that side deleted their account, like the appointment's.
+  particulier_id uuid references public.profiles (id) on delete set null,
+  coiffeur_id uuid references public.profiles (id) on delete set null,
   payment_intent_id text unique,
   checkout_session_id text unique,
   charge_id text,
@@ -780,7 +800,9 @@ revoke execute on function public.admin_appointments (text, text, text, timestam
 create table public.reviews (
   id uuid primary key default gen_random_uuid (),
   appointment_id uuid not null unique references public.appointments (id) on delete cascade,
-  particulier_id uuid not null references public.profiles (id) on delete cascade,
+  -- Null once its author deleted their account: the review stays, as
+  -- « Ancien client ». A deleted salon's reviews go with it.
+  particulier_id uuid references public.profiles (id) on delete set null,
   coiffeur_id uuid not null references public.profiles (id) on delete cascade,
   rating smallint not null check (rating between 1 and 5),
   tags text[] not null default '{}',

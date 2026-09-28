@@ -68,8 +68,34 @@ export class FakeStripe {
   private readonly sessions: FakeSession[] = [];
   private readonly sessionIdByKey = new Map<string, string>();
   private customerCount = 0;
+  /** Customers deleted (`customers.del`), in order. */
+  readonly customersDeleted: string[] = [];
+  /** Customers Stripe doesn't know (deleted from its dashboard, say): deleting them answers `resource_missing`. */
+  private readonly missingCustomers = new Set<string>();
+  private nextTransferError: string | null = null;
+
+  /** Test convenience: a customer Stripe no longer has. */
+  forgetCustomer(id: string): void {
+    this.missingCustomers.add(id);
+  }
+
+  /** Test convenience: the next transfer fails, as when Stripe is down. */
+  failNextTransfer(message = 'Stripe is unavailable'): void {
+    this.nextTransferError = message;
+  }
 
   readonly customers = {
+    /** Like Stripe: the customer goes, and any subscription of theirs ends at once. */
+    del: async (id: string) => {
+      if (this.missingCustomers.has(id)) {
+        throw Object.assign(new Error(`No such customer: '${id}'`), { code: 'resource_missing', statusCode: 404 });
+      }
+      this.customersDeleted.push(id);
+      for (const subscription of this.subscriptionsById.values()) {
+        if (subscription.customer === id) subscription.status = 'canceled';
+      }
+      return { id, deleted: true };
+    },
     /** Like Stripe, a repeated idempotency key answers with the customer the first call made. */
     create: async (params: Stripe.CustomerCreateParams, options?: Stripe.RequestOptions) => {
       const key = options?.idempotencyKey;
@@ -288,6 +314,11 @@ export class FakeStripe {
       const key = options?.idempotencyKey;
       const known = key ? this.transferIdByKey.get(key) : undefined;
       if (known) return structuredClone(this.transfersById.get(known));
+      if (this.nextTransferError) {
+        const message = this.nextTransferError;
+        this.nextTransferError = null;
+        throw new Error(message);
+      }
       this.transfersCreated.push({ params, idempotencyKey: key });
       const transfer: FakeTransfer = {
         id: `tr_test_${this.transfersCreated.length}`,

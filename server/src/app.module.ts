@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AccountModule } from './account/account.module';
 import { AdminMediaModule } from './admin-media/admin-media.module';
 import { AdminUsersModule } from './admin-users/admin-users.module';
 import { AdSlotsModule } from './ad-slots/ad-slots.module';
@@ -67,6 +68,7 @@ import { UsersModule } from './users/users.module';
     WebhooksModule,
     AdminMediaModule,
     AdminUsersModule,
+    AccountModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

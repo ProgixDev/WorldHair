@@ -120,6 +120,16 @@ describe('CoiffeurApplicationsService', () => {
     expect(resubmitted.salonName).toBe('Studio W 2');
   });
 
+  it("resubmitting after the documents were purged (TODO.md Phase 8) keeps the new uploads: the mark goes", async () => {
+    const first = await service.submit(USER_ID, salonDto());
+    await service.decide(first.id, ReviewDecision.Rejected, 'Diplôme illisible');
+    supabase.seedApplication({ profileId: USER_ID, documentsPurgedAt: new Date().toISOString() });
+
+    await service.submit(USER_ID, salonDto());
+
+    expect(supabase.applicationFor(USER_ID)?.documents_purged_at).toBeNull();
+  });
+
   it('completeShopProfile() rejects while the application is still pending', async () => {
     await service.submit(USER_ID, salonDto());
 

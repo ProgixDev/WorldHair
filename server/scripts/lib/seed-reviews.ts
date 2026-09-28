@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parisParts, parisTime } from "../../src/common/utils/paris-time";
+import { TERMS_VERSION } from "../../src/users/terms";
 
 /**
  * Real reviews for seeded salons. A salon's stars are computed from its
@@ -72,7 +73,12 @@ export async function upsertReviewers(supabase: SupabaseClient): Promise<string[
     }
     const { error: profileError } = await supabase
       .from("profiles")
-      .update({ first_name: reviewer.firstName, last_name: reviewer.lastName })
+      .update({
+        first_name: reviewer.firstName,
+        last_name: reviewer.lastName,
+        terms_version: TERMS_VERSION,
+        terms_accepted_at: new Date().toISOString(),
+      })
       .eq("id", id);
     if (profileError) throw profileError;
     ids.push(id);

@@ -96,6 +96,12 @@ describe('NotificationsService', () => {
       await expect(pushTokens.listActiveForUser(USER_ID)).resolves.toEqual([]);
     });
 
+    it('does nothing for an account deleted since (a booking kept without its client, TODO.md Phase 8)', async () => {
+      await expect(
+        service.notifyUser({ userId: null, type: 'payment_refunded', dedupeKey: 'apt-1:40', title: 'Remboursement', body: '…' }),
+      ).resolves.toBe(false);
+    });
+
     it('still records the notification when the user has no active push tokens', async () => {
       const sent = await service.notifyUser({
         userId: USER_ID,

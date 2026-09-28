@@ -126,6 +126,18 @@ describe('ReviewsService', () => {
     });
   });
 
+  describe('an author deleted since (TODO.md Phase 8)', () => {
+    it('keeps the review, as « Ancien client », everywhere it shows', async () => {
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 4, comment: 'Très bien.' });
+      await supabase.client.auth.admin.deleteUser(PARTICULIER_ID);
+
+      expect(supabase.reviewFor(review.id)).toMatchObject({ particulier_id: null, comment: 'Très bien.' });
+      await expect(service.listForSalon(COIFFEUR_ID)).resolves.toMatchObject([{ id: review.id, authorName: 'Ancien client' }]);
+      await service.report(review.id, SALON, { reason: 'spam' });
+      await expect(service.listReported()).resolves.toMatchObject([{ id: review.id, authorName: 'Ancien client', authorFullName: 'Ancien client' }]);
+    });
+  });
+
   describe('reply / deleteReply', () => {
     it('lets the coiffeur reply, then clear the reply', async () => {
       const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 5 });

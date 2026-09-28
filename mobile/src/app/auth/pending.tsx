@@ -182,7 +182,11 @@ export default function PendingReview() {
             )}
             <SummaryRow
               label="Documents"
-              value={application.documents.length + " fichiers envoyés"}
+              value={
+                application.documents.length > 0
+                  ? application.documents.length + " fichiers envoyés"
+                  : "Supprimés après 90 jours : à renvoyer"
+              }
             />
           </View>
         ) : null}

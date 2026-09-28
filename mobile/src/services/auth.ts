@@ -1,6 +1,7 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
+import { TERMS_VERSION } from "../features/legal/terms";
 import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
 
 /**
@@ -78,6 +79,8 @@ export interface Session {
   shopProfileComplete?: boolean;
   /** ISO creation date — drives the "membre depuis" line. */
   createdAt: string;
+  /** The CGU/privacy version accepted; another than the app's (features/legal/terms.ts) is asked again. */
+  termsVersion: string | null;
 }
 
 export type AuthErrorCode =
@@ -136,17 +139,20 @@ interface CoiffeurApplicationRow {
   review_message: string | null;
   shop_profile_complete: boolean;
   submitted_at: string;
+  /** A rejected dossier's files, deleted 90 days after the decision (TODO.md Phase 8). */
+  documents_purged_at?: string | null;
 }
 
 /** Rebuilds the `documents` array display from Storage paths — the DB only
- * ever stores the path, not the original filename/mimetype/size. */
+ * ever stores the path, not the original filename/mimetype/size. Files
+ * deleted since (a rejected dossier, after 90 days) are none. */
 function mapApplicationRow(row: CoiffeurApplicationRow): ProApplication {
-  const documents: ProDocument[] = [
+  const documents: ProDocument[] = row.documents_purged_at ? [] : [
     { kind: "identity", name: basename(row.identity_document_path), uri: row.identity_document_path },
     { kind: "diploma", name: basename(row.diploma_document_path), uri: row.diploma_document_path },
     { kind: "kbis", name: basename(row.kbis_document_path), uri: row.kbis_document_path },
   ];
-  if (row.invoice_document_path) {
+  if (row.invoice_document_path && !row.documents_purged_at) {
     documents.push({
       kind: "invoice",
       name: basename(row.invoice_document_path),
@@ -186,7 +192,7 @@ async function buildSession(): Promise<Session | null> {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("first_name, last_name, photo_url, role, created_at")
+    .select("first_name, last_name, photo_url, role, created_at, terms_version")
     .eq("id", user.id)
     .maybeSingle();
   if (profileError) throw new AuthError("STORAGE", profileError.message);
@@ -194,6 +200,7 @@ async function buildSession(): Promise<Session | null> {
   const role = (profile?.role as UserRole | undefined) ?? "particulier";
   const emailVerified = user.email_confirmed_at != null;
   const createdAt = profile?.created_at ?? user.created_at;
+  const termsVersion = (profile?.terms_version as string | null | undefined) ?? null;
 
   if (role === "coiffeur") {
     const { data: applicationRow, error: applicationError } = await supabase
@@ -225,6 +232,7 @@ async function buildSession(): Promise<Session | null> {
       reviewMessage: row?.review_message ?? null,
       shopProfileComplete: row?.shop_profile_complete ?? false,
       createdAt,
+      termsVersion,
     };
   }
 
@@ -251,6 +259,7 @@ async function buildSession(): Promise<Session | null> {
     application: null,
     reviewMessage: null,
     createdAt,
+    termsVersion,
   };
 }
 
@@ -259,7 +268,9 @@ export async function getSession(): Promise<Session | null> {
 }
 
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+  // An account just deleted has no session left on the server: forget this one here all the same.
+  if (error) await supabase.auth.signOut({ scope: "local" });
 }
 
 // ─── Email + password ────────────────────────────────────────────────────────
@@ -277,6 +288,8 @@ export async function signUpWithEmail(params: {
   const { data, error } = await supabase.auth.signUp({
     email: params.email.trim(),
     password: params.password,
+    // The box ticked on the form: the database records it with the time (handle_new_user).
+    options: { data: { terms_version: TERMS_VERSION } },
   });
 
   if (error) {

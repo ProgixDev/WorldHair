@@ -23,7 +23,8 @@ function mapPreferences(row: PreferencesRow): NotificationPreferences {
 }
 
 export interface NotifyUserInput {
-  userId: string;
+  /** Null for an account deleted since (a booking kept without that side, TODO.md Phase 8): nobody to tell. */
+  userId: string | null;
   /** e.g. "appointment_created" — free-form, paired with dedupeKey for the uniqueness guard. */
   type: string;
   dedupeKey: string;
@@ -82,6 +83,7 @@ export class NotificationsService {
    * duplicate event can't double-send.
    */
   async notifyUser(input: NotifyUserInput): Promise<boolean> {
+    if (!input.userId) return false;
     const { error } = await this.supabase.client.from('notifications_log').insert({
       user_id: input.userId,
       type: input.type,

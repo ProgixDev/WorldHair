@@ -1,10 +1,34 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { SupabaseService } from '../database/supabase.service';
+import { TERMS_VERSION } from './terms';
 
 export interface Profile {
   firstName: string;
   lastName: string;
   photoUrl: string | null;
+  /** The CGU and privacy policy version this user accepted, and when; null until they did. */
+  termsVersion: string | null;
+  termsAcceptedAt: string | null;
+}
+
+interface ProfileRow {
+  first_name: string | null;
+  last_name: string | null;
+  photo_url: string | null;
+  terms_version?: string | null;
+  terms_accepted_at?: string | null;
+}
+
+const PROFILE_COLUMNS = 'first_name, last_name, photo_url, terms_version, terms_accepted_at';
+
+function toProfile(row: ProfileRow): Profile {
+  return {
+    firstName: row.first_name ?? '',
+    lastName: row.last_name ?? '',
+    photoUrl: row.photo_url,
+    termsVersion: row.terms_version ?? null,
+    termsAcceptedAt: row.terms_accepted_at ?? null,
+  };
 }
 
 export interface UpdateProfileInput {
@@ -32,18 +56,19 @@ export class UsersService {
   async getProfile(userId: string): Promise<Profile | null> {
     const { data, error } = await this.supabase.client
       .from('profiles')
-      .select('first_name, last_name, photo_url')
+      .select(PROFILE_COLUMNS)
       .eq('id', userId)
       .maybeSingle();
 
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
-    if (!data) {
-      return null;
-    }
+    return data ? toProfile(data as ProfileRow) : null;
+  }
 
-    return { firstName: data.first_name ?? '', lastName: data.last_name ?? '', photoUrl: data.photo_url };
+  /** « J'accepte » on the app's new-terms screen: the version in force, at the server's time. */
+  async acceptTerms(userId: string): Promise<Profile | null> {
+    return this.writeProfile(userId, { terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() });
   }
 
   async updateProfile(userId: string, changes: UpdateProfileInput): Promise<Profile | null> {
@@ -58,20 +83,20 @@ export class UsersService {
       patch.photo_url = changes.photoUrl;
     }
 
+    return this.writeProfile(userId, patch);
+  }
+
+  private async writeProfile(userId: string, patch: Record<string, unknown>): Promise<Profile | null> {
     const { data, error } = await this.supabase.client
       .from('profiles')
       .update(patch)
       .eq('id', userId)
-      .select('first_name, last_name, photo_url')
+      .select(PROFILE_COLUMNS)
       .maybeSingle();
 
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
-    if (!data) {
-      return null;
-    }
-
-    return { firstName: data.first_name ?? '', lastName: data.last_name ?? '', photoUrl: data.photo_url };
+    return data ? toProfile(data as ProfileRow) : null;
   }
 }

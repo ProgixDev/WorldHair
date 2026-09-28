@@ -547,6 +547,43 @@ describe('AppointmentsService', () => {
     });
   });
 
+  describe('an account deleted since (TODO.md Phase 8)', () => {
+    const LAST_MONTH = () => new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+    it("keeps the salon's past bookings of a client who deleted their account, as « Client supprimé »", async () => {
+      const id = supabase.seedAppointment({ particulierId: PARTICULIER_ID, coiffeurId: COIFFEUR_ID, startsAt: LAST_MONTH() });
+      await supabase.client.auth.admin.deleteUser(PARTICULIER_ID);
+
+      const [kept] = await service.listForCoiffeur(COIFFEUR_ID);
+
+      expect(kept).toMatchObject({ id, clientId: null, clientName: 'Client supprimé', isNewClient: false, status: 'done' });
+    });
+
+    it("keeps the client's past bookings at a salon since deleted, as « Salon supprimé »", async () => {
+      const id = supabase.seedAppointment({ particulierId: PARTICULIER_ID, coiffeurId: COIFFEUR_ID, startsAt: LAST_MONTH() });
+      await supabase.client.auth.admin.deleteUser(COIFFEUR_ID);
+
+      const [kept] = await service.listForParticulier(PARTICULIER_ID);
+
+      expect(kept).toMatchObject({ id, salonId: null, salonName: 'Salon supprimé', status: 'done', modifiableUntil: null });
+    });
+  });
+
+  describe('lists past 1 000 bookings (PostgREST answers 1 000 rows at most)', () => {
+    it("gives the salon and the client every booking, however many", async () => {
+      for (let i = 0; i < 1005; i++) {
+        supabase.seedAppointment({
+          particulierId: PARTICULIER_ID,
+          coiffeurId: COIFFEUR_ID,
+          startsAt: new Date(Date.UTC(2024, 0, 1) + i * 3_600_000).toISOString(),
+        });
+      }
+
+      expect(await service.listForCoiffeur(COIFFEUR_ID)).toHaveLength(1005);
+      expect(await service.listForParticulier(PARTICULIER_ID)).toHaveLength(1005);
+    });
+  });
+
   describe('listBusySlots', () => {
     it('exposes pending/confirmed starts with no client identity, excluding refused/cancelled', async () => {
       const pending = await book(PARTICULIER_ID, {

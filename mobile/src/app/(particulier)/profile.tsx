@@ -42,6 +42,7 @@ import {
   type NotificationPrefs,
 } from "../../services/preferences";
 import { monthAndYear, relativeDay, timeOfDay } from "../../utils/date";
+import { MyDataGroups } from "../../components/account/MyDataGroups";
 
 /**
  * Account tab: a portrait header, the user's own numbers, their next
@@ -100,7 +101,8 @@ export default function Profile() {
       [...done]
         .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
         .forEach((appointment) => {
-          if (seen.has(appointment.salonId)) return;
+          // A salon that left WorldHair since isn't one to go back to.
+          if (!appointment.salonId || seen.has(appointment.salonId)) return;
           seen.add(appointment.salonId);
           ids.push(appointment.salonId);
         });
@@ -357,8 +359,8 @@ export default function Profile() {
               ]}
             >
               <Image
-                source={coverFor({ id: nextAppointment.salonId }, 300)}
-                placeholder={coverPlaceholder(nextAppointment.salonId)}
+                source={coverFor({ id: nextAppointment.salonId ?? nextAppointment.id }, 300)}
+                placeholder={coverPlaceholder(nextAppointment.salonId ?? nextAppointment.id)}
                 placeholderContentFit="cover"
                 cachePolicy="memory-disk"
                 style={{
@@ -517,6 +519,9 @@ export default function Profile() {
             isLast
           />
         </Group>
+
+        {/* ── My data, legal pages (TODO.md Phase 8) ───────────────────── */}
+        <MyDataGroups />
 
         {/* ── Dev (development builds only, never in a store release) ──── */}
         {__DEV__ ? (

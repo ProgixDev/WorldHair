@@ -246,7 +246,7 @@ export default function ProAgenda() {
                   }}
                 >
                   <Image
-                    source={avatarFor(appointment.clientId)}
+                    source={avatarFor(appointment.clientId ?? appointment.id)}
                     cachePolicy="memory-disk"
                     style={{
                       width: 46,

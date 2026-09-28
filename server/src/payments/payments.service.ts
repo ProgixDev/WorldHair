@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type Stripe from 'stripe';
+import { allPages } from '../common/utils/pages';
 import { slices } from '../common/utils/slices';
 import { paymentReturnPageUrl } from '../common/utils/web-links';
 import { EnvironmentVariables } from '../config/env.validation';
@@ -31,8 +32,9 @@ export type RefundReason =
 export interface PaymentRow {
   id: string;
   appointment_id: string;
-  particulier_id: string;
-  coiffeur_id: string;
+  /** Null once that side deleted their account (TODO.md Phase 8): the payment stays, for the accounts. */
+  particulier_id: string | null;
+  coiffeur_id: string | null;
   /** Known once the client paid on Stripe's page. */
   payment_intent_id: string | null;
   /** Stripe's payment page (Checkout) the app opened for this booking. */
@@ -350,16 +352,58 @@ export class PaymentsService {
     return transferred;
   }
 
+  /**
+   * A salon leaving WorldHair (its account deleted, TODO.md Phase 8) is paid
+   * now what it's owed: every paid booking of its that has started and
+   * isn't sent yet — without the day's wait. It fails loudly: the account
+   * mustn't go while its money can't. A salon without payouts set up (the
+   * demo one) has nowhere to be paid: its money stays with WorldHair.
+   */
+  async settleSalon(coiffeurId: string, now = new Date()): Promise<number> {
+    const unsent = await allPages<PaymentRow>((from, to) =>
+      this.supabase.client
+        .from('payments')
+        .select()
+        .eq('coiffeur_id', coiffeurId)
+        .eq('status', 'succeeded')
+        .is('transfer_id', null)
+        .order('created_at')
+        .order('id')
+        .range(from, to),
+    );
+    const started = await this.startedBookings(unsent.map((payment) => payment.appointment_id), now);
+    let sent = 0;
+    for (const due of unsent.filter((payment) => started.has(payment.appointment_id))) {
+      try {
+        const paid = await this.withLock(
+          due.id,
+          now,
+          (payment) => this.payOut(payment, now),
+          () => {
+            throw new ConflictException('This payment is being processed');
+          },
+        );
+        if (paid) sent += 1;
+      } catch (err) {
+        this.logger.error(`Settling payment ${due.id} for a salon leaving failed`, err as Error);
+        throw new ServiceUnavailableException("The salon's pay couldn't be sent: try again in a few minutes");
+      }
+    }
+    return sent;
+  }
+
   async listForAdmin(): Promise<AdminPaymentSummary[]> {
     const rows = await this.allPayments();
-    const names = await this.namesFor([...new Set(rows.flatMap((row) => [row.particulier_id, row.coiffeur_id]))]);
-    const salons = await this.salonNamesFor([...new Set(rows.map((row) => row.coiffeur_id))]);
+    const present = (ids: (string | null)[]) => [...new Set(ids.filter((id): id is string => id !== null))];
+    const names = await this.namesFor(present(rows.flatMap((row) => [row.particulier_id, row.coiffeur_id])));
+    const salons = await this.salonNamesFor(present(rows.map((row) => row.coiffeur_id)));
     return rows.map((row) => ({
       id: row.id,
       appointmentId: row.appointment_id,
       createdAt: row.created_at,
-      clientName: names.get(row.particulier_id) ?? 'Client',
-      salonName: salons.get(row.coiffeur_id) ?? names.get(row.coiffeur_id) ?? 'Salon',
+      // A side that deleted its account since (TODO.md Phase 8): the payment stays, for the accounts.
+      clientName: row.particulier_id ? (names.get(row.particulier_id) ?? 'Client') : 'Client supprimé',
+      salonName: row.coiffeur_id ? (salons.get(row.coiffeur_id) ?? names.get(row.coiffeur_id) ?? 'Salon') : 'Salon supprimé',
       amount: Number(row.amount),
       refundedAmount: Number(row.refunded_amount),
       commissionAmount: Number(row.commission_amount),
@@ -442,7 +486,7 @@ export class PaymentsService {
   }
 
   private async payOut(payment: PaymentRow, now: Date): Promise<boolean> {
-    if (payment.transfer_id) return false;
+    if (payment.transfer_id || !payment.coiffeur_id) return false;
     const destination = await this.payouts.readyAccountId(payment.coiffeur_id);
     if (!destination) return false;
 
@@ -583,6 +627,21 @@ export class PaymentsService {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /** Which of these bookings are accepted and have started by `now`. */
+  private async startedBookings(appointmentIds: string[], now: Date): Promise<Set<string>> {
+    const started = new Set<string>();
+    for (const slice of slices(appointmentIds)) {
+      const { data, error } = await this.supabase.client.from('appointments').select('id, status, starts_at').in('id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as { id: string; status: string; starts_at: string }[]) {
+        if (row.status === 'confirmed' && new Date(row.starts_at).getTime() <= now.getTime()) started.add(row.id);
+      }
+    }
+    return started;
+  }
 
   /** The booking still stands as accepted — the only kind a salon is paid for. */
   private async isStillOn(appointmentId: string): Promise<boolean> {

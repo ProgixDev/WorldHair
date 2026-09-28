@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { TERMS_VERSION } from "../src/users/terms";
 import { seedSalonReviews, upsertReviewers } from "./lib/seed-reviews";
 import { offerSubscription } from "./lib/seed-subscription";
 
@@ -253,7 +254,10 @@ async function seedSalon(seed: SalonSeed, reviewerIds: string[]): Promise<void> 
   const lastName = rest.join(" ");
   const phone = phoneFor(seed.id);
 
-  const { error: profileError } = await supabase.from("profiles").update({ role: "coiffeur" }).eq("id", userId);
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ role: "coiffeur", terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() })
+    .eq("id", userId);
   if (profileError) throw profileError;
 
   const { error: applicationError } = await supabase.from("coiffeur_applications").upsert(

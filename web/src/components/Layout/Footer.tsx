@@ -1,10 +1,18 @@
 import Image from "next/image";
+import Link from "next/link";
+
+const LEGAL_LINKS = [
+  { href: "/cgu", label: "CGU" },
+  { href: "/confidentialite", label: "Confidentialité" },
+  { href: "/mentions-legales", label: "Mentions légales" },
+];
 
 const FOOTER_LINKS = [
-  { href: "#fonctionnalites", label: "Fonctionnalités" },
-  { href: "#coiffeurs", label: "Coiffeurs" },
-  { href: "#parcours", label: "Comment ça marche" },
-  { href: "#avis", label: "Avis" },
+  // From the home page's own sections — also from the legal pages.
+  { href: "/#fonctionnalites", label: "Fonctionnalités" },
+  { href: "/#coiffeurs", label: "Coiffeurs" },
+  { href: "/#parcours", label: "Comment ça marche" },
+  { href: "/#avis", label: "Avis" },
 ];
 
 export function Footer() {
@@ -39,8 +47,15 @@ export function Footer() {
         />
       </div>
 
-      <div className="border-t border-white/10 py-6 text-center text-xs text-white/40">
-        © {new Date().getFullYear()} WorldHair. Tous droits réservés.
+      <div className="flex flex-col items-center gap-3 border-t border-white/10 py-6 text-center text-xs text-white/40 sm:flex-row sm:justify-between">
+        <span>© {new Date().getFullYear()} WorldHair. Tous droits réservés.</span>
+        <nav aria-label="Informations légales" className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+          {LEGAL_LINKS.map((link) => (
+            <Link key={link.href} href={link.href} className="transition-colors hover:text-white">
+              {link.label}
+            </Link>
+          ))}
+        </nav>
       </div>
     </footer>
   );

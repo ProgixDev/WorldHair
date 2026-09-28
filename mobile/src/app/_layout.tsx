@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { TermsGate } from "../components/TermsGate";
 import { AuthProvider } from "../contexts/AuthContext";
 import { FavoritesProvider } from "../contexts/FavoritesContext";
 import { LocationProvider } from "../contexts/LocationContext";
@@ -131,6 +132,8 @@ function RootLayoutWithTheme() {
           />
           <Stack.Screen name="pro" options={{ animation: "fade" }} />
         </Stack>
+        {/* New terms to accept (TODO.md Phase 8): over every screen, until accepted. */}
+        <TermsGate />
       </SafeAreaView>
     </View>
   );

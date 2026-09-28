@@ -440,7 +440,7 @@ export default function ProDashboard() {
                 ]}
               >
                 <Image
-                  source={avatarFor(appointment.clientId, profile.salonId)}
+                  source={avatarFor(appointment.clientId ?? appointment.id, profile.salonId)}
                   cachePolicy="memory-disk"
                   style={{
                     width: 40,

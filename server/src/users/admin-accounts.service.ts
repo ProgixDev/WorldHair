@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { allPages } from '../common/utils/pages';
 import { SupabaseService } from '../database/supabase.service';
 import { AccountRole, AccountStatus, AdminAccountDto } from './dto/admin-account.dto';
 
@@ -27,16 +28,16 @@ export class AdminAccountsService {
   ) {}
 
   async list(role?: AccountRole, search?: string): Promise<AdminAccountDto[]> {
-    const { data, error } = await this.supabase.client
-      .from('profiles')
-      .select('id, first_name, last_name, role, account_status, created_at')
-      .in('role', role ? [role] : ['particulier', 'coiffeur'])
-      .order('created_at', { ascending: false });
-    if (error) {
-      throw new InternalServerErrorException(error.message);
-    }
-
-    const rows = data as ProfileRow[];
+    // Every account, page after page: PostgREST answers 1 000 rows at most.
+    const rows = await allPages<ProfileRow>((from, to) =>
+      this.supabase.client
+        .from('profiles')
+        .select('id, first_name, last_name, role, account_status, created_at')
+        .in('role', role ? [role] : ['particulier', 'coiffeur'])
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to),
+    );
     const emailById = await this.emailsById(rows.map((row) => row.id));
 
     const accounts = rows.map((row) => this.toDto(row, emailById.get(row.id) ?? ''));

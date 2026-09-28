@@ -16,6 +16,7 @@ import { ROUTES } from "../../features/auth/routing";
 import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
 import type { Subscription } from "../../features/pro/types";
 import { fullDate } from "../../utils/date";
+import { MyDataGroups } from "../../components/account/MyDataGroups";
 
 const BENEFITS = [
   "Fiche visible dans la recherche et sur la carte",
@@ -284,6 +285,9 @@ export default function ProAccount() {
           isLast
         />
       </Group>
+
+      {/* ── My data, legal pages (TODO.md Phase 8) ─────────────────────── */}
+      <MyDataGroups />
     </ScrollView>
   );
 }

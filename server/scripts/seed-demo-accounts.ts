@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { parisParts, parisTime } from "../src/common/utils/paris-time";
+import { TERMS_VERSION } from "../src/users/terms";
 import { seedSalonReviews, upsertReviewers } from "./lib/seed-reviews";
 import { offerSubscription } from "./lib/seed-subscription";
 
@@ -147,6 +148,9 @@ async function seedAccount(account: DemoAccount): Promise<string> {
       ...(account.profile
         ? { first_name: account.profile.firstName, last_name: account.profile.lastName }
         : {}),
+      // Accepted the terms in force, as the sign-up form would have: no new-terms screen in the way of a demo.
+      terms_version: TERMS_VERSION,
+      terms_accepted_at: new Date().toISOString(),
     })
     .eq("id", userId);
   if (profileError) throw profileError;

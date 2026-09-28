@@ -90,8 +90,8 @@ export interface ProAppointment {
   /** First prestation (see `services` for all of them). */
   serviceId: string;
   clientName: string;
-  /** Seed for the generated avatar. */
-  clientId: string;
+  /** Seed for the generated avatar; null once the client deleted their account (« Client supprimé »). */
+  clientId: string | null;
   startsAt: string;
   /** Total of every prestation. */
   durationMin: number;

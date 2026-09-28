@@ -24,7 +24,8 @@ export interface AppointmentLine {
 
 export interface Appointment {
   id: string;
-  salonId: string;
+  /** Null once the salon deleted its account: the booking stays in the history as « Salon supprimé ». */
+  salonId: string | null;
   salonName: string;
   /** First prestation (see `services` for all of them). */
   serviceId: string | null;

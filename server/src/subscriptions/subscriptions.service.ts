@@ -402,6 +402,8 @@ export class SubscriptionsService {
       this.logger.warn(`Stripe subscription ${subscription.id} matches no coiffeur — ignored`);
       return null;
     }
+    // Its coiffeur deleted their account (TODO.md Phase 8): Stripe's last news about it has nowhere to go.
+    if (!(await this.profileExists(profileId))) return null;
 
     const status = knownStatus(subscription.status);
     const before = await this.findRow(profileId);
@@ -435,7 +437,33 @@ export class SubscriptionsService {
     return next;
   }
 
+  /**
+   * The coiffeur deleted their account (TODO.md Phase 8): Stripe forgets
+   * them — their customer deleted, which ends any subscription at once. The
+   * invoices stay with Stripe, for the accounts. One Stripe no longer has is
+   * gone already.
+   */
+  async endForDeletion(profileId: string): Promise<void> {
+    const row = await this.findRow(profileId);
+    if (!row?.stripe_customer_id) return;
+    try {
+      await this.stripe.client.customers.del(row.stripe_customer_id);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'resource_missing') return;
+      this.logger.error(`Couldn't delete Stripe customer ${row.stripe_customer_id}`, err as Error);
+      throw new ServiceUnavailableException("The subscription couldn't be ended: try again in a few minutes");
+    }
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  private async profileExists(profileId: string): Promise<boolean> {
+    const { data, error } = await this.supabase.client.from('profiles').select('id').eq('id', profileId).maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return data !== null;
+  }
 
   private async isValidated(profileId: string): Promise<boolean> {
     return (await this.applications.getMine(profileId))?.status === 'validated';

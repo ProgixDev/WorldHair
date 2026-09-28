@@ -499,22 +499,40 @@ and offers « Réessayer ».
 
 ## Phase 8 — GDPR, legal texts and production setup
 
-- [ ] **Write our legal texts**: CGU (including payment, refund and commission
+- [x] **Write our legal texts**: CGU (including payment, refund and commission
       rules), privacy policy (geolocation, identity documents, payments,
       retention) and legal notice, with the client's company details (name,
       address, SIRET, publication director, host).
-- [ ] **Legal pages**: `/cgu`, `/confidentialite` and `/mentions-legales` on the
+      Done: the three texts, in web/src/content/legal/, with the rules the
+      server applies. The company's details go in one file,
+      `web/src/content/legal/company.ts`; until then they show highlighted
+      « [… à compléter] » on the pages. To have reviewed by a lawyer before
+      launch.
+- [x] **Legal pages**: `/cgu`, `/confidentialite` and `/mentions-legales` on the
       site. The sign-up checkbox links open them; links in the app profile and
       the site footer. Store `terms_accepted_at` and the terms version.
-- [ ] **Delete my account** in the app (GDPR, and required by Apple):
+      Done: the version is recorded at sign-up; an account on another
+      version (or none) gets « Nos conditions évoluent » in the app until
+      it accepts (`POST /users/me/terms`).
+- [x] **Delete my account** in the app (GDPR, and required by Apple):
       `DELETE /users/me` removes the auth user, the profile cascade and the
       stored files; reviews are anonymized. Upcoming paid bookings are
       cancelled and refunded. For a coiffeur, clients are notified, the
       subscription is cancelled and pending transfers are settled.
-- [ ] **Export my data** (GDPR access right): `GET /users/me/export` (profile,
+      Done: Profil / Compte › Supprimer mon compte. Past bookings and
+      payments stay, anonymized (accounting, the other side's history);
+      reviews stay as « Ancien client ». A salon is paid what it's owed
+      before it goes and its Stripe customer is deleted. A step Stripe or
+      storage can't finish stops the deletion, to be tried again.
+- [x] **Export my data** (GDPR access right): `GET /users/me/export` (profile,
       appointments, payments, reviews), shared from the app.
-- [ ] (optional) **Retention**: purge the documents of rejected or deleted
+      Done: Profil / Compte › Exporter mes données (JSON, through the share
+      sheet); a salon's export also has its dossier, page, prestations,
+      hours, closures, subscription and the reviews it received.
+- [x] (optional) **Retention**: purge the documents of rejected or deleted
       coiffeurs after N days (scheduled job).
+      Done: rejected dossiers' documents 90 days after the decision (daily
+      job); a deleted account's files at once.
 - [ ] **Production environment**: a new Supabase project on a paid plan (daily
       backups, no pausing) with the schema applied and only the admin seeded
       (no demo, no catalogue); the current project stays as staging. Render
@@ -526,11 +544,12 @@ and offers « Réessayer ».
       (Sentry or similar) on server, app and web. A strong admin password
       instead of `admin123`, a strong Android keystore password, backups of the
       keystore and secrets.
-- [ ] **Lists past 1 000 bookings**: PostgREST returns 1 000 rows at most, so
+- [x] **Lists past 1 000 bookings**: PostgREST returns 1 000 rows at most, so
       the coiffeur's agenda and dashboard and the client's history silently
       drop bookings once there are more. Page them, or load a window (upcoming
       plus recent months) and compute the dashboard stats in SQL. The booking
       engine already reads only the bookings that can still collide.
+      Done: paged, as are the admin dashboard's chart and the accounts list.
 - [ ] **Email**: verify the sending domain in Resend (SPF and DKIM DNS
       records), set `MAIL_FROM` on that domain, point the Supabase auth email
       hook at production. Done when a new user with an outside address

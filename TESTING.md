@@ -36,6 +36,8 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] 6-digit code arrives by email, auto-submits on the 6th digit
 - [x] "Renvoyer le code" locked for 30s, then works
 - [x] Profile setup: first name, last name, photo (optional, uploads)
+- [ ] Sign-up: « conditions générales » and « politique de confidentialité » open the site's pages in the app; the new account records the version accepted (no « Nos conditions évoluent » after it)
+- [ ] An account made before the CGU (any test account not from the seeds): « Nos conditions évoluent » covers the app; the two links open the pages; « J'accepte » lets you in and it doesn't come back; « Se déconnecter » signs out
 
 ### `/discover`
 - [x] Full-screen map + salon carousel, sorted by distance
@@ -135,6 +137,9 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Theme switch: light / dark / system
 - [x] Sign out works
 - [x] "Rejouer l'onboarding" resets to onboarding screen
+- [ ] « Mes données › Exporter mes données » → the share sheet with a JSON (account, bookings, reviews, favorites, reminders)
+- [ ] « Informations légales » opens the CGU, the privacy policy and the legal notice
+- [ ] « Supprimer mon compte » (a throwaway account with a paid booking to come and a past one) → the sheet says what happens → « Supprimer définitivement » → signed out, « Compte supprimé »; the booking to come is cancelled and refunded, and the salon gets « Rendez-vous annulé »; in the salon's agenda the past booking reads « Client supprimé »; signing in again fails
 
 ---
 
@@ -216,6 +221,9 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Ended subscription (Stripe says canceled or unpaid): the « Abonnement terminé » veil covers the pro area; « Actualiser » lifts it once the website subscription is active, and says « Toujours aucun abonnement actif » otherwise
 - [ ] No text in the app tells where or how to pay (no email, website or link mentioned): App Store rule 3.1.3
 - [ ] A salon that never subscribed is **not** veiled (it must still set up its page), but it's absent from search and its page 404s
+- [ ] « Mes données »: the export has the salon too (dossier, page, prestations, hours, closures, subscription, bookings, reviews received)
+- [ ] « Supprimer mon compte » (a throwaway salon with a paid booking to come and one from earlier today): its client is refunded and gets « Rendez-vous annulé »; today's booking is paid out at once (Stripe › transfers); its Stripe customer is gone (subscription ended); the salon disappears from search; the client's history shows « Salon supprimé »
+- [ ] Stripe unreachable during a salon's deletion → « Votre compte n'a pas pu être supprimé pour l'instant : rien n'a été effacé » — trying again later goes through
 
 ---
 
@@ -226,7 +234,8 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Header goes transparent → navy on scroll
 - [x] Hamburger menu appears below 640px
 - [x] "Compte" button → `/login`
-- [ ] ⚠️ `/particuliers`, `/coiffeurs`, legal notice, terms — not built yet, don't expect them
+- [ ] Footer › CGU / Confidentialité / Mentions légales → `/cgu`, `/confidentialite`, `/mentions-legales`; the company's details show highlighted « [… à compléter] » until filled in `web/src/content/legal/company.ts`; the header's links go back to the home page's sections
+- [ ] ⚠️ `/particuliers`, `/coiffeurs` — not built yet (Phase 9), don't expect them
 
 ### `/login`
 - [x] Non-admin account rejected **and** signed out
@@ -240,6 +249,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Expanding a dossier shows description, phone, 4 document links
 - [ ] Approve works
 - [ ] Reject + reason works, reason shows word-for-word on mobile
+- [ ] 90 days after a rejection, the daily job (3:00) deletes that dossier's documents: links read "— indisponible", the app's dossier reads « Supprimés après 90 jours : à renvoyer », and resubmitting sends them again
 - [ ] ⚠️ seeded accounts show "— indisponible" for documents — expected, no real files
 
 ### `/admin/comptes`
@@ -346,10 +356,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 420 ✅ (runs in UTC, like Render) |
-| `cd server && bun run test:e2e` | 78 ✅ |
+| `cd server && bun run test` | 439 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 82 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API, nor list every booking (live dev database) |
-| `cd mobile && bun run test` | 101 ✅ |
-| `cd web && bun run test` | 35 ✅ |
+| `cd mobile && bun run test` | 106 ✅ |
+| `cd web && bun run test` | 40 ✅ |
 
 `typecheck` + `lint` green on all three packages.

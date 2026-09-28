@@ -195,9 +195,9 @@ export default function Appointments() {
                 onReview={() =>
                   router.push(("/review/" + appointment.id) as never)
                 }
-                onOpenSalon={() =>
-                  router.push(("/salon/" + appointment.salonId) as never)
-                }
+                onOpenSalon={() => {
+                  if (appointment.salonId) router.push(("/salon/" + appointment.salonId) as never);
+                }}
               />
             ))}
           </View>
@@ -236,7 +236,8 @@ function TimelineItem({
   const changeable = canStillChange(appointment);
   const missed = appointment.attendance === "no_show";
   const deadline = appointment.modifiableUntil ? new Date(appointment.modifiableUntil) : null;
-  const salon = useSalonSummary(appointment.salonId);
+  // A salon that left WorldHair since has no page any more.
+  const salon = useSalonSummary(appointment.salonId ?? undefined);
 
   const accent = inactive
     ? theme.danger

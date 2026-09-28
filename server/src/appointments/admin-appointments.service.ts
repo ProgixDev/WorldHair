@@ -9,6 +9,8 @@ import {
   AppointmentStatus,
   Attendance,
   CancelledBy,
+  DELETED_CLIENT,
+  DELETED_SALON,
   derivedStatus,
   linesOf,
   paymentOf,
@@ -51,8 +53,9 @@ export interface AdminAppointmentSummary {
   status: AppointmentStatus;
   attendance: Attendance | null;
   cancelledBy: CancelledBy | null;
-  salon: { id: string; name: string };
-  client: { id: string; name: string };
+  /** An `id` of null: that side deleted their account since (TODO.md Phase 8). */
+  salon: { id: string | null; name: string };
+  client: { id: string | null; name: string };
   /** `null` for a booking made before payments. */
   payment: AdminAppointmentPayment | null;
   createdAt: string;
@@ -63,8 +66,8 @@ export interface AdminAppointmentDetail extends AdminAppointmentSummary {
   services: AppointmentLine[];
   note: string | null;
   cancellationReason: string | null;
-  client: { id: string; name: string; email: string | null };
-  salon: { id: string; name: string; phone: string; city: string; email: string | null };
+  client: { id: string | null; name: string; email: string | null };
+  salon: { id: string | null; name: string; phone: string; city: string; email: string | null };
   /** `paymentIntentId`: to find it in Stripe's dashboard. */
   payment: (AdminAppointmentPayment & { paymentIntentId: string | null }) | null;
 }
@@ -72,8 +75,8 @@ export interface AdminAppointmentDetail extends AdminAppointmentSummary {
 /** A row of admin_appointments() (schema.sql). */
 interface AdminAppointmentRow {
   id: string;
-  particulier_id: string;
-  coiffeur_id: string;
+  particulier_id: string | null;
+  coiffeur_id: string | null;
   service_name: string;
   price: number | string;
   duration_min: number;
@@ -105,9 +108,18 @@ function fullName(first: string | null | undefined, last: string | null | undefi
   return [first, last].filter(Boolean).join(' ').trim() || fallback;
 }
 
-/** A salon by its shop name; a coiffeur who never named it, by their own. */
-function salonName(row: { salon_name: string | null; stylist_first_name: string | null; stylist_last_name: string | null }): string {
+/** A salon by its shop name; a coiffeur who never named it, by their own; one gone, as such. */
+function salonName(
+  id: string | null,
+  row: { salon_name: string | null; stylist_first_name: string | null; stylist_last_name: string | null },
+): string {
+  if (!id) return DELETED_SALON;
   return row.salon_name?.trim() || fullName(row.stylist_first_name, row.stylist_last_name, 'Salon');
+}
+
+/** A client by name; one gone, as such. */
+function clientName(id: string | null, first: string | null | undefined, last: string | null | undefined): string {
+  return id ? fullName(first, last, 'Client') : DELETED_CLIENT;
 }
 
 /** The instant a Paris day starts, `plusDays` later. */
@@ -205,7 +217,7 @@ export class AdminAppointmentsService {
       note: row.client_note,
       salon: {
         id: row.coiffeur_id,
-        name: salonName({
+        name: salonName(row.coiffeur_id, {
           salon_name: salon?.salon_name ?? null,
           stylist_first_name: application?.first_name ?? null,
           stylist_last_name: application?.last_name ?? null,
@@ -214,7 +226,7 @@ export class AdminAppointmentsService {
         city: salon?.city ?? '',
         email: salonEmail,
       },
-      client: { id: row.particulier_id, name: fullName(client?.first_name, client?.last_name, 'Client'), email: clientEmail },
+      client: { id: row.particulier_id, name: clientName(row.particulier_id, client?.first_name, client?.last_name), email: clientEmail },
       payment: payment ? { ...toPayment(payment), paymentIntentId: payment.payment_intent_id } : null,
       createdAt: row.created_at,
     };
@@ -230,8 +242,8 @@ export class AdminAppointmentsService {
       status: derivedStatus(row, now),
       attendance: (row.attendance as Attendance | null) ?? null,
       cancelledBy: row.cancelled_by,
-      salon: { id: row.coiffeur_id, name: salonName(row) },
-      client: { id: row.particulier_id, name: fullName(row.client_first_name, row.client_last_name, 'Client') },
+      salon: { id: row.coiffeur_id, name: salonName(row.coiffeur_id, row) },
+      client: { id: row.particulier_id, name: clientName(row.particulier_id, row.client_first_name, row.client_last_name) },
       payment:
         row.payment_status === null
           ? null
@@ -253,7 +265,9 @@ export class AdminAppointmentsService {
     return (await this.list({ ...query, now, limit: 1, offset: 0 })).total;
   }
 
-  private async single<T>(table: string, column: string, value: string): Promise<T | null> {
+  /** One row by key — none for a side deleted since. */
+  private async single<T>(table: string, column: string, value: string | null): Promise<T | null> {
+    if (!value) return null;
     const { data, error } = await this.supabase.client.from(table).select().eq(column, value).maybeSingle();
     if (error) {
       throw new InternalServerErrorException(error.message);
@@ -262,7 +276,8 @@ export class AdminAppointmentsService {
   }
 
   /** Where to reach them about the dispute; `null` for an account since deleted. */
-  private async emailOf(profileId: string): Promise<string | null> {
+  private async emailOf(profileId: string | null): Promise<string | null> {
+    if (!profileId) return null;
     const {
       data: { user },
       error,

@@ -1,5 +1,6 @@
 import request from 'supertest';
 import type { Server } from 'http';
+import { TERMS_VERSION } from '../../src/users/terms';
 import { createTestApp, TestApp } from '../utils/app-harness';
 
 /**
@@ -52,7 +53,24 @@ describe('users (e2e)', () => {
       photoUrl: null,
       emailVerified: true,
       role: 'particulier',
+      termsVersion: null,
+      termsAcceptedAt: null,
+      termsUpToDate: false,
     });
+  });
+
+  it('records the acceptance of the terms in force', async () => {
+    const response = await request(server)
+      .post('/users/me/terms')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({ termsVersion: TERMS_VERSION, termsUpToDate: true });
+    await request(server)
+      .get('/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect((res) => expect(res.body).toMatchObject({ termsUpToDate: true }));
   });
 
   it('updates the profile via PATCH /users/me', async () => {

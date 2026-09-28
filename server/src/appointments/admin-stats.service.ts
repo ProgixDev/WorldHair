@@ -1,4 +1,5 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { allPages } from '../common/utils/pages';
 import { parisParts, parisTime } from '../common/utils/paris-time';
 import { SupabaseService } from '../database/supabase.service';
 
@@ -90,15 +91,16 @@ export class AdminStatsService {
     const buckets = bucketsFor(range, now);
     const earliest = new Date(buckets[0].startMs).toISOString();
 
-    const { data, error } = await this.supabase.client
-      .from('appointments')
-      .select('status, created_at, price')
-      .gte('created_at', earliest);
-    if (error) {
-      throw new InternalServerErrorException(error.message);
-    }
-
-    const rows = data as AppointmentStatsRow[];
+    // Every booking of the range, page after page: PostgREST answers 1 000 rows at most.
+    const rows = await allPages<AppointmentStatsRow>((from, to) =>
+      this.supabase.client
+        .from('appointments')
+        .select('id, status, created_at, price')
+        .gte('created_at', earliest)
+        .order('created_at')
+        .order('id')
+        .range(from, to),
+    );
 
     const points = buckets.map((bucket) => {
       const inBucket = rows.filter((row) => {

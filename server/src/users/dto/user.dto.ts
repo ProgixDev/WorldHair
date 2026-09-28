@@ -1,5 +1,6 @@
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { Role } from '../../common/types/role';
+import { TERMS_VERSION } from '../terms';
 import { Profile } from '../users.service';
 
 /**
@@ -19,6 +20,11 @@ export class UserDto {
   photoUrl!: string | null;
   emailVerified!: boolean;
   role!: Role;
+  /** The CGU and privacy policy version accepted, and when; null until they were. */
+  termsVersion!: string | null;
+  termsAcceptedAt!: string | null;
+  /** Accepted the version in force (../terms.ts): the apps ask again otherwise. */
+  termsUpToDate!: boolean;
 }
 
 export function toUserDto(user: AuthenticatedUser, profile: Profile): UserDto {
@@ -30,5 +36,8 @@ export function toUserDto(user: AuthenticatedUser, profile: Profile): UserDto {
     photoUrl: profile.photoUrl,
     emailVerified: user.emailVerified,
     role: user.role,
+    termsVersion: profile.termsVersion,
+    termsAcceptedAt: profile.termsAcceptedAt,
+    termsUpToDate: profile.termsVersion === TERMS_VERSION,
   };
 }
