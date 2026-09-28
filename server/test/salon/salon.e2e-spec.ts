@@ -67,9 +67,41 @@ describe('salon (e2e)', () => {
         }),
       );
 
-    for (const bad of [{ instagramUrl: 'https://facebook.com/studiow' }, { websiteUrl: 'pas un lien' }, { facebookUrl: 'facebook.com/x' }]) {
+    for (const bad of [
+      { instagramUrl: 'https://facebook.com/studiow' },
+      { websiteUrl: 'pas un lien' },
+      { facebookUrl: 'facebook.com/x' },
+      // Read as the site before "@" by browsers: an icon must never lead elsewhere.
+      { instagramUrl: 'https://evil.example\\@instagram.com' },
+      { instagramUrl: 'https://someone:secret@instagram.com/studio' },
+    ]) {
       await request(server).patch('/salon/me').set(auth).send(bad).expect(400);
     }
+    for (const good of [
+      { instagramUrl: 'https://Instagram.com/studio.w?igsh=abc' },
+      { tiktokUrl: 'https://vt.tiktok.com/ZS123/' },
+      { facebookUrl: 'https://web.facebook.com/studiow' },
+    ]) {
+      await request(server).patch('/salon/me').set(auth).send(good).expect(200);
+    }
+  });
+
+  it("lists closures from a given day: this week's, for the dashboard's fill rate", async () => {
+    const auth = { Authorization: `Bearer ${coiffeurToken}` };
+    harness.supabase.seedTimeOff({
+      profileId: coiffeur.id,
+      startsAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      endsAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+    });
+
+    await request(server).get('/salon/me/time-off').set(auth).expect(200).expect((res) => expect(res.body).toHaveLength(0));
+    await request(server)
+      .get('/salon/me/time-off')
+      .query({ from: new Date(Date.now() - 7 * 86_400_000).toISOString() })
+      .set(auth)
+      .expect(200)
+      .expect((res) => expect(res.body).toHaveLength(1));
+    await request(server).get('/salon/me/time-off').query({ from: 'hier' }).set(auth).expect(400);
   });
 
   it('hides a service from clients, and shows it again', async () => {

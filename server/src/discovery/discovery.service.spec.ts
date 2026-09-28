@@ -156,6 +156,26 @@ describe('DiscoveryService', () => {
       });
     });
 
+    it('judges a home-service coiffeur by how far they travel, not by the client\'s maximum distance', async () => {
+      // About 8 km north of the client: beyond a 5 km cap, within a 20 km travel radius.
+      seed('travels', { practiceZone: 'domicile', travelRadiusKm: 20, latitude: PARIS.lat + 0.072 });
+      seed('salon-nearby', { latitude: PARIS.lat + 0.072 });
+
+      expect(names(await discovery.search({ lat: PARIS.lat, lng: PARIS.lng, radiusKm: 5, ...page }))).toEqual(['travels']);
+    });
+
+    it('keeps a favorite home-service coiffeur listed wherever the client is', async () => {
+      seed('far', { practiceZone: 'domicile', travelRadiusKm: 10, latitude: LYON.lat, longitude: LYON.lng });
+
+      expect(names(await discovery.search({ ids: ['far'], lat: PARIS.lat, lng: PARIS.lng, ...page }))).toEqual(['far']);
+    });
+
+    it('reads œ as oe in the words typed', async () => {
+      seed('coeur', { salonName: 'Cœur de Coupe' });
+
+      expect(names(await discovery.search({ query: 'coeur', ...page }))).toEqual(['Cœur de Coupe']);
+    });
+
     it('keeps the salons inside the area the map shows', async () => {
       seed('paris');
       seed('lyon', { latitude: LYON.lat, longitude: LYON.lng });

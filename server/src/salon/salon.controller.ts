@@ -1,11 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { ReplaceAvailabilityDto } from './dto/availability-day.dto';
 import { AddGalleryPhotoDto } from './dto/gallery-photo.dto';
 import { CreateServiceDto, UpdateServiceDto } from './dto/service.dto';
-import { CreateTimeOffDto } from './dto/time-off.dto';
+import { CreateTimeOffDto, ListTimeOffQueryDto } from './dto/time-off.dto';
 import { UpdateSalonProfileDto } from './dto/update-salon-profile.dto';
 import {
   AvailabilityDay,
@@ -105,8 +105,8 @@ export class SalonController {
   }
 
   @Get('time-off')
-  listTimeOff(@CurrentUser() current: AuthenticatedUser): Promise<TimeOff[]> {
-    return this.salon.listTimeOff(current.id);
+  listTimeOff(@CurrentUser() current: AuthenticatedUser, @Query() query: ListTimeOffQueryDto): Promise<TimeOff[]> {
+    return this.salon.listTimeOff(current.id, query.from ? new Date(query.from) : undefined);
   }
 
   @Post('time-off')

@@ -45,7 +45,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] No GPS → shows "Paris (approx.)" + "Activer ma position" block
 - [x] Ad banner appears only when `home_banner` is enabled in admin
 - [ ] Opens framed on the nearest salons; drag or zoom the map to another city (e.g. Lyon) → its salons appear on the map and in the carousel a moment after the map settles
-- [ ] Tapping a pin or swiping the carousel moves the map but doesn't reshuffle the cards
+- [ ] Tapping a pin or swiping the carousel moves the map but doesn't reshuffle the cards; after that, zooming out stays zoomed out (the map doesn't fly back to the salon)
 - [ ] Cards: heart (fills red, stays after reopening the app), « Dispo aujourd'hui 14:30 » line on Studio W (catalogue salons can't be booked online yet: no line), « À domicile · 25 km » on Salon Céleste
 
 ### `/search`
@@ -62,7 +62,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Several prestation chips at once show salons offering any of them; the text also finds a coiffeur's first name, a city or a prestation ("balayage lyon")
 - [ ] « Budget »: « Moins de 30 € » keeps salons with a visible prestation under 30 € (Studio W's hidden « Lissage brésilien » never counts)
 - [ ] « Quand »: « Ouvert maintenant » (none on Sunday), a day (a salon closed that day, or on leave all of it, drops out), « Ouvert après 19 h »
-- [ ] « Où »: « À domicile » from Paris shows Salon Céleste only (Azur Mariage doesn't travel that far)
+- [ ] « Où »: « À domicile » from Paris shows Salon Céleste only (Azur Mariage doesn't travel that far) — even with « Distance maximale » 1 km, since she comes to the client
 - [ ] « Disponible au plus tôt » puts Studio W first (the only salon bookable online), with its « Dispo … » line
 
 ### Salon page
@@ -129,7 +129,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 ### `/profile`
 - [x] Counters, next appointment, visited salons all populate
-- [ ] « FAVORIS » (after `seed:demo`: Studio W, Racines, Maison Tresse), the latest first; the heart on a tile removes it; empty → « Touchez le cœur d'un salon pour le retrouver ici. »
+- [ ] « FAVORIS » (after `seed:demo`: Studio W, Racines, Maison Tresse), the latest first; the heart on a tile removes it; empty → « Touchez le cœur d'un salon pour le retrouver ici. » A home-service favorite (heart Azur Mariage, in Marseille) stays listed from Paris
 - [x] J-1 / H-1 reminder toggles persist after app restart
 - [x] Theme switch: light / dark / system
 - [x] Sign out works
@@ -194,7 +194,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Edit an existing reply
 - [x] Delete a reply
 - [x] Hidden reviews still visible here (unlike the public page), marked « Masqué par WorldHair », and left out of the average
-- [ ] Flag on a review → reason → sent → « Signalé »; a second report of the same review isn't possible
+- [ ] Flag on a review → reason → sent → « Signalé »; a second report of the same review isn't possible; a salon can't report another salon's reviews
 
 ### `/pro/payments` (Compte → Encaissements → Paiements)
 - [ ] Demo salon: « Salon de démonstration » + « Configurer mes paiements »
@@ -332,10 +332,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 393 ✅ (runs in UTC, like Render) |
-| `cd server && bun run test:e2e` | 74 ✅ |
+| `cd server && bun run test` | 399 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 75 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
-| `cd mobile && bun run test` | 95 ✅ |
+| `cd mobile && bun run test` | 98 ✅ |
 | `cd web && bun run test` | 25 ✅ |
 
 `typecheck` + `lint` green on all three packages.

@@ -42,6 +42,9 @@ export function MapCanvasNative({
   const { theme, themeMode } = useTheme();
   const mapRef = useRef<MapView>(null);
   const framedFor = useRef<string | undefined>(undefined);
+  const followed = useRef<string | null>(null);
+  /** Apple Maps doesn't say whether a move was the client's: its drags do. */
+  const draggedByClient = useRef(false);
 
   const isDark =
     themeMode === "dark" ||
@@ -57,18 +60,22 @@ export function MapCanvasNative({
       );
       return;
     }
-    const selected = salons.find((salon) => salon.id === selectedId);
-    if (selected) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: selected.latitude,
-          longitude: selected.longitude,
-          latitudeDelta: 0.012,
-          longitudeDelta: 0.012,
-        },
-        450,
-      );
-      return;
+    // Follow a pin when the selection changes — never again because new salons came in.
+    if (selectedId !== followed.current) {
+      followed.current = selectedId;
+      const selected = salons.find((salon) => salon.id === selectedId);
+      if (selected) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: selected.latitude,
+            longitude: selected.longitude,
+            latitudeDelta: 0.012,
+            longitudeDelta: 0.012,
+          },
+          450,
+        );
+        return;
+      }
     }
     if (fitKey !== undefined) {
       if (framedFor.current === fitKey) return;
@@ -99,9 +106,14 @@ export function MapCanvasNative({
         zoomEnabled={interactive}
         rotateEnabled={false}
         pitchEnabled={false}
+        onPanDrag={() => {
+          draggedByClient.current = true;
+        }}
         onRegionChangeComplete={(region, details) => {
           // Only the client's own moves: framing or following a pin never searches again.
-          if (!details?.isGesture) return;
+          const byClient = details?.isGesture === true || draggedByClient.current;
+          draggedByClient.current = false;
+          if (!byClient) return;
           onAreaChange?.([
             region.latitude - region.latitudeDelta / 2,
             region.longitude - region.longitudeDelta / 2,

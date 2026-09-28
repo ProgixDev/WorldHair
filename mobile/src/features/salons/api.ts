@@ -187,9 +187,9 @@ export async function searchSalons(
   return { items: data.items.map((item) => toSalon(item)), total: data.total };
 }
 
-/** How many salons these filters would show — the filter sheet's « Voir N salons ». */
+/** How many salons these filters would show — the filter sheet's « Voir N salons ». The order doesn't change it, so none is asked. */
 export async function countSalons(filters: SalonFilters, from: Coordinates | null): Promise<number> {
-  return (await searchSalons(filters, from, { limit: 1, offset: 0 })).total;
+  return (await searchSalons({ ...filters, sort: "distance" }, from, { limit: 1, offset: 0 })).total;
 }
 
 // ─── Favorites ─────────────────────────────────────────────────────────────

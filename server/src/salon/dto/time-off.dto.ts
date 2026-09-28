@@ -4,6 +4,13 @@ import { IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
  * A closure is a plain time range: whole days are midnight to midnight
  * (Paris), a few hours of one day are just those hours. The app builds both.
  */
+/** GET /salon/me/time-off: closures not over at `from` (an ISO instant) — now by default. */
+export class ListTimeOffQueryDto {
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  from?: string;
+}
+
 export class CreateTimeOffDto {
   @IsISO8601()
   startsAt!: string;

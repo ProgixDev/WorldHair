@@ -120,7 +120,14 @@ describe('discovery (e2e)', () => {
   });
 
   it('refuses a bad sort, time, day or map area', async () => {
-    for (const query of [{ sort: 'cheapest' }, { openAfter: '25:00' }, { openOn: '03/10/2026' }, { bounds: '48,2,49' }, { openNow: 'maybe' }]) {
+    for (const query of [
+      { sort: 'cheapest' },
+      { openAfter: '25:00' },
+      { openOn: '03/10/2026' },
+      { openOn: '2026-02-30' },
+      { bounds: '48,2,49' },
+      { openNow: 'maybe' },
+    ]) {
       await request(server).get('/salons').query(query).set('Authorization', `Bearer ${particulierToken}`).expect(400);
     }
   });

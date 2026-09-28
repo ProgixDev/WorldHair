@@ -29,7 +29,8 @@ export function useSalonSearch(filters: SalonFilters, from: Coordinates) {
 
   useEffect(() => {
     const request = ++latest.current;
-    setState((current) => ({ ...current, loading: true, error: null }));
+    // A page still coming for the previous search is dropped: nothing waits on it any more.
+    setState((current) => ({ ...current, loading: true, loadingMore: false, error: null }));
     const timer = setTimeout(() => {
       searchSalons(filters, from, { limit: PAGE_SIZE, offset: 0 })
         .then((page) => {
@@ -38,8 +39,9 @@ export function useSalonSearch(filters: SalonFilters, from: Coordinates) {
           }
         })
         .catch(() => {
+          // Nothing from the previous search under the new filters: the error and « Réessayer » show instead.
           if (latest.current === request) {
-            setState((current) => ({ ...current, loading: false, error: "Impossible de charger les salons. Réessayez." }));
+            setState({ items: [], total: 0, loading: false, loadingMore: false, error: "Impossible de charger les salons. Réessayez." });
           }
         });
     }, DEBOUNCE_MS);
@@ -54,12 +56,11 @@ export function useSalonSearch(filters: SalonFilters, from: Coordinates) {
     searchSalons(filters, from, { limit: PAGE_SIZE, offset })
       .then((page) => {
         if (latest.current !== request) return;
-        setState((current) => ({
-          ...current,
-          items: [...current.items, ...page.items.filter((item) => !current.items.some((known) => known.id === item.id))],
-          total: page.total,
-          loadingMore: false,
-        }));
+        setState((current) => {
+          const items = [...current.items, ...page.items.filter((item) => !current.items.some((known) => known.id === item.id))];
+          // An empty page past the end reports no total: the list simply ends there.
+          return { ...current, items, total: page.items.length > 0 ? page.total : items.length, loadingMore: false };
+        });
       })
       .catch(() => {
         if (latest.current === request) setState((current) => ({ ...current, loadingMore: false }));

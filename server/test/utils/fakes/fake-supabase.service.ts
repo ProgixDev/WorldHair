@@ -350,6 +350,7 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   private readonly isFilters: [keyof TRow, null][] = [];
   private readonly gteFilters: [keyof TRow, unknown][] = [];
   private readonly lteFilters: [keyof TRow, unknown][] = [];
+  private readonly ltFilters: [keyof TRow, unknown][] = [];
   private rangeFrom = 0;
   private rangeTo = Number.MAX_SAFE_INTEGER;
 
@@ -381,6 +382,11 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
     return this;
   }
 
+  lt(column: keyof TRow, value: unknown): this {
+    this.ltFilters.push([column, value]);
+    return this;
+  }
+
   order(): this {
     return this; // Rows are already read back in insertion order.
   }
@@ -403,7 +409,8 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
       .filter((row) => this.inFilters.every(([column, values]) => values.includes(row[column])))
       .filter((row) => this.isFilters.every(([column]) => row[column] === null))
       .filter((row) => this.gteFilters.every(([column, value]) => compareValues(row[column], value) >= 0))
-      .filter((row) => this.lteFilters.every(([column, value]) => compareValues(row[column], value) <= 0));
+      .filter((row) => this.lteFilters.every(([column, value]) => compareValues(row[column], value) <= 0))
+      .filter((row) => this.ltFilters.every(([column, value]) => compareValues(row[column], value) < 0));
     return rows.slice(this.rangeFrom, Math.min(this.rangeTo + 1, this.rangeFrom + MAX_ROWS));
   }
 
@@ -719,6 +726,17 @@ export class FakeSupabaseService {
     this.payments.clear();
     this.favorites.clear();
     this.reviewReports.length = 0;
+  }
+
+  /** Test convenience: a report already on file, as if filed earlier. */
+  seedReviewReport(params: { reviewId: string; reporterId: string; reason: string }): void {
+    this.reviewReports.push({
+      review_id: params.reviewId,
+      reporter_id: params.reporterId,
+      reason: params.reason,
+      details: null,
+      created_at: new Date().toISOString(),
+    });
   }
 
   /** Test convenience: a review's reports, in the order they came. */
@@ -1170,7 +1188,16 @@ export class FakeSupabaseService {
     const offset = (params.p_offset as number | undefined) ?? 0;
     const origin = lat != null && lng != null ? { lat, lng } : null;
 
-    const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    // Like unaccent: accents off, and the œ/æ ligatures spelt out.
+    const normalize = (text: string) =>
+      text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/œ/g, 'oe')
+        .replace(/Œ/g, 'OE')
+        .replace(/æ/g, 'ae')
+        .replace(/Æ/g, 'AE')
+        .toLowerCase();
     const activeServices = (profileId: string) =>
       [...this.services.values()].filter((service) => service.profile_id === profileId && service.is_active);
     // Each salon's week: its own hours, or the default a new salon starts with.
@@ -1307,13 +1334,18 @@ export class FakeSupabaseService {
       })
       // A salon with no known location is excluded from a radius search, not
       // passed through by virtue of "we can't check" — mirrors search_salons().
+      // A home-service coiffeur comes to the client: their own radius decides.
       .filter(
         (row) =>
-          radiusKm == null || origin == null || (row.distance_km != null && row.distance_km <= radiusKm),
+          radiusKm == null ||
+          origin == null ||
+          row.practice_zone === 'domicile' ||
+          (row.distance_km != null && row.distance_km <= radiusKm),
       )
-      // A home-service coiffeur only shows to clients they'd travel to.
+      // A home-service coiffeur only shows to clients they'd travel to — except by name (favorites).
       .filter(
         (row) =>
+          ids != null ||
           row.practice_zone !== 'domicile' ||
           row.travel_radius_km == null ||
           row.distance_km == null ||

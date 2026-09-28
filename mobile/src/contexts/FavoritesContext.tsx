@@ -29,12 +29,22 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
     where.current = coords;
   }, [coords]);
 
+  /** Bumped by every heart tapped: a list read before it is out of date. */
+  const changes = useRef(0);
+  const latestRefresh = useRef(0);
+  /** Salons whose heart is being saved: a second tap waits for the first. */
+  const saving = useRef(new Set<string>());
+
   const refresh = useCallback(async () => {
+    const request = ++latestRefresh.current;
+    const changesBefore = changes.current;
     if (!enabled) {
       setSalons([]);
       return;
     }
-    setSalons(await fetchFavorites(where.current));
+    const list = await fetchFavorites(where.current);
+    // A newer read (another account, say), or a heart tapped meanwhile, wins over this one.
+    if (request === latestRefresh.current && changesBefore === changes.current) setSalons(list);
   }, [enabled]);
 
   useEffect(() => {
@@ -45,17 +55,24 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
 
   const toggle = useCallback(
     async (salon: Salon) => {
+      if (saving.current.has(salon.id)) return;
+      saving.current.add(salon.id);
+      changes.current += 1;
       const wasFavorite = ids.has(salon.id);
-      setSalons((current) =>
-        wasFavorite ? current.filter((item) => item.id !== salon.id) : [salon, ...current],
-      );
+      setSalons((current) => {
+        const others = current.filter((item) => item.id !== salon.id);
+        return wasFavorite ? others : [salon, ...others];
+      });
       try {
         if (wasFavorite) await removeFavorite(salon.id);
         else await addFavorite(salon.id);
       } catch {
-        setSalons((current) =>
-          wasFavorite ? [salon, ...current.filter((item) => item.id !== salon.id)] : current.filter((item) => item.id !== salon.id),
-        );
+        setSalons((current) => {
+          const others = current.filter((item) => item.id !== salon.id);
+          return wasFavorite ? [salon, ...others] : others;
+        });
+      } finally {
+        saving.current.delete(salon.id);
       }
     },
     [ids],

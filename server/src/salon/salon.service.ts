@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { allPages } from '../common/utils/pages';
 import { slices } from '../common/utils/slices';
 import { SupabaseService } from '../database/supabase.service';
 import { AvailabilityDayDto } from './dto/availability-day.dto';
@@ -546,19 +547,22 @@ export class SalonService {
 
   // ─── Closures (congés, fermetures exceptionnelles) ───────────────────────
 
-  /** Several salons' closures not over yet at `from`, in a few queries (search's next free slots). */
-  async timeOffFor(userIds: string[], from: Date): Promise<Map<string, TimeOff[]>> {
+  /** Several salons' closures between `from` and `until`, every one, in a few queries (search's next free slots). */
+  async timeOffFor(userIds: string[], from: Date, until: Date): Promise<Map<string, TimeOff[]>> {
     const byProfile = new Map<string, TimeOff[]>(userIds.map((id) => [id, []]));
     for (const slice of slices(userIds)) {
-      const { data, error } = await this.supabase.client
-        .from('coiffeur_time_off')
-        .select()
-        .in('profile_id', slice)
-        .gte('ends_at', from.toISOString());
-      if (error) {
-        throw new InternalServerErrorException(error.message);
-      }
-      for (const row of data as TimeOffRow[]) byProfile.get(row.profile_id)?.push(mapTimeOff(row));
+      const rows = await allPages<TimeOffRow>((start, end) =>
+        this.supabase.client
+          .from('coiffeur_time_off')
+          .select()
+          .in('profile_id', slice)
+          .gte('ends_at', from.toISOString())
+          .lt('starts_at', until.toISOString())
+          .order('starts_at')
+          .order('id')
+          .range(start, end),
+      );
+      for (const row of rows) byProfile.get(row.profile_id)?.push(mapTimeOff(row));
     }
     return byProfile;
   }

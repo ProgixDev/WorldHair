@@ -62,8 +62,12 @@ export default function Discover() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [found, setFound] = useState<Salon[]>([]);
-  /** Changes once the salons around a new position (or for a new specialty) are in: the map frames them. */
-  const [fitKey, setFitKey] = useState<string | undefined>(undefined);
+  /**
+   * Changes once the salons around a new position (or for a new specialty)
+   * are in: the map frames them. Set from the start, so the salons of an
+   * area the client moved to never re-frame the map, whatever came first.
+   */
+  const [fitKey, setFitKey] = useState<string>("start");
   const latest = useRef(0);
   const areaTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const listRef = useRef<FlatList>(null);

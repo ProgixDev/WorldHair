@@ -395,8 +395,11 @@ export async function createPayoutDashboardLink(): Promise<string> {
 
 // ─── Closures (congés, fermetures exceptionnelles) ───────────────────────────
 
-export async function listTimeOff(): Promise<TimeOff[]> {
-  const { data } = await apiClient.get<TimeOff[]>("/salon/me/time-off");
+/** Closures not over yet — or, with `from`, not over at that moment (the dashboard reads this week's from Monday). */
+export async function listTimeOff(from?: Date): Promise<TimeOff[]> {
+  const { data } = await apiClient.get<TimeOff[]>("/salon/me/time-off", {
+    params: from ? { from: from.toISOString() } : undefined,
+  });
   return data;
 }
 

@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -23,10 +23,13 @@ import {
   computeStats,
   serviceName,
   servicesLabel,
+  startOfWeek,
   weeklyFillRate,
   weeklySeries,
 } from "../../features/pro/stats";
 import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
+import type { TimeOff } from "../../features/pro/types";
+import { listTimeOff } from "../../services/pro";
 import {
   avatarFor,
   coverFor,
@@ -57,9 +60,22 @@ export default function ProDashboard() {
   const { profile, services, appointments, availability, timeOff, subscription, payoutStatus, isLoading } = usePro();
 
   const stats = useMemo(() => computeStats(appointments), [appointments]);
+  // This week's closures from Monday: one already over still wasn't open time.
+  const [weekClosures, setWeekClosures] = useState<TimeOff[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    listTimeOff(startOfWeek(new Date()))
+      .then((closures) => {
+        if (!cancelled) setWeekClosures(closures);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [timeOff]);
   const fill = useMemo(
-    () => weeklyFillRate(appointments, availability, timeOff),
-    [appointments, availability, timeOff],
+    () => weeklyFillRate(appointments, availability, weekClosures ?? timeOff),
+    [appointments, availability, weekClosures, timeOff],
   );
   const series = useMemo(() => weeklySeries(appointments, 8), [appointments]);
   const today = useMemo(

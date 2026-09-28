@@ -37,6 +37,7 @@ export function ReportReviewSheet({ reviewId, onClose, onReported }: ReportRevie
     setSending(true);
     setError(null);
     try {
+      // Reported before by this person counts as reported too.
       await reportReview(reviewId, reason, details);
       onReported(reviewId);
       onClose();

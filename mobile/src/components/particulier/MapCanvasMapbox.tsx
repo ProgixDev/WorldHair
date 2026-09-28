@@ -40,6 +40,7 @@ export function MapCanvasMapbox({
   const { theme, themeMode } = useTheme();
   const cameraRef = useRef<Camera>(null);
   const framedFor = useRef<string | undefined>(undefined);
+  const followed = useRef<string | null>(null);
   /** Set while the client drags or pinches; the next idle then searches the new area. */
   const movedByClient = useRef(false);
 
@@ -60,14 +61,18 @@ export function MapCanvasMapbox({
       return;
     }
 
-    const selected = salons.find((salon) => salon.id === selectedId);
-    if (selected) {
-      camera.setCamera({
-        centerCoordinate: [selected.longitude, selected.latitude],
-        zoomLevel: 14.5,
-        animationDuration: 450,
-      });
-      return;
+    // Follow a pin when the selection changes — never again because new salons came in.
+    if (selectedId !== followed.current) {
+      followed.current = selectedId;
+      const selected = salons.find((salon) => salon.id === selectedId);
+      if (selected) {
+        camera.setCamera({
+          centerCoordinate: [selected.longitude, selected.latitude],
+          zoomLevel: 14.5,
+          animationDuration: 450,
+        });
+        return;
+      }
     }
 
     if (fitKey !== undefined) {

@@ -114,6 +114,16 @@ describe("weeklyFillRate", () => {
     expect(weeklyFillRate(BOOKINGS, WEEK, saturdayOff, NOW)).toEqual({ bookedMinutes: 180, openMinutes: 2700, percent: 7 });
   });
 
+  it("counts overlapping closures once", () => {
+    // Saturday 9:00-12:00, and 10:00-11:00 inside it: 3 hours closed, not 4.
+    const overlapping = [
+      { id: "a", startsAt: new Date(2026, 9, 3, 9, 0).toISOString(), endsAt: new Date(2026, 9, 3, 12, 0).toISOString(), label: "" },
+      { id: "b", startsAt: new Date(2026, 9, 3, 10, 0).toISOString(), endsAt: new Date(2026, 9, 3, 11, 0).toISOString(), label: "" },
+    ];
+
+    expect(weeklyFillRate(BOOKINGS, WEEK, overlapping, NOW).openMinutes).toBe(3240 - 180);
+  });
+
   it("is 0 % for a week the salon is closed", () => {
     const closed = WEEK.map((day) => ({ ...day, open: false }));
     expect(weeklyFillRate(BOOKINGS, closed, [], NOW)).toEqual({ bookedMinutes: 180, openMinutes: 0, percent: 0 });

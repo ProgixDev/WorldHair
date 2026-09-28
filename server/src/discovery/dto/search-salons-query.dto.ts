@@ -5,6 +5,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsISO8601,
   IsLatitude,
   IsLongitude,
   IsNumber,
@@ -86,6 +87,7 @@ export class SearchSalonsQueryDto extends PaginationQueryDto {
   /** Open on this Paris day. */
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'openOn must be YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'openOn must be a real day' })
   openOn?: string;
 
   /** Still open after this time (HH:MM, Paris): on `openOn`, or on any day. */

@@ -417,6 +417,17 @@ matches; the map searches the area only after the client moves it; a
 client's or a salon's report flags a review for the admins, it stays visible
 until they decide.
 
+Reviewed the same day (migration `phase6_search_review_fixes`), fixed: the map
+no longer flies back to a selected salon after an area search, and searches
+on iPhone's own maps too; a home-service coiffeur is judged by their travel
+radius (not the client's maximum distance) and stays in favorites wherever
+the client is; social links can't hide another site behind a « user@ » part
+and accept share links (vt.tiktok.com, web.facebook.com); next free slots read
+every booking, past 1 000 rows; this week's fill rate counts closures already
+over and overlapping ones once; a salon reports only its own reviews, a
+repeated report still reaches the admins; a failed search clears the list
+and offers « Réessayer ».
+
 - [x] **Search filtering on the server**: `fetchSalons` downloads at most 100
       salons and filters them on the phone, so salon 101 and beyond silently
       disappear. Move filters and sorts into `search_salons()` / `GET /salons`

@@ -64,6 +64,6 @@ export class ReviewsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReportReviewDto,
   ): Promise<void> {
-    return this.reviews.report(id, current.id, dto);
+    return this.reviews.report(id, { id: current.id, role: current.role }, dto);
   }
 }

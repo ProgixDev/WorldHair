@@ -29,14 +29,20 @@ export type ConfirmationMode = (typeof CONFIRMATION_MODES)[number];
 export const MAX_NOTICE_MINUTES = 20160;
 
 /**
- * A link to the salon's own page on a network (`hosts`), or anywhere for
- * its website; "" or null removes it.
+ * A link to the salon's own page on a network (`host`), or anywhere for its
+ * website; "" or null removes it. No "user@" part: browsers would open the
+ * site before it, so an icon could lead anywhere.
  */
-function SocialUrl(hosts?: string[]): PropertyDecorator {
+function SocialUrl(host?: RegExp): PropertyDecorator {
   return applyDecorators(
     Transform(({ value }: { value: unknown }) => (value === '' ? null : value)),
     IsOptional(),
-    IsUrl({ protocols: ['https', 'http'], require_protocol: true, ...(hosts ? { host_whitelist: hosts } : {}) }),
+    IsUrl({
+      protocols: ['https', 'http'],
+      require_protocol: true,
+      disallow_auth: true,
+      ...(host ? { host_whitelist: [host] } : {}),
+    }),
     MaxLength(300),
   );
 }
@@ -131,13 +137,13 @@ export class UpdateSalonProfileDto {
   @Max(MAX_NOTICE_MINUTES)
   cancellationNoticeMinutes?: number;
 
-  @SocialUrl(['instagram.com', 'www.instagram.com'])
+  @SocialUrl(/^(www\.)?instagram\.com$/i)
   instagramUrl?: string | null;
 
-  @SocialUrl(['facebook.com', 'www.facebook.com', 'm.facebook.com', 'fb.com', 'www.fb.com'])
+  @SocialUrl(/^((www|m|web)\.)?(facebook|fb)\.com$/i)
   facebookUrl?: string | null;
 
-  @SocialUrl(['tiktok.com', 'www.tiktok.com', 'vm.tiktok.com'])
+  @SocialUrl(/^((www|vm|vt|m)\.)?tiktok\.com$/i)
   tiktokUrl?: string | null;
 
   @SocialUrl()

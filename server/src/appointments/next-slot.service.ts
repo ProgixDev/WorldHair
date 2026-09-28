@@ -1,4 +1,5 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { allPages } from '../common/utils/pages';
 import { parisParts } from '../common/utils/paris-time';
 import { slices } from '../common/utils/slices';
 import { SupabaseService } from '../database/supabase.service';
@@ -55,10 +56,12 @@ export class NextSlotService {
     if (bookable.length === 0) return result;
 
     const ids = bookable.map((query) => query.salonId);
+    // Nothing starting past the days looked at can take a slot in them.
+    const until = new Date(now.getTime() + (NEXT_SLOT_DAYS + 1) * DAY_MS);
     const [availability, closures, bookings, subscriptions] = await Promise.all([
       this.salon.availabilityFor(ids),
-      this.salon.timeOffFor(ids, now),
-      this.activeBookingsOf(ids, now),
+      this.salon.timeOffFor(ids, now, until),
+      this.activeBookingsOf(ids, now, until),
       this.subscriptionsOf(ids),
     ]);
     const days = upcomingDays(now, NEXT_SLOT_DAYS);
@@ -86,20 +89,27 @@ export class NextSlotService {
     return result;
   }
 
-  /** Bookings, and slots held while a client pays, not over yet — a booking fits in a day, so none older than one. */
-  private async activeBookingsOf(ids: string[], now: Date): Promise<Map<string, BusyBooking[]>> {
+  /**
+   * Bookings, and slots held while a client pays, from a day before `now`
+   * (a booking fits in a day) to `until` — every one of them, page by page:
+   * a busy week at a hundred salons is past PostgREST's 1 000 rows.
+   */
+  private async activeBookingsOf(ids: string[], now: Date, until: Date): Promise<Map<string, BusyBooking[]>> {
     const byCoiffeur = new Map<string, BusyBooking[]>(ids.map((id) => [id, []]));
     for (const slice of slices(ids)) {
-      const { data, error } = await this.supabase.client
-        .from('appointments')
-        .select('coiffeur_id, starts_at, duration_min')
-        .in('coiffeur_id', slice)
-        .in('status', ['awaiting_payment', 'pending', 'confirmed'])
-        .gte('starts_at', new Date(now.getTime() - DAY_MS).toISOString());
-      if (error) {
-        throw new InternalServerErrorException(error.message);
-      }
-      for (const row of data as unknown as BookingRow[]) {
+      const rows = await allPages<BookingRow>((from, to) =>
+        this.supabase.client
+          .from('appointments')
+          .select('coiffeur_id, starts_at, duration_min')
+          .in('coiffeur_id', slice)
+          .in('status', ['awaiting_payment', 'pending', 'confirmed'])
+          .gte('starts_at', new Date(now.getTime() - DAY_MS).toISOString())
+          .lt('starts_at', until.toISOString())
+          .order('starts_at')
+          .order('id')
+          .range(from, to),
+      );
+      for (const row of rows) {
         byCoiffeur.get(row.coiffeur_id)?.push({ startsAt: row.starts_at, durationMin: row.duration_min });
       }
     }

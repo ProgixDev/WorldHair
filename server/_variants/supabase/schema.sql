@@ -1099,7 +1099,9 @@ as $$
       (extract(hour from (p_now at time zone 'Europe/Paris')) * 60
         + extract(minute from (p_now at time zone 'Europe/Paris')))::int as minute
   ),
-  hours as (
+  -- Not materialized: each filter then looks up one salon's day by key,
+  -- instead of scanning a copy of every salon's week.
+  hours as not materialized (
     select a.profile_id, a.weekday, a.is_open, a.opens_minute, a.closes_minute, a.break_start_minute, a.break_end_minute
     from public.coiffeur_availability a
     union all
@@ -1200,7 +1202,12 @@ as $$
               and h.weekday = paris.weekday
               and paris.minute >= h.opens_minute
               and paris.minute < h.closes_minute
-              and not (h.break_start_minute is not null and paris.minute >= h.break_start_minute and paris.minute < h.break_end_minute)
+              and not (
+                h.break_start_minute is not null
+                and h.break_end_minute is not null
+                and paris.minute >= h.break_start_minute
+                and paris.minute < h.break_end_minute
+              )
           )
           and not exists (
             select 1 from public.coiffeur_time_off t
@@ -1239,13 +1246,17 @@ as $$
       )
       and (
         -- A salon with no known location is excluded from a radius search,
-        -- not passed through by virtue of "we can't check".
+        -- not passed through by virtue of "we can't check". A home-service
+        -- coiffeur comes to the client: their own radius decides, below.
         p_radius_km is null or (select point from origin) is null
+        or cp.practice_zone = 'domicile'
         or (cp.location is not null and extensions.ST_DWithin(cp.location, (select point from origin), p_radius_km * 1000))
       )
       and (
-        -- A home-service coiffeur only shows to clients they'd travel to.
-        cp.practice_zone <> 'domicile'
+        -- A home-service coiffeur only shows to clients they'd travel to —
+        -- except by name (a client's favorites), wherever the client is.
+        p_ids is not null
+        or cp.practice_zone <> 'domicile'
         or cp.travel_radius_km is null
         or (select point from origin) is null
         or cp.location is null

@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AppointmentRow, derivedStatus } from '../appointments/appointments.service';
+import { Role } from '../common/types/role';
 import { slices } from '../common/utils/slices';
 import { SupabaseService } from '../database/supabase.service';
 
@@ -153,31 +154,40 @@ export class ReviewsService {
   }
 
   /**
-   * "Signaler" (TODO.md Phase 6): anyone reading a review — a client, the
-   * salon — reports it once, with a reason. It joins the admins' queue and
-   * stays visible until they decide; one they already hid stays hidden, the
-   * report kept. The author can't report their own review.
+   * "Signaler" (TODO.md Phase 6): a client reading a review, or the salon
+   * it's about, reports it once, with a reason. It joins the admins' queue
+   * and stays visible until they decide; one they already hid stays hidden,
+   * the report kept. The author can't report their own review, nor a salon
+   * another salon's.
    */
-  async report(reviewId: string, reporterId: string, input: { reason: ReportReason; details?: string }): Promise<void> {
+  async report(
+    reviewId: string,
+    reporter: { id: string; role: Role },
+    input: { reason: ReportReason; details?: string },
+  ): Promise<void> {
     const row = await this.reviewOrThrow(reviewId);
-    if (row.particulier_id === reporterId) {
+    if (row.particulier_id === reporter.id) {
       throw new BadRequestException("You can't report your own review");
+    }
+    if (reporter.role === 'coiffeur' && row.coiffeur_id !== reporter.id) {
+      throw new ForbiddenException("A salon can only report its own salon's reviews");
     }
     const details = input.details?.trim() || null;
     const { error } = await this.supabase.client
       .from('review_reports')
-      .insert({ review_id: reviewId, reporter_id: reporterId, reason: input.reason, details });
-    if (error) {
-      if (error.code === '23505') {
-        throw new ConflictException('You already reported this review');
-      }
+      .insert({ review_id: reviewId, reporter_id: reporter.id, reason: input.reason, details });
+    if (error && error.code !== '23505') {
       throw new InternalServerErrorException(error.message);
     }
+    // Also on a repeat: a first try whose flag never landed still reaches the admins.
     await this.updateRow(reviewId, {
       ...(row.status === 'hidden' ? {} : { status: 'reported' }),
       report_reason: details ? `${input.reason}: ${details}` : input.reason,
       reported_at: new Date().toISOString(),
     });
+    if (error) {
+      throw new ConflictException('You already reported this review');
+    }
   }
 
   // ─── Admin — "Signalement / modération avis" ─────────────────────────────

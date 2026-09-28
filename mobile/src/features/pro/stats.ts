@@ -11,7 +11,8 @@ export interface WeekBucket {
   revenue: number;
 }
 
-function startOfWeek(date: Date): Date {
+/** Monday 00:00 of `date`'s week, local time. */
+export function startOfWeek(date: Date): Date {
   const day = startOfDay(date);
   // getDay: 0 = Sunday. Shift so weeks start on Monday.
   const shift = (day.getDay() + 6) % 7;
@@ -197,9 +198,20 @@ export interface FillRate {
 
 const MINUTE_MS = 60_000;
 
-/** Minutes of [start, end) inside [from, to). */
-function overlapMinutes(start: number, end: number, from: number, to: number): number {
-  return Math.max(0, Math.min(end, to) - Math.max(start, from)) / MINUTE_MS;
+/** Minutes of [from, to) the closures cover, each minute once however many closures overlap on it. */
+function closedMinutes(closures: { startsAt: string; endsAt: string }[], from: number, to: number): number {
+  const spans = closures
+    .map((closure) => [Math.max(from, new Date(closure.startsAt).getTime()), Math.min(to, new Date(closure.endsAt).getTime())])
+    .filter(([start, end]) => end > start)
+    .sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let reached = from;
+  for (const [start, end] of spans) {
+    const counted = Math.max(start, reached);
+    if (end > counted) total += end - counted;
+    reached = Math.max(reached, end);
+  }
+  return total / MINUTE_MS;
 }
 
 /**
@@ -232,12 +244,7 @@ export function weeklyFillRate(
       if (to <= from) continue;
       const start = day.getTime() + from * MINUTE_MS;
       const end = day.getTime() + to * MINUTE_MS;
-      const closed = closures.reduce(
-        (sum, closure) =>
-          sum + overlapMinutes(new Date(closure.startsAt).getTime(), new Date(closure.endsAt).getTime(), start, end),
-        0,
-      );
-      openMinutes += Math.max(0, (end - start) / MINUTE_MS - closed);
+      openMinutes += (end - start) / MINUTE_MS - closedMinutes(closures, start, end);
     }
   }
 
