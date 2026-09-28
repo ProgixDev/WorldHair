@@ -23,7 +23,6 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
 import { daysRemaining } from "../../features/pro/subscription";
 import { PLANS, type PlanId } from "../../features/pro/types";
-import { debugSetSubscriptionEnd, resetProWorkspace } from "../../services/pro";
 import { formatAmount, fullDate } from "../../utils/date";
 
 const BENEFITS = [
@@ -50,7 +49,6 @@ export default function ProAccount() {
     changePlan,
     cancelSubscription,
     reactivateSubscription,
-    refresh,
   } = usePro();
 
   const [busy, setBusy] = useState<PlanId | "cancel" | null>(null);
@@ -117,31 +115,6 @@ export default function ProAccount() {
         },
       },
     ]);
-
-  const handleResetWorkspace = () =>
-    Alert.alert(
-      "Réinitialiser l'espace pro ?",
-      "Prestations, agenda, rendez-vous, réponses et abonnement de démo seront regénérés.",
-      [
-        { text: "Annuler", style: "cancel" },
-        {
-          text: "Réinitialiser",
-          style: "destructive",
-          onPress: async () => {
-            await resetProWorkspace();
-            await refresh();
-          },
-        },
-      ],
-    );
-
-  const simulateSubscriptionEnd = async (
-    daysFromNow: number,
-    status: "trial" | "cancelled",
-  ) => {
-    await debugSetSubscriptionEnd(daysFromNow, status);
-    await refresh();
-  };
 
   return (
     <ScrollView
@@ -434,30 +407,6 @@ export default function ProAccount() {
           label="Se déconnecter"
           tone="danger"
           onPress={handleSignOut}
-          isLast
-        />
-      </Group>
-
-      {/* ── Dev ──────────────────────────────────────────────────────── */}
-      <Group title="Développement">
-        <Row
-          icon="calendar-alert-outline"
-          label="Simuler J-7 avant fin d'abonnement"
-          value="Bandeau rouge sur le tableau de bord"
-          onPress={() => void simulateSubscriptionEnd(6, "cancelled")}
-        />
-        <Row
-          icon="lock-alert-outline"
-          label="Simuler un abonnement expiré"
-          value="Bloque l'espace pro entier"
-          onPress={() => void simulateSubscriptionEnd(-1, "cancelled")}
-        />
-        <Row
-          icon="restore"
-          label="Réinitialiser l'espace pro"
-          value="Prestations, agenda, avis et abonnement de démo"
-          tone="danger"
-          onPress={handleResetWorkspace}
           isLast
         />
       </Group>

@@ -313,26 +313,6 @@ export async function signInWithEmail(params: {
   return session;
 }
 
-/**
- * Social login placeholder: expo-auth-session / expo-apple-authentication
- * aren't installed and no OAuth app is registered with Google/Apple yet, so
- * this still fabricates a session rather than running a real OAuth flow.
- * Swap this for `supabase.auth.signInWithOAuth` once those exist.
- */
-export async function signInWithProvider(
-  provider: "google" | "apple",
-): Promise<Session> {
-  const email = "demo." + provider + "@worldhair.app";
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password: DEMO_PASSWORD,
-  });
-  if (error) throw new AuthError("STORAGE", "Connexion impossible.");
-
-  const session = await buildSession();
-  if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");
-  return session;
-}
 
 // ─── Email verification ──────────────────────────────────────────────────────
 

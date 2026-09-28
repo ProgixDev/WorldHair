@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../lib/apiClient";
+import type { BusyInterval } from "./slots";
 import type { OpeningDay, Review, Salon, Service, SpecialtyId } from "./types";
 
 /**
@@ -41,6 +42,8 @@ interface AvailabilityResponse {
   isOpen: boolean;
   opensMinute: number;
   closesMinute: number;
+  breakStartMinute: number | null;
+  breakEndMinute: number | null;
 }
 
 interface SalonDetailResponse extends SalonSummaryResponse {
@@ -70,6 +73,8 @@ function toHours(availability: AvailabilityResponse[]): OpeningDay[] {
     weekday: day.weekday,
     opens: day.isOpen ? day.opensMinute : null,
     closes: day.isOpen ? day.closesMinute : null,
+    breakStart: day.isOpen ? day.breakStartMinute : null,
+    breakEnd: day.isOpen ? day.breakEndMinute : null,
   }));
 }
 
@@ -163,15 +168,14 @@ export async function fetchSalonCities(): Promise<string[]> {
 }
 
 /**
- * Starts already held by *anyone* at this salon (pending or confirmed, no
- * client identity) — feeds the booking flow's slot picker so a slot someone
- * else already holds shows as unavailable too, not just the caller's own.
+ * Bookings already held by *anyone* at this salon (pending or confirmed, no
+ * client identity), with their length — feeds the booking flow's slot
+ * picker so every start that would overlap one shows as unavailable, not
+ * just the caller's own bookings or exact start times.
  */
-export async function fetchBusySlots(salonId: string): Promise<string[]> {
-  const { data } = await apiClient.get<{ startsAt: string; durationMin: number }[]>(
-    `/appointments/salon/${salonId}/busy`,
-  );
-  return data.map((slot) => slot.startsAt);
+export async function fetchBusySlots(salonId: string): Promise<BusyInterval[]> {
+  const { data } = await apiClient.get<BusyInterval[]>(`/appointments/salon/${salonId}/busy`);
+  return data;
 }
 
 // ─── Lightweight shared cache for display-only lookups ─────────────────────

@@ -1,6 +1,13 @@
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
+import { parisParts, parisTime } from '../common/utils/paris-time';
 import { SupabaseService } from '../database/supabase.service';
 import { AdminStatsService } from './admin-stats.service';
+
+/** Today at hour:minute on a Paris clock (the suite itself runs in UTC). */
+function parisToday(hour: number, minute = 0): string {
+  const today = parisParts(new Date());
+  return parisTime(today.year, today.month, today.day, hour, minute).toISOString();
+}
 
 describe('AdminStatsService', () => {
   let supabase: FakeSupabaseService;
@@ -28,10 +35,42 @@ describe('AdminStatsService', () => {
     ]);
   });
 
+  it('getBookingStats("day") buckets by Paris hours: 07:30 in Paris counts in "6h"', async () => {
+    const earlyMorning = parisToday(7, 30);
+    supabase.seedAppointment({
+      particulierId: 'p1', coiffeurId: 'c1', startsAt: earlyMorning, status: 'confirmed', createdAt: earlyMorning, price: 50,
+    });
+
+    const stats = await service.getBookingStats('day');
+
+    expect(stats.points[0]).toMatchObject({ label: '6h', confirmed: 1 });
+  });
+
+  it('getBookingStats("week") counts a booking made just after midnight in Paris on that Paris day', async () => {
+    const justAfterMidnight = parisToday(0, 30);
+    supabase.seedAppointment({
+      particulierId: 'p1', coiffeurId: 'c1', startsAt: justAfterMidnight, status: 'confirmed', createdAt: justAfterMidnight,
+    });
+
+    const stats = await service.getBookingStats('week');
+
+    const isoDayOfWeek = (parisParts(new Date()).weekday + 6) % 7; // 0 = Monday
+    expect(stats.points[isoDayOfWeek].confirmed).toBe(1);
+  });
+
+  it('getBookingStats("month") counts a booking made just after midnight on 1 January in Paris in "Jan"', async () => {
+    const newYear = parisTime(parisParts(new Date()).year, 1, 1, 0, 30).toISOString();
+    supabase.seedAppointment({
+      particulierId: 'p1', coiffeurId: 'c1', startsAt: newYear, status: 'confirmed', createdAt: newYear,
+    });
+
+    const stats = await service.getBookingStats('month');
+
+    expect(stats.points[0]).toMatchObject({ label: 'Jan', confirmed: 1 });
+  });
+
   it('getBookingStats("week") counts today\'s confirmed and cancelled appointments into today\'s bucket', async () => {
-    const now = new Date();
-    const todayStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const todayNoonIso = new Date(todayStartMs + 12 * 3_600_000).toISOString();
+    const todayNoonIso = parisToday(12);
 
     supabase.seedAppointment({
       particulierId: 'p1', coiffeurId: 'c1', startsAt: todayNoonIso, status: 'confirmed', createdAt: todayNoonIso, price: 50,
@@ -50,7 +89,7 @@ describe('AdminStatsService', () => {
     expect(stats.points.reduce((sum, p) => sum + p.confirmed, 0)).toBe(1);
     expect(stats.points.reduce((sum, p) => sum + p.cancelled, 0)).toBe(1);
 
-    const isoDayOfWeek = (now.getUTCDay() + 6) % 7; // 0 = Monday
+    const isoDayOfWeek = (parisParts(new Date()).weekday + 6) % 7; // 0 = Monday
     expect(stats.points[isoDayOfWeek]).toMatchObject({ confirmed: 1, cancelled: 1 });
     // Revenue counts only the confirmed appointment's price — the cancelled
     // one's 30 must not leak in.

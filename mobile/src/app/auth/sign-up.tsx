@@ -1,19 +1,18 @@
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { AuthHeader } from "../../components/ui/AuthHeader";
 import { Button } from "../../components/ui/Button";
 import { Checkbox } from "../../components/ui/Checkbox";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { SocialButton } from "../../components/ui/SocialButton";
 import { TextField } from "../../components/ui/TextField";
 import { useResponsive } from "../../constants/responsive";
 import { spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { ROUTES, resolveNextRoute } from "../../features/auth/routing";
+import { ROUTES } from "../../features/auth/routing";
 import { setSignupIntent } from "../../services/preferences";
 import { AuthError, type UserRole } from "../../services/auth";
 import { checkPassword, isValidEmail } from "../../utils/validation";
@@ -22,7 +21,7 @@ export default function SignUp() {
   const router = useRouter();
   const { theme } = useTheme();
   const { space } = useResponsive();
-  const { signUp, signInWithProvider } = useAuth();
+  const { signUp } = useAuth();
 
   const [role, setRole] = useState<UserRole>("particulier");
   const [email, setEmail] = useState("");
@@ -34,9 +33,7 @@ export default function SignUp() {
     terms?: string;
   }>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [pending, setPending] = useState<null | "email" | "google" | "apple">(
-    null,
-  );
+  const [pending, setPending] = useState(false);
 
   const strength = useMemo(() => checkPassword(password), [password]);
 
@@ -54,7 +51,7 @@ export default function SignUp() {
     setFormError(null);
     if (!validate()) return;
 
-    setPending("email");
+    setPending(true);
     try {
       await signUp(email, password, role);
       await setSignupIntent(role);
@@ -69,20 +66,7 @@ export default function SignUp() {
           : "Inscription impossible. Réessayez.",
       );
     } finally {
-      setPending(null);
-    }
-  };
-
-  const handleProvider = async (provider: "google" | "apple") => {
-    setFormError(null);
-    setPending(provider);
-    try {
-      const session = await signInWithProvider(provider);
-      router.replace((await resolveNextRoute(session, true)) as never);
-    } catch {
-      setFormError("Connexion impossible. Réessayez.");
-    } finally {
-      setPending(null);
+      setPending(false);
     }
   };
 
@@ -175,40 +159,8 @@ export default function SignUp() {
                 : "Créer mon compte"
             }
             onPress={handleSignUp}
-            loading={pending === "email"}
-            disabled={pending !== null && pending !== "email"}
+            loading={pending}
           />
-        </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-          }}
-        >
-          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-          <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-            ou
-          </Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-        </View>
-
-        <View style={{ gap: spacing.md }}>
-          <SocialButton
-            provider="google"
-            onPress={() => handleProvider("google")}
-            loading={pending === "google"}
-            disabled={pending !== null && pending !== "google"}
-          />
-          {Platform.OS === "ios" ? (
-            <SocialButton
-              provider="apple"
-              onPress={() => handleProvider("apple")}
-              loading={pending === "apple"}
-              disabled={pending !== null && pending !== "apple"}
-            />
-          ) : null}
         </View>
 
         <View

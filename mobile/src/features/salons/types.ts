@@ -48,6 +48,9 @@ export interface OpeningDay {
   /** Minutes from midnight; `null` when closed. */
   opens: number | null;
   closes: number | null;
+  /** Lunch break, minutes from midnight; `null` (or absent) when there's none. */
+  breakStart?: number | null;
+  breakEnd?: number | null;
 }
 
 export interface Salon {

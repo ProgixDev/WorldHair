@@ -12,7 +12,7 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
 import { fetchBusySlots, fetchSalonById } from "../../features/salons/api";
-import { openDays, slotsForDay, slotToDate } from "../../features/salons/slots";
+import { openDays, slotsForDay, slotToDate, type BusyInterval } from "../../features/salons/slots";
 import type { Salon, Service } from "../../features/salons/types";
 import { getAdSlot, type AdSlot } from "../../services/ads";
 import {
@@ -69,7 +69,7 @@ export default function BookingFlow() {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [day, setDay] = useState<Date | null>(null);
   const [slotMinutes, setSlotMinutes] = useState<number | null>(null);
-  const [taken, setTaken] = useState<string[]>([]);
+  const [busy, setBusy] = useState<BusyInterval[]>([]);
   const [confirmationAd, setConfirmationAd] = useState<AdSlot | null>(null);
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState<PaymentReceipt | null>(null);
@@ -100,21 +100,26 @@ export default function BookingFlow() {
     };
   }, [salonId, serviceId]);
 
-  // A slot is unavailable if the particulier already holds it elsewhere
-  // (minus the one being moved) or if anyone else already holds it at this
+  // A slot is unavailable if it overlaps a booking the particulier already
+  // holds elsewhere (minus the one being moved) or one anyone holds at this
   // salon (see AppointmentsService.listBusySlots — no client identity, just
-  // starts, so it's safe to ask for regardless of who's browsing).
+  // start and length, so it's safe to ask for regardless of who's browsing).
   useEffect(() => {
     let cancelled = false;
     Promise.all([listAppointments(), fetchBusySlots(String(salonId))]).then(
-      ([appointments, busy]) => {
+      ([appointments, salonBusy]) => {
         if (cancelled) return;
         const own = appointments
           .filter(
             (a) => (a.status === "pending" || a.status === "confirmed") && a.id !== appointmentId,
           )
-          .map((a) => a.startsAt);
-        setTaken([...own, ...busy]);
+          .map((a) => ({ startsAt: a.startsAt, durationMin: a.durationMin }));
+        // The salon's list includes the appointment being moved: it mustn't block its own new slot.
+        const current = appointments.find((a) => a.id === appointmentId);
+        const others = salonBusy.filter(
+          (b) => !(current && b.startsAt === current.startsAt && b.durationMin === current.durationMin),
+        );
+        setBusy([...own, ...others]);
         if (isReschedule && !selectedService) {
           const current = appointments.find((a) => a.id === appointmentId);
           const service = salon?.services.find(
@@ -141,9 +146,9 @@ export default function BookingFlow() {
       salon,
       day,
       durationMin: selectedService.durationMin,
-      taken,
+      busy,
     });
-  }, [salon, day, selectedService, taken]);
+  }, [salon, day, selectedService, busy]);
 
   if (salon === undefined)
     return (

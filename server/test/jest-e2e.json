@@ -1,6 +1,7 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
+  "globalSetup": "<rootDir>/test/utils/force-utc.global-setup.ts",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "testPathIgnorePatterns": ["/node_modules/", "/_variants/"],

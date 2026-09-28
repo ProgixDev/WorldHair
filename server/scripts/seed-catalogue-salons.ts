@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { seedSalonReviews, upsertReviewers } from "./lib/seed-reviews";
 
 /**
  * Promotes the mobile app's mock salon catalogue
@@ -51,7 +52,12 @@ interface SalonSeed {
   city: string;
   latitude: number;
   longitude: number;
+  /**
+   * Target average for the reviews generated below — the salon's displayed
+   * rating is computed from those real reviews, never written directly.
+   */
   rating: number;
+  /** Kept from the ported mock data; the real count is however many reviews get generated. */
   reviewCount: number;
   specialties: SpecialtyId[];
   badges?: string[];
@@ -237,7 +243,7 @@ async function upsertAuthUser(email: string): Promise<string> {
   return data.user.id;
 }
 
-async function seedSalon(seed: SalonSeed): Promise<void> {
+async function seedSalon(seed: SalonSeed, reviewerIds: string[]): Promise<void> {
   const email = `coiffeur.${seed.id}@worldhair.app`;
   const userId = await upsertAuthUser(email);
   const [firstName, ...rest] = seed.stylist.split(" ");
@@ -287,8 +293,6 @@ async function seedSalon(seed: SalonSeed): Promise<void> {
       longitude: seed.longitude,
       specialties: seed.specialties,
       badges: seed.badges ?? [],
-      rating: seed.rating,
-      review_count: seed.reviewCount,
     },
     { onConflict: "profile_id" },
   );
@@ -327,15 +331,23 @@ async function seedSalon(seed: SalonSeed): Promise<void> {
   );
   if (servicesError) throw servicesError;
 
-  console.log(`  ${seed.name} (${email}): ${services.length} services, ${seed.city}`);
+  const reviews = await seedSalonReviews(supabase, {
+    coiffeurId: userId,
+    salonKey: seed.id,
+    targetRating: seed.rating,
+    reviewerIds,
+  });
+
+  console.log(`  ${seed.name} (${email}): ${services.length} services, ${reviews} reviews, ${seed.city}`);
 }
 
 async function main(): Promise<void> {
   console.log(`Seeding ${SEEDS.length} catalogue salons as real coiffeur accounts...\n`);
+  const reviewerIds = await upsertReviewers(supabase);
   for (const seed of SEEDS) {
-    await seedSalon(seed);
+    await seedSalon(seed, reviewerIds);
   }
-  console.log("\nDone. All catalogue accounts share the password:", DEMO_PASSWORD);
+  console.log("\nDone. All catalogue and review-author accounts share the password:", DEMO_PASSWORD);
 }
 
 void main();

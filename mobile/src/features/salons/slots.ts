@@ -8,47 +8,44 @@ export interface Slot {
   available: boolean;
 }
 
-const STEP_MIN = 30;
+/** A booking that already holds time: this salon's (anyone's) or the user's own elsewhere. */
+export interface BusyInterval {
+  startsAt: string;
+  durationMin: number;
+}
 
-/**
- * Deterministic "already booked" mask. A real agenda comes from the backend;
- * until then the same salon/day always shows the same holes, so navigating
- * back and forth never reshuffles the grid under the user.
- */
-function pseudoBusy(salonId: string, day: Date, minutes: number): boolean {
-  let hash = day.getDate() * 31 + day.getMonth() * 17 + minutes;
-  for (let i = 0; i < salonId.length; i++)
-    hash = (hash * 33 + salonId.charCodeAt(i)) % 9973;
-  return hash % 10 < 4;
+const STEP_MIN = 30;
+const MINUTE_MS = 60_000;
+
+function overlaps(startMs: number, endMs: number, busy: BusyInterval): boolean {
+  const busyStart = new Date(busy.startsAt).getTime();
+  const busyEnd = busyStart + busy.durationMin * MINUTE_MS;
+  return startMs < busyEnd && busyStart < endMs;
 }
 
 /**
  * Bookable starts for one salon on one day: inside opening hours, long enough
- * for the service to finish before closing, never in the past, and minus the
- * slots the user already holds.
+ * for the service to finish before closing, never in the past, clear of the
+ * lunch break, and not overlapping any existing booking over its whole
+ * length — the same rules the server enforces, so a free slot here is one
+ * the server accepts.
  */
 export function slotsForDay(params: {
   salon: Salon;
   day: Date;
   durationMin: number;
-  /** ISO starts already taken by this user, any salon. */
-  taken?: string[];
+  busy?: BusyInterval[];
   now?: Date;
 }): Slot[] {
-  const { salon, day, durationMin, taken = [], now = new Date() } = params;
+  const { salon, day, durationMin, busy = [], now = new Date() } = params;
   const hours = salon.hours.find((h) => h.weekday === day.getDay());
   if (!hours || hours.opens === null || hours.closes === null) return [];
-
-  const takenMinutes = new Set(
-    taken
-      .map((iso) => new Date(iso))
-      .filter((date) => isSameDay(date, day))
-      .map((date) => date.getHours() * 60 + date.getMinutes()),
-  );
 
   const nowMinutes = isSameDay(day, now)
     ? now.getHours() * 60 + now.getMinutes()
     : -1;
+  const breakStart = hours.breakStart ?? null;
+  const breakEnd = hours.breakEnd ?? null;
 
   const slots: Slot[] = [];
   for (
@@ -56,12 +53,22 @@ export function slotsForDay(params: {
     minutes + durationMin <= hours.closes;
     minutes += STEP_MIN
   ) {
+    const endMinutes = minutes + durationMin;
+    const startMs = slotToDate(day, minutes).getTime();
+    const endMs = startMs + durationMin * MINUTE_MS;
+
     const isPast = minutes <= nowMinutes;
-    const isTaken = takenMinutes.has(minutes);
+    const inBreak =
+      breakStart !== null &&
+      breakEnd !== null &&
+      minutes < breakEnd &&
+      endMinutes > breakStart;
+    const isBusy = busy.some((interval) => overlaps(startMs, endMs, interval));
+
     slots.push({
       minutes,
       label: minutesToTime(minutes),
-      available: !isPast && !isTaken && !pseudoBusy(salon.id, day, minutes),
+      available: !isPast && !inBreak && !isBusy,
     });
   }
 

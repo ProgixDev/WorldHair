@@ -10,7 +10,7 @@ import { formatDistance } from "../../features/salons/geo";
 import { specialtyLabel } from "../../features/salons/types";
 import type { SalonWithDistance } from "../../features/salons/types";
 import { formatPrice } from "../../utils/date";
-import { RatingStars } from "../ui/RatingStars";
+import { SalonRating } from "./SalonRating";
 
 interface SalonCardProps {
   salon: SalonWithDistance;
@@ -87,7 +87,7 @@ export function SalonCard({ salon, width, onPress, active }: SalonCardProps) {
             flexWrap: "wrap",
           }}
         >
-          <RatingStars value={salon.rating} size={13} showValue />
+          <SalonRating salon={salon} size={13} />
           <View
             style={{
               flexDirection: "row",

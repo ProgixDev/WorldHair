@@ -2,7 +2,7 @@
 
 ## Accounts
 
-All password `Demo1234!` — one tap via the "Mode démo" bar under the sign-in form.
+All password `Demo1234!` — one tap via the "Mode démo" bar under the sign-in form (development builds only; a release APK has no demo bar, type the email instead).
 
 | Account | State |
 |---|---|
@@ -13,8 +13,10 @@ All password `Demo1234!` — one tap via the "Mode démo" bar under the sign-in 
 
 Web admin: `admin@admin.com` / `admin123` → `/login`
 Catalogue: 26 salons, 8 cities. `coiffeur.<slug>@worldhair.app` / `Demo1234!`
+Review authors: 6 clients, `client.<name>@worldhair.app` / `Demo1234!` — they wrote the catalogue's real reviews (3 to 6 per salon).
 
 Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:catalogue`
+⚠️ `seed:demo` resets the 4 demo accounts to the states above and replaces every appointment between demo.particulier and demo.coiffeur.active.
 
 ---
 
@@ -27,7 +29,7 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Slide 4 text/image reflect whatever's set in `/admin/contenu`
 - [x] Sign up with email+password, pick **Particulier**
 - [x] Sign up with email+password, pick **Coiffeur**
-- [x] Google/Apple button — expect it to fail (⚠️ mocked, no OAuth app registered)
+- [ ] No Google/Apple buttons on sign-in or sign-up (email + password only)
 - [x] 6-digit code arrives by email, auto-submits on the 6th digit
 - [x] "Renvoyer le code" locked for 30s, then works
 - [x] Profile setup: first name, last name, photo (optional, uploads)
@@ -48,15 +50,21 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Filter badge shows correct active-filter count
 - [x] No filters → all 26 salons show
 - [x] Ad appears every 6 results when `search_results` is enabled
+- [ ] Ratings are real: each catalogue salon shows its average and review count (e.g. "4,8 (6)"); a salon with no review shows « Nouveau »
+- [ ] "Mieux notés" puts salons without reviews last
 
 ### Salon page
 - [x] Parallax cover scroll effect
 - [x] Services, opening hours, map, reviews all render
 - [x] Your own review is signed "Vous"
+- [ ] A salon with no review shows « Nouveau » in the header and "Pas encore d'avis…" instead of the rating summary
 
 ### Booking (4 steps)
 - [x] Service → Slot → Payment → Confirmation, all 4 steps reachable
 - [x] Struck-through slots: past times, already-yours times, taken-by-someone-else times
+- [ ] No random busy slots: on an empty day every slot is free
+- [ ] Every start that would overlap an existing booking is struck through (not only its start time), and so is the lunch break
+- [ ] First slot of the day (e.g. 9:00) can be booked — the server reads hours on a Paris clock
 - [x] Payment step: simulated (⚠️ 900ms, always succeeds), card `•••• 4242`
 - [x] Ends on "Demande envoyée." — status is *pending*, not confirmed
 - [x] Ad pop-up appears when `booking_confirmation` is enabled
@@ -66,6 +74,7 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Upcoming tab: "Annuler" cancels
 - [x] History tab: "Laisser un avis" → then shows "Avis envoyé"
 - [x] Cancelled/refused appointments greyed out, no action buttons
+- [ ] Push when the salon refuses the request or cancels the appointment (needs push working, see "Mocked")
 
 ### Review
 - [x] 5-star rating required, submit blocked without it
@@ -108,6 +117,9 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Pending requests in red at top, Accept / Refuse both work
 - [x] Day column blocks sized proportional to appointment duration
 - [x] "Horaires" edits weekly hours (open / close / break)
+- [ ] A request whose time has already passed can no longer be accepted (server says it expired)
+- [ ] A past appointment can't be cancelled (so the client can still review it)
+- [ ] Push when the client moves an appointment, with the new date (needs push working, see "Mocked")
 
 ### `/pro/salon`
 - [x] Public page fields editable and save
@@ -115,18 +127,16 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Price change here reflects immediately on the client side
 
 ### `/pro/reviews`
-- [ ] Reply to a review
-- [ ] Edit an existing reply
-- [ ] Delete a reply
-- [ ] Hidden reviews still visible here (unlike the public page)
+- [x] Reply to a review
+- [x] Edit an existing reply
+- [x] Delete a reply
+- [x] Hidden reviews still visible here (unlike the public page)
 
 ### `/pro/account`
-- [ ] Monthly (€19) / Yearly (€182) plan switch
-- [ ] Cancel subscription
-- [ ] Reactivate subscription
-- [ ] Dev tool "Simuler J-7" → red strip appears on dashboard
-- [ ] Dev tool "Simuler expiré" → whole pro area veiled, "abonnement terminé"
-- [ ] Dev tool "Réinitialiser" → fresh 30-day trial
+- [x] Monthly (€19) / Yearly (€182) plan switch
+- [x] Cancel subscription
+- [x] Reactivate subscription
+- [ ] No "Développement" section any more (the J-7 / expired simulators wrote the subscription directly, which the database now refuses)
 
 ---
 
@@ -157,6 +167,7 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [ ] Client / Stylist tabs, search works
 - [ ] Suspend / ban / reactivate all work
 - [ ] **Key test**: suspend the client account → on mobile, every action returns 403
+- [ ] Suspend a stylist → their salon disappears from `/discover` and `/search`, its page and booking return "not found"; reactivate → back
 
 ### `/admin/avis`
 - [ ] Reported reviews list
@@ -187,17 +198,15 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [ ] **Rejection**: admin rejects with a reason → mobile shows that reason → "Modifier mon dossier" → resubmit
 - [ ] **Appointment**: client books → stylist accepts → client reschedules → stylist sees the block move → client cancels
 - [ ] **Review**: past appointment → review → stylist replies → report it (API) → admin hides it → gone from the public page
-- [ ] **Subscription**: simulate J-7 → red strip → simulate expired → pro area blocked → admin sees `expired` → reset
+- [ ] **Subscription**: waits for Stripe (TODO.md Phase 4) — the in-app simulators are gone; until then J-7 / expired can only be forced in the dev database
 
 ---
 
 ## Mocked — don't report as bugs
 
-- **Google / Apple**: no OAuth app registered, the button fails.
-- **Service payment**: simulated, always succeeds, no charge and no refund.
-- **Subscriptions**: no Apple IAP, no Google Play Billing — only plan/status/dates are real.
-- **Slots**: a deterministic mask greys out ~40% of slots on top of the real conflicts.
-- **Push**: no `eas.projectId` in `app.json` → token registration fails silently. J-1/H-1 reminders do work server-side.
+- **Service payment**: simulated, always succeeds, no charge and no refund (real payment: TODO.md Phase 5).
+- **Subscriptions**: no Stripe yet (TODO.md Phase 4) — only plan/status/dates are real.
+- **Push**: no `eas.projectId` in `app.json` → token registration fails silently. Every notification is created server-side (see `notifications_log`) but can't reach a phone until `eas init` is run with the WorldHair Expo account.
 - **Emails**: sent via Resend + a Supabase "Send Email" hook. Only sends to real inboxes once `worldhair.app` is verified in Resend — until then, sending is limited to the Resend account's own registered address.
 - **Render**: first request after idle takes 30–60s.
 
@@ -207,9 +216,10 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 171 ✅ |
-| `cd server && bun run test:e2e` | 46 ✅ |
-| `cd mobile && bun run test` | 16 ✅ |
+| `cd server && bun run test` | 210 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 52 ✅ |
+| `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
+| `cd mobile && bun run test` | 49 ✅ |
 | `cd web && bun run test` | 11 ✅ |
 
 `typecheck` + `lint` green on all three packages.

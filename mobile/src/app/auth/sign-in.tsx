@@ -1,10 +1,9 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { DemoLoginBar } from "../../components/ui/DemoLoginBar";
 import { Screen } from "../../components/ui/Screen";
-import { SocialButton } from "../../components/ui/SocialButton";
 import { TextField } from "../../components/ui/TextField";
 import { useResponsive } from "../../constants/responsive";
 import { spacing } from "../../constants/spacing";
@@ -19,7 +18,7 @@ export default function SignIn() {
   const router = useRouter();
   const { theme } = useTheme();
   const { space } = useResponsive();
-  const { signIn, signInWithProvider, signInAsDemo } = useAuth();
+  const { signIn, signInAsDemo } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,9 +26,7 @@ export default function SignIn() {
     {},
   );
   const [formError, setFormError] = useState<string | null>(null);
-  const [pending, setPending] = useState<null | "email" | "google" | "apple">(
-    null,
-  );
+  const [pending, setPending] = useState(false);
   const [demoPending, setDemoPending] = useState<DemoPersona | null>(null);
 
   const validate = () => {
@@ -44,7 +41,7 @@ export default function SignIn() {
     setFormError(null);
     if (!validate()) return;
 
-    setPending("email");
+    setPending(true);
     try {
       const session = await signIn(email, password);
       router.replace((await resolveNextRoute(session, true)) as never);
@@ -55,20 +52,7 @@ export default function SignIn() {
           : "Connexion impossible. Réessayez.",
       );
     } finally {
-      setPending(null);
-    }
-  };
-
-  const handleProvider = async (provider: "google" | "apple") => {
-    setFormError(null);
-    setPending(provider);
-    try {
-      const session = await signInWithProvider(provider);
-      router.replace((await resolveNextRoute(session, true)) as never);
-    } catch {
-      setFormError("Connexion impossible. Réessayez.");
-    } finally {
-      setPending(null);
+      setPending(false);
     }
   };
 
@@ -146,55 +130,19 @@ export default function SignIn() {
           <Button
             label="Se connecter"
             onPress={handleSignIn}
-            loading={pending === "email"}
-            disabled={
-              demoPending !== null || (pending !== null && pending !== "email")
-            }
+            loading={pending}
+            disabled={demoPending !== null}
           />
         </View>
 
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-          }}
-        >
-          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-          <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-            ou
-          </Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-        </View>
-
-        <View style={{ gap: spacing.md }}>
-          <SocialButton
-            provider="google"
-            onPress={() => handleProvider("google")}
-            loading={pending === "google"}
-            disabled={
-              demoPending !== null || (pending !== null && pending !== "google")
-            }
+        {/* Development builds only: one tap into each seeded demo account. Never in a store release. */}
+        {__DEV__ ? (
+          <DemoLoginBar
+            onSelect={handleDemo}
+            pending={demoPending}
+            disabled={pending}
           />
-          {Platform.OS === "ios" ? (
-            <SocialButton
-              provider="apple"
-              onPress={() => handleProvider("apple")}
-              loading={pending === "apple"}
-              disabled={
-                demoPending !== null ||
-                (pending !== null && pending !== "apple")
-              }
-            />
-          ) : null}
-        </View>
-
-        {/* Dev-only: no backend yet, so each persona can be entered directly. */}
-        <DemoLoginBar
-          onSelect={handleDemo}
-          pending={demoPending}
-          disabled={pending !== null}
-        />
+        ) : null}
 
         <View
           style={{

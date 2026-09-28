@@ -46,9 +46,13 @@ create policy "Users can view their own profile"
   on public.profiles for select
   using ((select auth.uid ()) = id);
 
+-- Only first_name/last_name/photo_url are writable this way — the column
+-- grant at the end of this file keeps `role` and `account_status` out of a
+-- user's reach (they're read by the API to grant admin rights and enforce bans).
 create policy "Users can update their own profile"
   on public.profiles for update
-  using ((select auth.uid ()) = id);
+  using ((select auth.uid ()) = id)
+  with check ((select auth.uid ()) = id);
 
 -- The server itself talks to Postgres with the SERVICE ROLE key
 -- (see src/database/supabase.service.ts), which bypasses RLS entirely — the
@@ -235,11 +239,10 @@ create policy "Admins can view every coiffeur document"
 -- onboarding snapshot. Mirrors mobile's ProProfile/ProService/AvailabilityDay
 -- (see mobile/src/features/pro/types.ts) now that there's a real backend.
 --
--- All three tables are readable by anyone (`using (true)`): a particulier
--- will need this once search/discovery moves off its mock catalogue
--- (TODO.md → Recherche & géolocalisation) — opened now rather than
--- re-touching this RLS later for the same tables. Only the owning coiffeur
--- may write.
+-- All these tables are readable by anyone (`using (true)`) — search and the
+-- public salon page show them. Writes go through the API only
+-- (src/salon/, service-role key): there are no client write policies, and
+-- the grants at the end of this file revoke client writes altogether.
 -- PostGIS powers real radius search (ST_DWithin/ST_Distance on a geography
 -- point) for search_salons() below, instead of hand-rolled Haversine SQL.
 create extension if not exists postgis with schema extensions;
@@ -273,9 +276,10 @@ create table public.coiffeur_profiles (
       else null
     end
   ) stored,
-  -- Seeded/system-computed display fields — deliberately NOT part of
-  -- UpdateSalonProfileDto. rating/review_count will eventually be aggregated
-  -- from real reviews once "Avis" (TODO.md) exists; badges are editorial.
+  -- System-computed display fields — deliberately NOT part of
+  -- UpdateSalonProfileDto. rating/review_count are kept in sync with the
+  -- salon's non-hidden reviews by refresh_salon_rating() (see reviews
+  -- below); badges are editorial.
   rating numeric(2, 1) not null default 0 check (rating >= 0 and rating <= 5),
   review_count integer not null default 0 check (review_count >= 0),
   badges text[] not null default '{}',
@@ -291,22 +295,6 @@ create index coiffeur_profiles_location_idx
   where location is not null;
 
 alter table public.coiffeur_profiles enable row level security;
-
--- Split by action rather than one `for all` policy: a `for all` would also
--- cover SELECT and duplicate the "anyone can view" policy just below on that
--- action, which Postgres would then evaluate twice per read.
-create policy "Coiffeurs can insert their own salon profile"
-  on public.coiffeur_profiles for insert
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeurs can update their own salon profile"
-  on public.coiffeur_profiles for update
-  using ((select auth.uid ()) = profile_id)
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeurs can delete their own salon profile"
-  on public.coiffeur_profiles for delete
-  using ((select auth.uid ()) = profile_id);
 
 create policy "Anyone can view a salon profile"
   on public.coiffeur_profiles for select
@@ -394,6 +382,10 @@ as $$
       on ca.profile_id = cp.profile_id
       and ca.status = 'validated'
       and ca.shop_profile_complete = true
+    -- Suspended and banned salons (admin → Comptes) disappear from search.
+    join public.profiles p
+      on p.id = cp.profile_id
+      and p.account_status = 'active'
     where
       (p_specialty is null or p_specialty = any (cp.specialties))
       and (p_city is null or cp.city ilike p_city)
@@ -432,19 +424,6 @@ create table public.coiffeur_availability (
 
 alter table public.coiffeur_availability enable row level security;
 
-create policy "Coiffeurs can insert their own availability"
-  on public.coiffeur_availability for insert
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeurs can update their own availability"
-  on public.coiffeur_availability for update
-  using ((select auth.uid ()) = profile_id)
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeurs can delete their own availability"
-  on public.coiffeur_availability for delete
-  using ((select auth.uid ()) = profile_id);
-
 create policy "Anyone can view availability"
   on public.coiffeur_availability for select
   using (true);
@@ -464,19 +443,6 @@ create table public.coiffeur_services (
 );
 
 alter table public.coiffeur_services enable row level security;
-
-create policy "Coiffeurs can insert their own services"
-  on public.coiffeur_services for insert
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeurs can update their own services"
-  on public.coiffeur_services for update
-  using ((select auth.uid ()) = profile_id)
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeurs can delete their own services"
-  on public.coiffeur_services for delete
-  using ((select auth.uid ()) = profile_id);
 
 create policy "Anyone can view services"
   on public.coiffeur_services for select
@@ -507,14 +473,6 @@ create table public.coiffeur_gallery_photos (
 );
 
 alter table public.coiffeur_gallery_photos enable row level security;
-
-create policy "Coiffeurs can insert their own gallery photos"
-  on public.coiffeur_gallery_photos for insert
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeurs can delete their own gallery photos"
-  on public.coiffeur_gallery_photos for delete
-  using ((select auth.uid ()) = profile_id);
 
 create policy "Anyone can view gallery photos"
   on public.coiffeur_gallery_photos for select
@@ -554,28 +512,20 @@ alter table public.appointments enable row level security;
 -- One combined SELECT policy, not two: a separate policy per side would
 -- both be permissive on the same action, which Postgres evaluates twice
 -- per read for no benefit (same fix as coiffeur_applications' policy).
+-- No write policies: booking, moving, cancelling and deciding all go through
+-- the API, which checks hours, overlaps and who may do what.
 create policy "Participant can view their own appointment"
   on public.appointments for select
   using ((select auth.uid ()) = particulier_id or (select auth.uid ()) = coiffeur_id);
-
-create policy "Particuliers can create their own appointment requests"
-  on public.appointments for insert
-  with check ((select auth.uid ()) = particulier_id);
-
-create policy "Participant can update their own appointment"
-  on public.appointments for update
-  using ((select auth.uid ()) = particulier_id or (select auth.uid ()) = coiffeur_id)
-  with check ((select auth.uid ()) = particulier_id or (select auth.uid ()) = coiffeur_id);
 
 create trigger set_appointments_updated_at
 before update on public.appointments for each row
 execute procedure public.set_updated_at ();
 
 -- "Avis" (TODO.md). One row per appointment (unique), so "Création avis" is
--- naturally capped at one review per booking. Deliberately does NOT feed
--- back into coiffeur_profiles.rating/review_count — those stay independent
--- seed/display numbers, same decoupling the original mock catalogue always
--- had (reviewCount was never == len(reviews) there either).
+-- naturally capped at one review per booking. Every change feeds
+-- coiffeur_profiles.rating/review_count through refresh_salon_rating()
+-- below, so a salon's stars always match its non-hidden reviews.
 create table public.reviews (
   id uuid primary key default gen_random_uuid (),
   appointment_id uuid not null unique references public.appointments (id) on delete cascade,
@@ -601,10 +551,9 @@ create index reviews_particulier_id_idx on public.reviews (particulier_id);
 
 alter table public.reviews enable row level security;
 
-create policy "Particuliers can create their own review"
-  on public.reviews for insert
-  with check ((select auth.uid ()) = particulier_id);
-
+-- No write policies: creating, replying, reporting and moderating all go
+-- through the API (src/reviews/), which checks the appointment really took
+-- place and that only an admin can hide a review.
 create policy "Visible to anyone, or its owner/admin regardless of status"
   on public.reviews for select
   using (
@@ -614,17 +563,57 @@ create policy "Visible to anyone, or its owner/admin regardless of status"
     or public.is_admin ()
   );
 
--- Server-side "signaler" (any authenticated caller) is enforced in
--- ReviewsService via the service-role key, not here — this policy only
--- covers the coiffeur's own reply + admin moderation.
-create policy "Coiffeur or admin can update a review"
-  on public.reviews for update
-  using ((select auth.uid ()) = coiffeur_id or public.is_admin ())
-  with check ((select auth.uid ()) = coiffeur_id or public.is_admin ());
-
 create trigger set_reviews_updated_at
 before update on public.reviews for each row
 execute procedure public.set_updated_at ();
+
+-- A salon's displayed rating is the average of its non-hidden reviews
+-- (rounded to one decimal) and review_count their number — 0 and 0 until
+-- the first review, which the app shows as "Nouveau". A reported review
+-- still counts until an admin actually hides it.
+create function public.refresh_salon_rating (p_coiffeur_id uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  update public.coiffeur_profiles cp
+  set
+    rating = coalesce(agg.avg_rating, 0),
+    review_count = agg.review_count
+  from (
+    select round(avg(r.rating)::numeric, 1) as avg_rating, count(*)::integer as review_count
+    from public.reviews r
+    where r.coiffeur_id = p_coiffeur_id and r.status <> 'hidden'
+  ) agg
+  where cp.profile_id = p_coiffeur_id;
+$$;
+
+create function public.refresh_salon_rating_on_review_change ()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op <> 'INSERT' then
+    perform public.refresh_salon_rating (old.coiffeur_id);
+  end if;
+  if tg_op <> 'DELETE' then
+    perform public.refresh_salon_rating (new.coiffeur_id);
+  end if;
+  return null;
+end;
+$$;
+
+-- Only the trigger calls these; they're not an RPC endpoint.
+revoke execute on function public.refresh_salon_rating (uuid) from public, anon, authenticated;
+revoke execute on function public.refresh_salon_rating_on_review_change () from public, anon, authenticated;
+
+-- A coiffeur's reply doesn't change the rating, so it doesn't fire this.
+create trigger refresh_salon_rating
+after insert or update of rating, status, coiffeur_id or delete on public.reviews
+for each row execute procedure public.refresh_salon_rating_on_review_change ();
 
 -- ── Public photo storage ─────────────────────────────────────────────────────
 --
@@ -688,14 +677,9 @@ create table public.push_tokens (
 -- Partial: only rows that would actually be sent to are ever looked up.
 create index push_tokens_user_id_active_idx on public.push_tokens (user_id) where invalidated_at is null;
 
+-- RLS on with no policy at all: only the API (service-role key) reads or
+-- writes tokens, through /notifications/push-tokens.
 alter table public.push_tokens enable row level security;
-
--- One `for all` policy is fine here (no separate public-read policy exists
--- on this table to double up with, unlike coiffeur_profiles etc.).
-create policy "Users manage their own push tokens"
-  on public.push_tokens for all
-  using ((select auth.uid ()) = user_id)
-  with check ((select auth.uid ()) = user_id);
 
 create table public.notification_preferences (
   user_id uuid primary key references public.profiles (id) on delete cascade,
@@ -704,12 +688,8 @@ create table public.notification_preferences (
   updated_at timestamptz not null default now()
 );
 
+-- Same as push_tokens: API only (/notifications/preferences), no policy.
 alter table public.notification_preferences enable row level security;
-
-create policy "Users manage their own notification preferences"
-  on public.notification_preferences for all
-  using ((select auth.uid ()) = user_id)
-  with check ((select auth.uid ()) = user_id);
 
 create trigger set_notification_preferences_updated_at
 before update on public.notification_preferences for each row
@@ -750,14 +730,10 @@ create table public.ad_slots (
 
 alter table public.ad_slots enable row level security;
 
+-- Admins edit these through the API (/admin/ad-slots), not directly.
 create policy "Anyone can view ad slots"
   on public.ad_slots for select
   using (true);
-
-create policy "Admin can update ad slots"
-  on public.ad_slots for update
-  using (public.is_admin ())
-  with check (public.is_admin ());
 
 create trigger set_ad_slots_updated_at
 before update on public.ad_slots for each row
@@ -782,14 +758,10 @@ create table public.app_content (
 
 alter table public.app_content enable row level security;
 
+-- Admins edit this through the API (/admin/content), not directly.
 create policy "Anyone can view app content"
   on public.app_content for select
   using (true);
-
-create policy "Admin can update app content"
-  on public.app_content for update
-  using (public.is_admin ())
-  with check (public.is_admin ());
 
 create trigger set_app_content_updated_at
 before update on public.app_content for each row
@@ -827,9 +799,9 @@ create policy "Anyone can view admin media"
 -- "Vue abonnements coiffeurs (statut, échéance)" (TODO.md → Back-office
 -- admin) + mobile's "Écran abonnement" (mobile/src/features/pro/types.ts's
 -- Subscription — this table is its real backing store, replacing the
--- AsyncStorage mock in mobile/src/services/pro.ts). Real billing still goes
--- through Apple IAP / Google Play Billing later (TODO.md) — this table only
--- tracks plan/status/dates, no payment processing.
+-- AsyncStorage mock in mobile/src/services/pro.ts). Real billing (Stripe,
+-- sold on the website) comes in TODO.md Phase 4 — this table only tracks
+-- plan/status/dates, no payment processing.
 create table public.coiffeur_subscriptions (
   profile_id uuid primary key references public.profiles (id) on delete cascade,
   plan text not null default 'monthly' check (plan in ('monthly', 'yearly')),
@@ -844,19 +816,34 @@ create table public.coiffeur_subscriptions (
 
 alter table public.coiffeur_subscriptions enable row level security;
 
+-- Read-only for the coiffeur: a subscription only changes through the API,
+-- never by the coiffeur writing their own end date.
 create policy "Coiffeur can view their own subscription, admin can view every subscription"
   on public.coiffeur_subscriptions for select
   using ((select auth.uid ()) = profile_id or public.is_admin ());
 
-create policy "Coiffeur can insert their own subscription"
-  on public.coiffeur_subscriptions for insert
-  with check ((select auth.uid ()) = profile_id);
-
-create policy "Coiffeur can update their own subscription"
-  on public.coiffeur_subscriptions for update
-  using ((select auth.uid ()) = profile_id)
-  with check ((select auth.uid ()) = profile_id);
-
 create trigger set_coiffeur_subscriptions_updated_at
 before update on public.coiffeur_subscriptions for each row
 execute procedure public.set_updated_at ();
+
+-- ── Client write lockdown ────────────────────────────────────────────────────
+--
+-- The mobile app and the admin site ship Supabase's public (anon) key. RLS
+-- policies alone aren't enough behind it: a policy that lets a user update
+-- "their own row" lets them update every column of it (role, account_status,
+-- rating, subscription dates...). So the public roles lose every write
+-- privilege on this schema, and get back exactly one: a user's own name and
+-- photo (profile setup writes them directly — see mobile/src/services/auth.ts).
+-- Everything else goes through the API with the service-role key, which
+-- bypasses both RLS and these grants. Storage uploads are unaffected (they
+-- live in the storage schema, under their own policies above).
+-- `bun run check:rls` (server/) verifies this against a live project.
+revoke insert, update, delete, truncate, references, trigger
+  on all tables in schema public from anon, authenticated;
+
+grant update (first_name, last_name, photo_url) on public.profiles to authenticated;
+
+-- Tables added later start locked too, instead of inheriting Supabase's
+-- default "everything" grant.
+alter default privileges for role postgres in schema public
+  revoke insert, update, delete, truncate, references, trigger on tables from anon, authenticated;

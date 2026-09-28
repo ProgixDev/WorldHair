@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
+import { parisParts, parisTime } from '../common/utils/paris-time';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonService } from '../salon/salon.service';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
@@ -9,28 +10,39 @@ import { AppointmentsService } from './appointments.service';
 const COIFFEUR_ID = 'coiffeur-1';
 const PARTICULIER_ID = 'particulier-1';
 
-/** Default availability (SalonService.getAvailability's fallback) is Mon-Sat 9-19 with a 13-14 break, Sunday closed. */
+/**
+ * Next `weekday` (0 = Sunday) at `hour:minute` on a Paris clock, starting
+ * tomorrow so it's never accidentally in the past. Default availability
+ * (SalonService.getAvailability's fallback) is Mon-Sat 9-19 with a 13-14
+ * break, Sunday closed — all Paris times, while the suite itself runs in UTC.
+ */
 function nextWeekday(weekday: number, hour: number, minute = 0): Date {
-  const date = new Date();
-  date.setHours(hour, minute, 0, 0);
-  date.setDate(date.getDate() + 1); // always start from tomorrow — never accidentally "in the past"
-  while (date.getDay() !== weekday) date.setDate(date.getDate() + 1);
-  return date;
+  const today = parisParts(new Date());
+  for (let offset = 1; offset <= 7; offset++) {
+    const day = new Date(Date.UTC(today.year, today.month - 1, today.day + offset));
+    if (day.getUTCDay() === weekday) {
+      return parisTime(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), hour, minute);
+    }
+  }
+  throw new Error('unreachable');
 }
 
+const WEDNESDAY_9AM = () => nextWeekday(3, 9); // first slot of the day
 const WEDNESDAY_10AM = () => nextWeekday(3, 10);
 const WEDNESDAY_8PM = () => nextWeekday(3, 20); // after the 19:00 close
 const WEDNESDAY_LUNCH = () => nextWeekday(3, 13, 30); // inside the 13-14 break
 const SUNDAY_10AM = () => nextWeekday(0, 10); // closed by default
+const YESTERDAY = () => new Date(Date.now() - 86_400_000).toISOString();
 
 describe('AppointmentsService', () => {
   let supabase: FakeSupabaseService;
   let service: AppointmentsService;
+  let events: EventEmitter2;
   let serviceId: string;
 
   beforeEach(async () => {
     supabase = new FakeSupabaseService();
-    const events = new EventEmitter2();
+    events = new EventEmitter2();
     const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, events);
     const salon = new SalonService(supabase as unknown as SupabaseService);
     service = new AppointmentsService(supabase as unknown as SupabaseService, applications, salon, events);
@@ -68,6 +80,26 @@ describe('AppointmentsService', () => {
         price: 40,
         status: 'pending',
       });
+    });
+
+    it("accepts the salon's first slot of the day, read on a Paris clock", async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: WEDNESDAY_9AM().toISOString(),
+      });
+      expect(created.status).toBe('pending');
+    });
+
+    it('404s a salon whose account is suspended or banned', async () => {
+      supabase.setAccountStatus(COIFFEUR_ID, 'suspended');
+      await expect(
+        service.create(PARTICULIER_ID, {
+          coiffeurId: COIFFEUR_ID,
+          serviceId,
+          startsAt: WEDNESDAY_10AM().toISOString(),
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('404s an unknown or unvalidated coiffeur', async () => {
@@ -218,6 +250,40 @@ describe('AppointmentsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('rejects moving an appointment that already took place', async () => {
+      const done = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: YESTERDAY(),
+        status: 'confirmed',
+      });
+      await expect(
+        service.reschedule(PARTICULIER_ID, done, nextWeekday(4, 11).toISOString()),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('tells listeners the coiffeur should hear about the move', async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      const heard = jest.fn();
+      events.on('appointment.rescheduled', heard);
+      const newSlot = nextWeekday(4, 11);
+
+      await service.reschedule(PARTICULIER_ID, created.id, newSlot.toISOString());
+
+      expect(heard).toHaveBeenCalledWith({
+        appointmentId: created.id,
+        coiffeurId: COIFFEUR_ID,
+        serviceName: 'Coupe & brushing',
+        previousStartsAt: created.startsAt,
+        startsAt: newSlot.toISOString(),
+      });
+    });
+
     it("doesn't conflict with its own current slot", async () => {
       const startsAt = WEDNESDAY_10AM();
       const created = await service.create(PARTICULIER_ID, {
@@ -273,6 +339,38 @@ describe('AppointmentsService', () => {
       await service.cancel(PARTICULIER_ID, created.id);
       await expect(service.cancel(PARTICULIER_ID, created.id)).rejects.toThrow(BadRequestException);
     });
+
+    it('rejects cancelling an appointment that already took place, so its review stays possible', async () => {
+      const done = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: YESTERDAY(),
+        status: 'confirmed',
+      });
+      await expect(service.cancel(COIFFEUR_ID, done)).rejects.toThrow(BadRequestException);
+    });
+
+    it('tells listeners who the particulier is, so a salon cancellation reaches them', async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      const heard = jest.fn();
+      events.on('appointment.cancelled', heard);
+
+      await service.cancel(COIFFEUR_ID, created.id);
+
+      expect(heard).toHaveBeenCalledWith({
+        appointmentId: created.id,
+        coiffeurId: COIFFEUR_ID,
+        particulierId: PARTICULIER_ID,
+        cancelledByUserId: COIFFEUR_ID,
+        serviceName: 'Coupe & brushing',
+        startsAt: created.startsAt,
+      });
+    });
   });
 
   describe('listForCoiffeur / decide', () => {
@@ -324,6 +422,36 @@ describe('AppointmentsService', () => {
       });
       await service.decide(COIFFEUR_ID, created.id, 'refused');
       await expect(service.decide(COIFFEUR_ID, created.id, 'confirmed')).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects deciding on a request whose time has already passed', async () => {
+      const expired = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: YESTERDAY(),
+        status: 'pending',
+      });
+      await expect(service.decide(COIFFEUR_ID, expired, 'confirmed')).rejects.toThrow(BadRequestException);
+    });
+
+    it('tells listeners about a refusal, so the particulier can be told', async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      const heard = jest.fn();
+      events.on('appointment.refused', heard);
+
+      await service.decide(COIFFEUR_ID, created.id, 'refused');
+
+      expect(heard).toHaveBeenCalledWith({
+        appointmentId: created.id,
+        particulierId: PARTICULIER_ID,
+        serviceName: 'Coupe & brushing',
+        startsAt: created.startsAt,
+      });
     });
   });
 });

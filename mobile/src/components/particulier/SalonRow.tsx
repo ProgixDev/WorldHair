@@ -12,7 +12,7 @@ import {
 import { formatDistance } from "../../features/salons/geo";
 import type { SalonWithDistance } from "../../features/salons/types";
 import { formatPrice } from "../../utils/date";
-import { RatingStars } from "../ui/RatingStars";
+import { SalonRating } from "./SalonRating";
 
 interface SalonRowProps {
   salon: SalonWithDistance;
@@ -95,10 +95,7 @@ export function SalonRow({ salon, onPress }: SalonRowProps) {
             gap: spacing.sm,
           }}
         >
-          <RatingStars value={salon.rating} size={12} showValue />
-          <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-            {"(" + salon.reviewCount + ")"}
-          </Text>
+          <SalonRating salon={salon} size={12} showCount />
           <View style={{ flex: 1 }} />
           <Text style={[typography.label, { color: theme.accent.warm }]}>
             {"dès " + formatPrice(salon.priceFrom)}

@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
+import { isAccountActive } from '../common/utils/account-status';
 import { SupabaseService } from '../database/supabase.service';
 import { Specialty } from '../salon/dto/update-salon-profile.dto';
 import { AvailabilityDay, SalonService, SalonServiceItem } from '../salon/salon.service';
@@ -151,8 +152,11 @@ export class DiscoveryService {
   }
 
   async getById(profileId: string): Promise<SalonDetail> {
-    const application = await this.applications.getMine(profileId);
-    if (!application || application.status !== 'validated' || !application.shopProfileComplete) {
+    const [application, accountActive] = await Promise.all([
+      this.applications.getMine(profileId),
+      isAccountActive(this.supabase, profileId),
+    ]);
+    if (!application || application.status !== 'validated' || !application.shopProfileComplete || !accountActive) {
       throw new NotFoundException('Salon not found');
     }
 

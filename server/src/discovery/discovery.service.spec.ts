@@ -42,6 +42,18 @@ describe('DiscoveryService', () => {
       expect(result.total).toBe(1);
     });
 
+    it('hides salons whose account is suspended or banned', async () => {
+      supabase.seedValidatedSalon({ profileId: 'p1', firstName: 'A', lastName: 'B', salonName: 'Open' });
+      supabase.seedValidatedSalon({ profileId: 'p2', firstName: 'C', lastName: 'D', salonName: 'Suspended' });
+      supabase.seedValidatedSalon({ profileId: 'p3', firstName: 'E', lastName: 'F', salonName: 'Banned' });
+      supabase.setAccountStatus('p2', 'suspended');
+      supabase.setAccountStatus('p3', 'banned');
+
+      const result = await discovery.search({ limit: 20, offset: 0 });
+      expect(result.items.map((item) => item.id)).toEqual(['p1']);
+      expect(result.total).toBe(1);
+    });
+
     it('filters by specialty and city', async () => {
       supabase.seedValidatedSalon({
         profileId: 'p1',
@@ -190,6 +202,13 @@ describe('DiscoveryService', () => {
 
     it('404s an unknown id', async () => {
       await expect(discovery.getById('does-not-exist')).rejects.toThrow(NotFoundException);
+    });
+
+    it('404s a salon whose account is suspended or banned', async () => {
+      supabase.seedValidatedSalon({ profileId: 'p1', firstName: 'A', lastName: 'B', salonName: 'Banned' });
+      supabase.setAccountStatus('p1', 'banned');
+
+      await expect(discovery.getById('p1')).rejects.toThrow(NotFoundException);
     });
   });
 });

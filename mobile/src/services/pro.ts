@@ -25,8 +25,9 @@ import { joinPhone, splitPhone } from "../utils/phoneFormat";
  * server (`/salon/me/*`, `/appointments/*`, `/reviews/*`, `/subscriptions/*`
  * — see server/src/salon/, server/src/appointments/, server/src/reviews/,
  * server/src/subscriptions/) — real, persisted in Supabase. Real billing
- * itself (Apple IAP / Google Play Billing, separate TODO.md section) isn't
- * wired up — only plan/status/dates are.
+ * (Stripe, sold on the website — TODO.md Phase 4) isn't wired up yet, only
+ * plan/status/dates. Nothing here writes to Supabase tables directly: the
+ * database refuses client writes except a user's own name and photo.
  */
 
 async function currentUserId(): Promise<string> {
@@ -327,31 +328,6 @@ export async function reactivateSubscription(): Promise<Subscription> {
   return toSubscription(data);
 }
 
-/**
- * Dev-only demo tool (J-7 banner / expired block, issue #8) — writes
- * straight to Supabase rather than the NestJS server: RLS lets a coiffeur
- * update their own `coiffeur_subscriptions` row (see schema.sql), same as
- * this app already does for profiles elsewhere. Deliberately bypasses
- * changePlan()'s renewal-date rules — the whole point is to force an
- * arbitrary end date.
- */
-export async function debugSetSubscriptionEnd(
-  daysFromNow: number,
-  status: "trial" | "cancelled",
-): Promise<Subscription> {
-  const userId = await currentUserId();
-  const end = new Date();
-  end.setDate(end.getDate() + daysFromNow);
-
-  const { error } = await supabase
-    .from("coiffeur_subscriptions")
-    .update({ status, trial_ends_at: end.toISOString(), renews_at: end.toISOString() })
-    .eq("profile_id", userId);
-  if (error) throw error;
-
-  return getSubscription();
-}
-
 // ─── Reviews ─────────────────────────────────────────────────────────────────
 
 interface ReviewApiResponse {
@@ -388,20 +364,4 @@ export async function saveReply(reviewId: string, text: string): Promise<Review[
 export async function deleteReply(reviewId: string): Promise<Review[]> {
   await apiClient.delete(`/reviews/${reviewId}/reply`);
   return listProReviews();
-}
-
-/** Dev reset — regenerates a fresh 30-day trial subscription; doesn't touch the real profile/services/availability/appointments/reviews. */
-export async function resetProWorkspace(): Promise<void> {
-  const userId = await currentUserId();
-  const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + 30);
-
-  const { error } = await supabase.from("coiffeur_subscriptions").upsert({
-    profile_id: userId,
-    plan: "monthly",
-    status: "trial",
-    trial_ends_at: trialEndsAt.toISOString(),
-    renews_at: trialEndsAt.toISOString(),
-  });
-  if (error) throw error;
 }

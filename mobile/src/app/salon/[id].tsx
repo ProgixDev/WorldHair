@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
+import { SalonRating } from "../../components/particulier/SalonRating";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { RatingStars } from "../../components/ui/RatingStars";
@@ -222,12 +223,14 @@ export default function SalonDetail() {
                 flexWrap: "wrap",
               }}
             >
-              <RatingStars value={salon.rating} showValue />
-              <Text
-                style={[typography.caption, { color: theme.foreground.gray }]}
-              >
-                {salon.reviewCount + " avis"}
-              </Text>
+              <SalonRating salon={salon} size={16} />
+              {salon.reviewCount > 0 ? (
+                <Text
+                  style={[typography.caption, { color: theme.foreground.gray }]}
+                >
+                  {salon.reviewCount + " avis"}
+                </Text>
+              ) : null}
               <View
                 style={{
                   width: 3,
@@ -392,76 +395,85 @@ export default function SalonDetail() {
 
           {/* Avis */}
           <Section title="Avis récents">
-            <View
-              style={[
-                {
-                  flexDirection: "row",
-                  gap: spacing.xl,
-                  padding: spacing.lg,
-                  borderRadius: radius.xl,
-                  backgroundColor: theme.surface.raised,
-                  borderWidth: 1,
-                  borderColor: theme.divider,
-                },
-                elevation(1, theme.shadow),
-              ]}
-            >
-              <View style={{ alignItems: "center", gap: spacing.xs }}>
-                <Text
-                  style={[
-                    typography.display,
-                    { color: theme.foreground.white },
-                  ]}
-                >
-                  {salon.rating.toFixed(1).replace(".", ",")}
-                </Text>
-                <RatingStars value={salon.rating} size={13} />
-              </View>
-
-              <View style={{ flex: 1, justifyContent: "center", gap: 4 }}>
-                {[5, 4, 3, 2, 1].map((stars) => {
-                  const count = breakdown[stars - 1];
-                  const ratio = reviews.length > 0 ? count / reviews.length : 0;
-                  return (
-                    <View
-                      key={stars}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: spacing.sm,
-                      }}
-                    >
-                      <Text
-                        style={[
-                          typography.caption,
-                          { color: theme.foreground.gray, width: 10 },
-                        ]}
-                      >
-                        {stars}
-                      </Text>
+            {reviews.length === 0 ? (
+              <Text
+                style={[typography.bodySmall, { color: theme.foreground.gray }]}
+              >
+                Pas encore d&apos;avis. Ils apparaissent ici après les premiers
+                rendez-vous.
+              </Text>
+            ) : (
+              <View
+                style={[
+                  {
+                    flexDirection: "row",
+                    gap: spacing.xl,
+                    padding: spacing.lg,
+                    borderRadius: radius.xl,
+                    backgroundColor: theme.surface.raised,
+                    borderWidth: 1,
+                    borderColor: theme.divider,
+                  },
+                  elevation(1, theme.shadow),
+                ]}
+              >
+                <View style={{ alignItems: "center", gap: spacing.xs }}>
+                  <Text
+                    style={[
+                      typography.display,
+                      { color: theme.foreground.white },
+                    ]}
+                  >
+                    {salon.rating.toFixed(1).replace(".", ",")}
+                  </Text>
+                  <RatingStars value={salon.rating} size={13} />
+                </View>
+  
+                <View style={{ flex: 1, justifyContent: "center", gap: 4 }}>
+                  {[5, 4, 3, 2, 1].map((stars) => {
+                    const count = breakdown[stars - 1];
+                    const ratio = reviews.length > 0 ? count / reviews.length : 0;
+                    return (
                       <View
+                        key={stars}
                         style={{
-                          flex: 1,
-                          height: 5,
-                          borderRadius: radius.full,
-                          backgroundColor: theme.surface.sunken,
-                          overflow: "hidden",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: spacing.sm,
                         }}
                       >
+                        <Text
+                          style={[
+                            typography.caption,
+                            { color: theme.foreground.gray, width: 10 },
+                          ]}
+                        >
+                          {stars}
+                        </Text>
                         <View
                           style={{
-                            width: (Math.round(ratio * 100) +
-                              "%") as `${number}%`,
-                            height: "100%",
-                            backgroundColor: theme.accent.warm,
+                            flex: 1,
+                            height: 5,
+                            borderRadius: radius.full,
+                            backgroundColor: theme.surface.sunken,
+                            overflow: "hidden",
                           }}
-                        />
+                        >
+                          <View
+                            style={{
+                              width: (Math.round(ratio * 100) +
+                                "%") as `${number}%`,
+                              height: "100%",
+                              backgroundColor: theme.accent.warm,
+                            }}
+                          />
+                        </View>
                       </View>
-                    </View>
-                  );
-                })}
+                    );
+                  })}
+                </View>
               </View>
-            </View>
+            )}
 
             <View style={{ gap: spacing.md }}>
               {reviews.slice(0, 4).map((review) => (

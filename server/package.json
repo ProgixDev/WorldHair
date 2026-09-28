@@ -17,7 +17,8 @@
     "setup:supabase": "bun scripts/setup-supabase.ts",
     "seed:demo": "bun scripts/seed-demo-accounts.ts",
     "seed:catalogue": "bun scripts/seed-catalogue-salons.ts",
-    "seed:admin": "bun scripts/seed-admin-account.ts"
+    "seed:admin": "bun scripts/seed-admin-account.ts",
+    "check:rls": "bun scripts/check-rls-lockdown.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
@@ -64,6 +65,7 @@
       "ts"
     ],
     "rootDir": "src",
+    "globalSetup": "<rootDir>/../test/utils/force-utc.global-setup.ts",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"

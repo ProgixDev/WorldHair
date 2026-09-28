@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { parisParts, parisTime } from "../src/common/utils/paris-time";
+import { seedSalonReviews, upsertReviewers } from "./lib/seed-reviews";
 
 /**
  * Seeds the 4 preview/demo accounts the mobile app's DemoLoginBar signs into
@@ -284,11 +286,11 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
     .eq("coiffeur_id", coiffeurId);
   if (deleteError) throw deleteError;
 
+  // Hours are Paris wall-clock times, whatever timezone the seeding machine is in.
+  const today = parisParts(new Date());
   const agendaRows = APPOINTMENT_SEEDS.map((seed) => {
     const service = services[seed.serviceIndex % services.length];
-    const startsAt = new Date();
-    startsAt.setDate(startsAt.getDate() + seed.dayOffset);
-    startsAt.setHours(seed.hour, seed.minute, 0, 0);
+    const startsAt = parisTime(today.year, today.month, today.day + seed.dayOffset, seed.hour, seed.minute);
     return {
       particulier_id: particulierId,
       coiffeur_id: coiffeurId,
@@ -407,6 +409,15 @@ async function main(): Promise<void> {
   const coiffeurId = userIds.get("demo.coiffeur.active@worldhair.app");
   if (particulierId && coiffeurId) {
     await seedDemoAppointments(particulierId, coiffeurId);
+    // Written by the six client.* accounts, never demo.particulier — its own
+    // past appointments stay free to review by hand.
+    const reviews = await seedSalonReviews(supabase, {
+      coiffeurId,
+      salonKey: "studio-w-demo",
+      targetRating: 4.9,
+      reviewerIds: await upsertReviewers(supabase),
+    });
+    console.log(`  demo salon reviews seeded (${reviews})`);
   }
 
   console.log("\nDone. All demo accounts share the password:", DEMO_PASSWORD);

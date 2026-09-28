@@ -404,7 +404,7 @@ export class FakeSupabaseService {
           return { data: { user }, error: null };
         },
         /** Only used by AdminAccountsService to resolve emails for the accounts list — one page is always enough at test scale. */
-        listUsers: async (_options: { page: number; perPage: number }) => ({
+        listUsers: async () => ({
           data: { users: [...this.authUsersByToken.values()] },
           error: null,
         }),
@@ -582,6 +582,15 @@ export class FakeSupabaseService {
     return id;
   }
 
+  /** Test convenience: suspends/bans/reactivates an account the way AdminAccountsService does, without the admin API round-trip. */
+  setAccountStatus(profileId: string, status: 'active' | 'suspended' | 'banned'): void {
+    const existing = this.profiles.get(profileId);
+    if (!existing) {
+      throw new Error(`FakeSupabaseService: no profile "${profileId}" to set a status on`);
+    }
+    this.profiles.set(profileId, { ...existing, account_status: status });
+  }
+
   /** Test convenience: reads back what notifications/ actually recorded for a user, for assertions. */
   notifyLogFor(userId: string): NotificationLogRow[] {
     return [...this.notificationsLog.values()].filter((row) => row.user_id === userId);
@@ -688,6 +697,18 @@ export class FakeSupabaseService {
       status: 'validated',
       shopProfileComplete: true,
     });
+    // A real coiffeur_profiles row always has its profiles row (FK) — search
+    // and booking read its account_status.
+    if (!this.profiles.has(params.profileId)) {
+      this.profiles.set(params.profileId, {
+        id: params.profileId,
+        first_name: params.firstName,
+        last_name: params.lastName,
+        photo_url: null,
+        role: 'coiffeur',
+        account_status: 'active',
+      });
+    }
     this.salonProfiles.set(params.profileId, {
       profile_id: params.profileId,
       salon_name: params.salonName,
@@ -736,6 +757,8 @@ export class FakeSupabaseService {
         application: [...this.coiffeurApplications.values()].find((app) => app.profile_id === profile.profile_id),
       }))
       .filter(({ application }) => application?.status === 'validated' && application?.shop_profile_complete === true)
+      // Mirrors search_salons()'s join on profiles.account_status = 'active'.
+      .filter(({ profile }) => this.profiles.get(profile.profile_id)?.account_status === 'active')
       .filter(({ profile }) => specialty == null || profile.specialties.includes(specialty))
       .filter(({ profile }) => city == null || profile.city.toLowerCase() === city.toLowerCase())
       .filter(({ profile }) => query == null || profile.salon_name.toLowerCase().includes(query.toLowerCase()))

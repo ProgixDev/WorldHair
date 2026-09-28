@@ -22,7 +22,6 @@ interface AuthContextValue {
   isHydrating: boolean;
   signIn: (email: string, password: string) => Promise<Session>;
   signUp: (email: string, password: string, role: UserRole) => Promise<void>;
-  signInWithProvider: (provider: "google" | "apple") => Promise<Session>;
   verifyEmail: (email: string, code: string) => Promise<Session>;
   resendCode: (email: string) => Promise<void>;
   saveParticulierProfile: (profile: ParticulierProfile) => Promise<Session>;
@@ -83,8 +82,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         capture(auth.signInWithEmail({ email, password })),
       signUp: (email, password, role) =>
         auth.signUpWithEmail({ email, password, role }),
-      signInWithProvider: (provider) =>
-        capture(auth.signInWithProvider(provider)),
       verifyEmail: (email, code) => capture(auth.verifyEmail(email, code)),
       resendCode: (email) => auth.resendVerificationCode(email),
       saveParticulierProfile: (profile) =>

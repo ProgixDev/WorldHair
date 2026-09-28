@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { RatingStars } from "../../components/ui/RatingStars";
+import { SalonRating } from "../../components/particulier/SalonRating";
 import { Group, Row, ToggleRow } from "../../components/ui/SettingsList";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
@@ -454,7 +454,7 @@ export default function Profile() {
                       gap: spacing.xs,
                     }}
                   >
-                    <RatingStars value={salon.rating} size={11} showValue />
+                    <SalonRating salon={salon} size={11} />
                     <Text
                       style={[
                         typography.caption,
@@ -538,27 +538,29 @@ export default function Profile() {
           />
         </Group>
 
-        {/* ── Dev ──────────────────────────────────────────────────────── */}
-        <Group title="Développement">
-          <Row
-            icon="map-outline"
-            label="Moteur de carte"
-            value={mapEngineLabel()}
-            onPress={() =>
-              Alert.alert(
-                "Moteur de carte : " + mapEngineLabel(),
-                mapEngineDetail(),
-              )
-            }
-          />
-          <Row
-            icon="gesture-swipe-horizontal"
-            label="Rejouer l'onboarding"
-            value="Efface la session et les comptes de test"
-            onPress={handleReplayOnboarding}
-            isLast
-          />
-        </Group>
+        {/* ── Dev (development builds only, never in a store release) ──── */}
+        {__DEV__ ? (
+          <Group title="Développement">
+            <Row
+              icon="map-outline"
+              label="Moteur de carte"
+              value={mapEngineLabel()}
+              onPress={() =>
+                Alert.alert(
+                  "Moteur de carte : " + mapEngineLabel(),
+                  mapEngineDetail(),
+                )
+              }
+            />
+            <Row
+              icon="gesture-swipe-horizontal"
+              label="Rejouer l'onboarding"
+              value="Efface la session et les comptes de test"
+              onPress={handleReplayOnboarding}
+              isLast
+            />
+          </Group>
+        ) : null}
       </View>
     </ScrollView>
   );

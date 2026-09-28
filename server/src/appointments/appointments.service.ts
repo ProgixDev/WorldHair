@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
+import { isAccountActive } from '../common/utils/account-status';
+import { parisParts } from '../common/utils/paris-time';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonService } from '../salon/salon.service';
 
@@ -100,12 +102,13 @@ export class AppointmentsService {
   // ─── Create (particulier) ────────────────────────────────────────────────
 
   async create(particulierId: string, input: CreateAppointmentInput): Promise<ParticulierAppointment> {
-    const [application, profile, services] = await Promise.all([
+    const [application, profile, services, accountActive] = await Promise.all([
       this.applications.getMine(input.coiffeurId),
       this.salon.getProfile(input.coiffeurId),
       this.salon.listServices(input.coiffeurId),
+      isAccountActive(this.supabase, input.coiffeurId),
     ]);
-    if (!application || application.status !== 'validated' || !application.shopProfileComplete) {
+    if (!application || application.status !== 'validated' || !application.shopProfileComplete || !accountActive) {
       throw new NotFoundException('Salon not found');
     }
     const service = services.find((item) => item.id === input.serviceId);
@@ -161,6 +164,7 @@ export class AppointmentsService {
       throw new ForbiddenException();
     }
     this.assertStillActive(row);
+    this.assertNotPast(row);
 
     const startsAt = this.parseFutureDate(startsAtIso);
     await this.assertSlotAvailable(row.coiffeur_id, startsAt, row.duration_min, id);
@@ -169,6 +173,13 @@ export class AppointmentsService {
       this.updateRow(id, { starts_at: startsAt.toISOString() }),
       this.salon.getProfile(row.coiffeur_id),
     ]);
+    this.events.emit('appointment.rescheduled', {
+      appointmentId: id,
+      coiffeurId: row.coiffeur_id,
+      serviceName: row.service_name,
+      previousStartsAt: row.starts_at,
+      startsAt: updated.starts_at,
+    });
     return this.mapParticulier(updated, profile.salonName);
   }
 
@@ -178,10 +189,12 @@ export class AppointmentsService {
       throw new ForbiddenException();
     }
     this.assertStillActive(row);
+    this.assertNotPast(row);
     await this.updateRow(id, { status: 'cancelled' });
     this.events.emit('appointment.cancelled', {
       appointmentId: id,
       coiffeurId: row.coiffeur_id,
+      particulierId: row.particulier_id,
       cancelledByUserId: currentUserId,
       serviceName: row.service_name,
       startsAt: row.starts_at,
@@ -229,15 +242,16 @@ export class AppointmentsService {
     if (row.status !== 'pending') {
       throw new BadRequestException('This request has already been decided');
     }
-    await this.updateRow(id, { status: decision });
-    if (decision === 'confirmed') {
-      this.events.emit('appointment.confirmed', {
-        appointmentId: id,
-        particulierId: row.particulier_id,
-        serviceName: row.service_name,
-        startsAt: row.starts_at,
-      });
+    if (new Date(row.starts_at).getTime() < Date.now()) {
+      throw new BadRequestException('This request has expired');
     }
+    await this.updateRow(id, { status: decision });
+    this.events.emit(decision === 'confirmed' ? 'appointment.confirmed' : 'appointment.refused', {
+      appointmentId: id,
+      particulierId: row.particulier_id,
+      serviceName: row.service_name,
+      startsAt: row.starts_at,
+    });
   }
 
   // ─── Shared helpers ──────────────────────────────────────────────────────
@@ -256,7 +270,18 @@ export class AppointmentsService {
     }
   }
 
-  /** Within opening hours, outside the lunch break, and not overlapping another active booking. */
+  /** A booking that already happened is history: cancelling or moving it would also block its review. */
+  private assertNotPast(row: AppointmentRow): void {
+    if (derivedStatus(row) === 'done') {
+      throw new BadRequestException('This appointment has already taken place');
+    }
+  }
+
+  /**
+   * Within opening hours, outside the lunch break, and not overlapping another
+   * active booking. Hours are Paris wall-clock times, so the start is read on
+   * a Paris clock, whatever timezone this server runs in.
+   */
   private async assertSlotAvailable(
     coiffeurId: string,
     startsAt: Date,
@@ -264,8 +289,9 @@ export class AppointmentsService {
     excludeAppointmentId?: string,
   ): Promise<void> {
     const availability = await this.salon.getAvailability(coiffeurId);
-    const day = availability.find((d) => d.weekday === startsAt.getDay());
-    const startMinutes = startsAt.getHours() * 60 + startsAt.getMinutes();
+    const paris = parisParts(startsAt);
+    const day = availability.find((d) => d.weekday === paris.weekday);
+    const startMinutes = paris.hour * 60 + paris.minute;
     const endMinutes = startMinutes + durationMin;
 
     if (!day?.isOpen || startMinutes < day.opensMinute || endMinutes > day.closesMinute) {

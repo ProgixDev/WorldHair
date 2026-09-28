@@ -50,10 +50,24 @@ describe('AppointmentNotificationsListener', () => {
     ]);
   });
 
-  it('notifies the coiffeur when the particulier cancels', async () => {
+  it('tells the particulier their request was refused, with its date', async () => {
+    await listener.onRefused({
+      appointmentId: 'apt-1',
+      particulierId: 'particulier-1',
+      serviceName: 'Coupe & brushing',
+      startsAt: '2026-09-30T08:00:00Z',
+    });
+
+    const log = supabase.notifyLogFor('particulier-1');
+    expect(log).toMatchObject([{ type: 'appointment_refused', dedupe_key: 'apt-1' }]);
+    expect(log[0].body).toContain('mer. 30 sept. à 10:00');
+  });
+
+  it('notifies the coiffeur, and only the coiffeur, when the particulier cancels', async () => {
     await listener.onCancelled({
       appointmentId: 'apt-1',
       coiffeurId: 'coiffeur-1',
+      particulierId: 'particulier-1',
       cancelledByUserId: 'particulier-1',
       serviceName: 'Coupe & brushing',
       startsAt: new Date().toISOString(),
@@ -62,17 +76,41 @@ describe('AppointmentNotificationsListener', () => {
     expect(supabase.notifyLogFor('coiffeur-1')).toMatchObject([
       { type: 'appointment_cancelled', dedupe_key: 'apt-1' },
     ]);
+    expect(supabase.notifyLogFor('particulier-1')).toEqual([]);
   });
 
-  it('never notifies the coiffeur of their own cancellation', async () => {
+  it('notifies the particulier, and only the particulier, when the salon cancels', async () => {
     await listener.onCancelled({
       appointmentId: 'apt-1',
       coiffeurId: 'coiffeur-1',
+      particulierId: 'particulier-1',
       cancelledByUserId: 'coiffeur-1',
       serviceName: 'Coupe & brushing',
-      startsAt: new Date().toISOString(),
+      startsAt: '2026-09-30T08:00:00Z',
     });
 
+    const log = supabase.notifyLogFor('particulier-1');
+    expect(log).toMatchObject([{ type: 'appointment_cancelled', dedupe_key: 'apt-1' }]);
+    expect(log[0].body).toContain('mer. 30 sept. à 10:00');
     expect(supabase.notifyLogFor('coiffeur-1')).toEqual([]);
+  });
+
+  it('tells the coiffeur each time the particulier moves the appointment', async () => {
+    const move = (startsAt: string) =>
+      listener.onRescheduled({
+        appointmentId: 'apt-1',
+        coiffeurId: 'coiffeur-1',
+        serviceName: 'Coupe & brushing',
+        previousStartsAt: '2026-09-30T08:00:00Z',
+        startsAt,
+      });
+
+    await move('2026-10-01T09:00:00Z');
+    await move('2026-10-02T09:00:00Z');
+
+    const log = supabase.notifyLogFor('coiffeur-1');
+    expect(log).toHaveLength(2);
+    expect(log[0]).toMatchObject({ type: 'appointment_rescheduled' });
+    expect(log[0].body).toContain('jeu. 1 oct. à 11:00');
   });
 });
