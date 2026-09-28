@@ -132,6 +132,12 @@ async function main(): Promise<void> {
       expect: "blocked",
       run: () => insertIncompleteRow(particulier.client, "appointment_services", { service_name: "check:rls" }),
     },
+    {
+      // The one row already exists: were the insert let through, its primary key would refuse it anyway.
+      name: "coiffeur writes platform_settings (the trial length) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(coiffeur.client, "platform_settings", { trial_days: "365" }),
+    },
   ];
 
   let failures = 0;

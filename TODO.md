@@ -194,6 +194,10 @@ needs the new server deployed; manual checks are in TESTING.md.
 
 ## Phase 3 — Staff (collaborateurs)
 
+On hold since 2026-09-28: Progix may drop it. It is in the devis (Espace
+coiffeur, and the 50 % milestone), so dropping it needs the client's written
+agreement (avenant). Nothing depends on it: salons work with one agenda.
+
 - [ ] **Several staff members per salon, each with their own agenda and
       services** (devis, Espace coiffeur).
   - DB: `salon_staff` (id, salon profile_id, name, photo_url, active,
@@ -215,14 +219,26 @@ needs the new server deployed; manual checks are in TESTING.md.
 
 ## Phase 4 — Stripe subscriptions for coiffeurs
 
-Phases 2 to 4 together complete devis phase 3, which unlocks the 50 %
-milestone. Coiffeurs subscribe on the website; the app only shows the status.
+Phases 2 to 4 together complete devis phase 3, which unlocks the 50 % milestone
+(Phase 3, staff, is on hold). Coiffeurs subscribe on the website; the app only
+shows the status.
 
-- [ ] **Stripe setup**: the client's Stripe account connected (API keys and
+Done 2026-09-28 in code, tests and the dev database (migration
+`phase4_stripe_subscriptions`). Decided: a card is required to start. The
+salon stays hidden until the coiffeur subscribes on the website; the free
+trial is Stripe's (length set in the admin), for a first subscription only,
+and only once the admin has validated the salon. Not yet run against a real
+Stripe account: that needs the keys (see TESTING.md, "Stripe").
+
+- [x] **Stripe setup**: the client's Stripe account connected (API keys and
       webhook secret in the server env, test mode first), one product with a
       monthly and a yearly price. Prices are read from Stripe through the API,
       no longer hardcoded in the app (19 € / 182 € today).
-- [ ] **Stripe billing backend**
+      Done: `bun run stripe:setup` creates the product, both prices (found by
+      lookup key, so no price id in the env), the Customer Portal settings,
+      and with `--webhook-url` the webhook endpoint. The app shows no price
+      at all; the website reads them from Stripe.
+- [x] **Stripe billing backend**
   - DB: `coiffeur_subscriptions` gains `stripe_customer_id`,
     `stripe_subscription_id`, a `status` aligned on Stripe (`trialing`,
     `active`, `past_due`, `canceled`, `unpaid`), `current_period_end`,
@@ -241,21 +257,38 @@ milestone. Coiffeurs subscribe on the website; the app only shows the status.
   - Done when: a test-mode card makes the subscription active; a failed
     renewal shows the past-due banner, then cancels after the retries and
     delists the salon; subscribing again lists it again.
-- [ ] **Subscription page on the website**: `web/src/app/(pro)/abonnement`. The
+  - Done in code and tests. A scheduled cancellation is stored as `cancel_at`
+    rather than a `cancel_at_period_end` flag, and `renews_at` became
+    `current_period_end`. Each webhook fetches the subscription fresh from
+    Stripe before writing, so late or repeated events can't leave an old
+    state. `GET /subscriptions/prices` feeds the website. The "done when"
+    walk-through needs the Stripe keys.
+- [x] **Subscription page on the website**: `web/src/app/(pro)/abonnement`. The
       coiffeur signs in, sees status and dates, subscribes, and manages
       everything through the Customer Portal (plan, card, cancellation,
       downloadable invoices).
-- [ ] **App side, status only**: plan, status and dates read from the server.
+      Done at `/pro/abonnement`. `/login` now takes coiffeurs too and sends
+      each role to its space; subscription emails link to the page.
+- [x] **App side, status only**: plan, status and dates read from the server.
       No purchase button and no payment link in the app. The J-7 banner and the
       expired veil (issue #8, already built) show the status; the renewal link
       goes out by email instead (J-7 and expiry reminders sent by the server).
-- [ ] **Listing depends on the subscription**: `search_salons()` and `POST
+      Done. The veil only covers an ended subscription: a new salon that never
+      subscribed can still set up its page. Emails: account validated (with
+      the link to subscribe), J-7 before a scheduled end, subscription ended.
+      Pushes: payment refused, trial ending, J-7, ended — a tap opens the
+      account tab.
+- [x] **Listing depends on the subscription**: `search_salons()` and `POST
       /appointments` require `trialing` or `active` (`past_due` tolerated during
       retries).
-- [ ] **Payment failures** (devis: relance, suspension, résiliation,
+      Done, and the salon page too. The 28 salons on the dev database got an
+      offered year so nothing vanished; the seed scripts do the same.
+- [x] **Payment failures** (devis: relance, suspension, résiliation,
       réactivation): Stripe Smart Retries and failed-payment emails turned on;
       banner in the app while `past_due`.
-- [ ] **Admin**: `/admin/abonnements` shows the Stripe status, period end and a
+      Done in code (banner and push). Smart Retries and Stripe's own emails
+      are switches in the Stripe dashboard: see TESTING.md, "Stripe".
+- [x] **Admin**: `/admin/abonnements` shows the Stripe status, period end and a
       link to the Stripe customer. Trial days editable in `/admin/parametres`.
 
 ## Phase 5 — Prestation payment (issue #2, Stripe Connect)

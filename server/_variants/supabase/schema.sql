@@ -312,109 +312,6 @@ create trigger set_coiffeur_profiles_updated_at
 before update on public.coiffeur_profiles for each row
 execute procedure public.set_updated_at ();
 
--- Backs both geo-radius search and manual-location/filter-only search (see
--- TODO.md "Recherche & géolocalisation" and src/discovery/) —
--- p_lat/p_lng/p_radius_km null means "no distance filter, no distance
--- column", which is exactly the manual-location and filter-only cases.
--- SECURITY INVOKER (the default): callers are always this app's server
--- using the service-role key, so RLS never actually applies here, but there
--- is no reason to reach for DEFINER when INVOKER already works.
-create or replace function public.search_salons(
-  p_lat double precision default null,
-  p_lng double precision default null,
-  p_radius_km double precision default null,
-  p_specialty text default null,
-  p_city text default null,
-  p_query text default null,
-  p_limit int default 20,
-  p_offset int default 0
-)
-returns table (
-  profile_id uuid,
-  salon_name text,
-  stylist_first_name text,
-  stylist_last_name text,
-  tagline text,
-  description text,
-  address_line text,
-  postal_code text,
-  city text,
-  latitude double precision,
-  longitude double precision,
-  phone text,
-  specialties text[],
-  badges text[],
-  rating numeric,
-  review_count integer,
-  cover_url text,
-  price_from numeric,
-  distance_km double precision,
-  total_count bigint
-)
-language sql
-stable
-set search_path = ''
-as $$
-  with origin as (
-    select
-      case when p_lat is not null and p_lng is not null
-        then extensions.ST_SetSRID(extensions.ST_MakePoint(p_lng, p_lat), 4326)::extensions.geography
-      end as point
-  ),
-  matches as (
-    select
-      cp.profile_id,
-      cp.salon_name,
-      ca.first_name as stylist_first_name,
-      ca.last_name as stylist_last_name,
-      cp.tagline,
-      cp.description,
-      cp.address_line,
-      cp.postal_code,
-      cp.city,
-      cp.latitude,
-      cp.longitude,
-      cp.phone,
-      cp.specialties,
-      cp.badges,
-      cp.rating,
-      cp.review_count,
-      cp.cover_url,
-      (select min(cs.price) from public.coiffeur_services cs where cs.profile_id = cp.profile_id) as price_from,
-      case
-        when (select point from origin) is not null and cp.location is not null
-        then extensions.ST_Distance(cp.location, (select point from origin)) / 1000.0
-      end as distance_km
-    from public.coiffeur_profiles cp
-    join public.coiffeur_applications ca
-      on ca.profile_id = cp.profile_id
-      and ca.status = 'validated'
-      and ca.shop_profile_complete = true
-    -- Suspended and banned salons (admin → Comptes) disappear from search.
-    join public.profiles p
-      on p.id = cp.profile_id
-      and p.account_status = 'active'
-    where
-      (p_specialty is null or p_specialty = any (cp.specialties))
-      and (p_city is null or cp.city ilike p_city)
-      and (p_query is null or cp.salon_name ilike '%' || p_query || '%')
-      and (
-        -- A salon with no known location is excluded from a radius search,
-        -- not passed through by virtue of "we can't check".
-        p_radius_km is null or (select point from origin) is null
-        or (cp.location is not null and extensions.ST_DWithin(cp.location, (select point from origin), p_radius_km * 1000))
-      )
-  )
-  select *, count(*) over () as total_count
-  from matches
-  order by
-    distance_km asc nulls last,
-    rating desc
-  limit p_limit offset p_offset;
-$$;
-
-grant execute on function public.search_salons to authenticated;
-
 -- One row per weekday (0 = Sunday, matching JS Date#getDay, same as mobile's
 -- OpeningDay/AvailabilityDay). Lazily seeded (all closed) on first read by
 -- src/salon/salon.service.ts rather than via a trigger — there's no clean
@@ -880,28 +777,39 @@ create policy "Anyone can view admin media"
   on storage.objects for select
   using (bucket_id = 'admin-media');
 
--- "Vue abonnements coiffeurs (statut, échéance)" (TODO.md → Back-office
--- admin) + mobile's "Écran abonnement" (mobile/src/features/pro/types.ts's
--- Subscription — this table is its real backing store, replacing the
--- AsyncStorage mock in mobile/src/services/pro.ts). Real billing (Stripe,
--- sold on the website) comes in TODO.md Phase 4 — this table only tracks
--- plan/status/dates, no payment processing.
+-- A coiffeur's subscription (devis: "Abonnement professionnel Stripe", TODO.md
+-- Phase 4). It lives in Stripe — sold on the website through Stripe Checkout,
+-- managed in Stripe's Customer Portal — and this row mirrors it, kept current
+-- by Stripe's webhooks (server/src/subscriptions/). search_salons() lists a
+-- salon only while its row is live. A row with no Stripe subscription is an
+-- offered one (seeded demo salons, launch partners), live until
+-- current_period_end.
 create table public.coiffeur_subscriptions (
   profile_id uuid primary key references public.profiles (id) on delete cascade,
   plan text not null default 'monthly' check (plan in ('monthly', 'yearly')),
-  -- 'expired' is NOT stored — derived at read time from status + renews_at/
-  -- trial_ends_at, same pattern as appointments.status's 'done'.
-  status text not null default 'trial' check (status in ('trial', 'active', 'cancelled')),
+  -- Stripe's own subscription statuses, word for word; 'none' until the
+  -- coiffeur completes a first Checkout. 'expired' is never stored: the API
+  -- derives it, like appointments' 'done'.
+  status text not null default 'none' check (
+    status in (
+      'none', 'trialing', 'active', 'past_due', 'canceled', 'unpaid',
+      'incomplete', 'incomplete_expired', 'paused'
+    )
+  ),
+  stripe_customer_id text unique,
+  stripe_subscription_id text unique,
   trial_ends_at timestamptz,
-  renews_at timestamptz not null,
+  current_period_end timestamptz,
+  -- A cancellation scheduled in the portal: listed until then.
+  cancel_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.coiffeur_subscriptions enable row level security;
 
--- Read-only for the coiffeur: a subscription only changes through the API,
--- never by the coiffeur writing their own end date.
+-- Read-only for the coiffeur: a subscription only changes through Stripe's
+-- webhooks, never by the coiffeur writing their own end date.
 create policy "Coiffeur can view their own subscription, admin can view every subscription"
   on public.coiffeur_subscriptions for select
   using ((select auth.uid ()) = profile_id or public.is_admin ());
@@ -909,6 +817,138 @@ create policy "Coiffeur can view their own subscription, admin can view every su
 create trigger set_coiffeur_subscriptions_updated_at
 before update on public.coiffeur_subscriptions for each row
 execute procedure public.set_updated_at ();
+
+-- What the admin tunes without a deploy (/admin/parametres): one row. The
+-- commission on prestations joins it in TODO.md Phase 5. API only: no
+-- policy, so the public roles read nothing.
+create table public.platform_settings (
+  id boolean primary key default true check (id),
+  -- Free days a coiffeur's first subscription starts with (Stripe trial).
+  trial_days integer not null default 30 check (trial_days between 0 and 365),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.platform_settings (id) values (true) on conflict (id) do nothing;
+
+alter table public.platform_settings enable row level security;
+
+create trigger set_platform_settings_updated_at
+before update on public.platform_settings for each row
+execute procedure public.set_updated_at ();
+
+-- Defined after every table it reads (salon profiles, applications, services,
+-- subscriptions): a SQL function's body is checked when it's created.
+--
+-- Backs both geo-radius search and manual-location/filter-only search (see
+-- TODO.md "Recherche & géolocalisation" and src/discovery/) —
+-- p_lat/p_lng/p_radius_km null means "no distance filter, no distance
+-- column", which is exactly the manual-location and filter-only cases.
+-- SECURITY INVOKER (the default): callers are always this app's server
+-- using the service-role key, so RLS never actually applies here, but there
+-- is no reason to reach for DEFINER when INVOKER already works.
+create or replace function public.search_salons(
+  p_lat double precision default null,
+  p_lng double precision default null,
+  p_radius_km double precision default null,
+  p_specialty text default null,
+  p_city text default null,
+  p_query text default null,
+  p_limit int default 20,
+  p_offset int default 0
+)
+returns table (
+  profile_id uuid,
+  salon_name text,
+  stylist_first_name text,
+  stylist_last_name text,
+  tagline text,
+  description text,
+  address_line text,
+  postal_code text,
+  city text,
+  latitude double precision,
+  longitude double precision,
+  phone text,
+  specialties text[],
+  badges text[],
+  rating numeric,
+  review_count integer,
+  cover_url text,
+  price_from numeric,
+  distance_km double precision,
+  total_count bigint
+)
+language sql
+stable
+set search_path = ''
+as $$
+  with origin as (
+    select
+      case when p_lat is not null and p_lng is not null
+        then extensions.ST_SetSRID(extensions.ST_MakePoint(p_lng, p_lat), 4326)::extensions.geography
+      end as point
+  ),
+  matches as (
+    select
+      cp.profile_id,
+      cp.salon_name,
+      ca.first_name as stylist_first_name,
+      ca.last_name as stylist_last_name,
+      cp.tagline,
+      cp.description,
+      cp.address_line,
+      cp.postal_code,
+      cp.city,
+      cp.latitude,
+      cp.longitude,
+      cp.phone,
+      cp.specialties,
+      cp.badges,
+      cp.rating,
+      cp.review_count,
+      cp.cover_url,
+      (select min(cs.price) from public.coiffeur_services cs where cs.profile_id = cp.profile_id) as price_from,
+      case
+        when (select point from origin) is not null and cp.location is not null
+        then extensions.ST_Distance(cp.location, (select point from origin)) / 1000.0
+      end as distance_km
+    from public.coiffeur_profiles cp
+    join public.coiffeur_applications ca
+      on ca.profile_id = cp.profile_id
+      and ca.status = 'validated'
+      and ca.shop_profile_complete = true
+    -- Suspended and banned salons (admin → Comptes) disappear from search.
+    join public.profiles p
+      on p.id = cp.profile_id
+      and p.account_status = 'active'
+    -- So do salons without a live subscription (TODO.md Phase 4): Stripe's
+    -- trialing, active, or past_due while it retries a failed payment; an
+    -- offered subscription (no Stripe one) until its end date. Mirrored by
+    -- server/src/subscriptions/subscription-state.ts's isListed().
+    join public.coiffeur_subscriptions s
+      on s.profile_id = cp.profile_id
+      and s.status in ('trialing', 'active', 'past_due')
+      and (s.stripe_subscription_id is not null or s.current_period_end > now())
+    where
+      (p_specialty is null or p_specialty = any (cp.specialties))
+      and (p_city is null or cp.city ilike p_city)
+      and (p_query is null or cp.salon_name ilike '%' || p_query || '%')
+      and (
+        -- A salon with no known location is excluded from a radius search,
+        -- not passed through by virtue of "we can't check".
+        p_radius_km is null or (select point from origin) is null
+        or (cp.location is not null and extensions.ST_DWithin(cp.location, (select point from origin), p_radius_km * 1000))
+      )
+  )
+  select *, count(*) over () as total_count
+  from matches
+  order by
+    distance_km asc nulls last,
+    rating desc
+  limit p_limit offset p_offset;
+$$;
+
+grant execute on function public.search_salons to authenticated;
 
 -- ── Client write lockdown ────────────────────────────────────────────────────
 --

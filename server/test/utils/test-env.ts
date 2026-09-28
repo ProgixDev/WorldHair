@@ -19,6 +19,11 @@ export function applyTestEnv(overrides: Record<string, string> = {}): void {
     // Valid Standard Webhooks secret shape (v1,whsec_<base64>) — real specs
     // sign against this with `standardwebhooks`' own Webhook.sign().
     SEND_EMAIL_HOOK_SECRET: 'v1,whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
+    // No real Stripe client: specs override STRIPE_CLIENT with FakeStripe.
+    // The webhook secret is real enough — specs sign payloads with it.
+    STRIPE_SECRET_KEY: 'sk_test_fake',
+    STRIPE_WEBHOOK_SECRET: 'whsec_test_secret',
+    WEB_APP_URL: 'https://worldhair.test',
     ...overrides,
   });
 }

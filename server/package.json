@@ -18,7 +18,8 @@
     "seed:demo": "bun scripts/seed-demo-accounts.ts",
     "seed:catalogue": "bun scripts/seed-catalogue-salons.ts",
     "seed:admin": "bun scripts/seed-admin-account.ts",
-    "check:rls": "bun scripts/check-rls-lockdown.ts"
+    "check:rls": "bun scripts/check-rls-lockdown.ts",
+    "stripe:setup": "bun scripts/stripe-setup.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
@@ -37,7 +38,8 @@
     "nodemailer": "^9.0.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "standardwebhooks": "^1.1.1"
+    "standardwebhooks": "^1.1.1",
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",

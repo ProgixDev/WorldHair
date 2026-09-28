@@ -22,6 +22,8 @@ import { HealthModule } from './health/health.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalonModule } from './salon/salon.module';
+import { SettingsModule } from './settings/settings.module';
+import { StripeModule } from './stripe/stripe.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UsersModule } from './users/users.module';
 
@@ -54,6 +56,8 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     AdSlotsModule,
     ContentModule,
+    StripeModule,
+    SettingsModule,
     SubscriptionsModule,
     AdminMediaModule,
     AdminUsersModule,

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import { useAuth } from "../../contexts/AuthContext";
+import { notificationDestination } from "./destination";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -24,9 +25,7 @@ if (Platform.OS === "android") {
 /**
  * Foreground banner (set above) + tap-to-navigate, covering all three app
  * states (killed/background/foreground) — same approach as the WhaleTime
- * project (D:\Others\WhaleTime). Every notification this app sends is about
- * an appointment, so a tap just opens the role-appropriate agenda — there's
- * no single-appointment detail screen to deep-link into yet.
+ * project (D:\Others\WhaleTime). See destination.ts for where a tap lands.
  */
 export function useNotificationRouting(): void {
   const router = useRouter();
@@ -35,18 +34,19 @@ export function useNotificationRouting(): void {
   const role = session?.role;
 
   useEffect(() => {
-    const destination = role === "coiffeur" ? "/pro/agenda" : "/appointments";
+    const open = (response: Notifications.NotificationResponse) =>
+      router.push(
+        notificationDestination(role, response.notification.request.content.data) as never,
+      );
 
     if (!handledInitialResponse.current) {
       handledInitialResponse.current = true;
       void Notifications.getLastNotificationResponseAsync().then((response) => {
-        if (response) router.push(destination as never);
+        if (response) open(response);
       });
     }
 
-    const subscription = Notifications.addNotificationResponseReceivedListener(() => {
-      router.push(destination as never);
-    });
+    const subscription = Notifications.addNotificationResponseReceivedListener(open);
     return () => subscription.remove();
   }, [router, role]);
 }

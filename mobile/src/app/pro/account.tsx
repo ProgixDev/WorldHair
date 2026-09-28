@@ -1,15 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../../components/ui/Button";
 import { Group, Row, RowShell } from "../../components/ui/SettingsList";
@@ -21,9 +13,9 @@ import { useAuth } from "../../contexts/AuthContext";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
-import { daysRemaining } from "../../features/pro/subscription";
-import { PLANS, type PlanId } from "../../features/pro/types";
-import { formatAmount, fullDate } from "../../utils/date";
+import { describeSubscription } from "../../features/pro/subscription";
+import type { Subscription } from "../../features/pro/types";
+import { fullDate } from "../../utils/date";
 
 const BENEFITS = [
   "Fiche visible dans la recherche et sur la carte",
@@ -32,9 +24,31 @@ const BENEFITS = [
   "Notifications de nouveaux rendez-vous",
 ];
 
+/** The next date that matters, and how to call it. */
+function keyDate(subscription: Subscription): { label: string; value: string } | null {
+  const on = (iso: string | null) => (iso ? fullDate(new Date(iso)) : null);
+  const value =
+    subscription.state === "trialing"
+      ? on(subscription.trialEndsAt)
+      : subscription.state === "active" && !subscription.offered
+        ? on(subscription.currentPeriodEnd)
+        : on(subscription.endsAt);
+  if (!value) return null;
+  return {
+    label:
+      subscription.state === "trialing"
+        ? "Premier prélèvement"
+        : subscription.state === "active" && !subscription.offered
+          ? "Prochain prélèvement"
+          : "Fiche visible jusqu'au",
+    value,
+  };
+}
+
 /**
- * Subscription-first account tab: the two plans as cards, then billing and
- * account rows. The plan is the reason this screen exists, so it leads.
+ * Subscription-first account tab: where the subscription stands, then
+ * account rows. Read-only — subscribing, the card, invoices and cancelling
+ * all happen on the website, through Stripe; nothing is sold in the app.
  */
 export default function ProAccount() {
   const router = useRouter();
@@ -42,16 +56,9 @@ export default function ProAccount() {
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
   const { session, signOut } = useAuth();
-  const {
-    profile,
-    subscription,
-    isLoading,
-    changePlan,
-    cancelSubscription,
-    reactivateSubscription,
-  } = usePro();
+  const { profile, subscription, isLoading, refreshSubscription } = usePro();
 
-  const [busy, setBusy] = useState<PlanId | "cancel" | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   if (isLoading || !subscription)
     return (
@@ -67,41 +74,24 @@ export default function ProAccount() {
       </View>
     );
 
-  const trialDaysLeft = subscription.trialEndsAt
-    ? Math.max(0, daysRemaining(subscription))
-    : null;
+  const summary = describeSubscription(subscription);
+  const toneColor =
+    summary.tone === "danger"
+      ? theme.danger
+      : summary.tone === "warning"
+        ? theme.accent.warm
+        : theme.primary.main;
+  const date = keyDate(subscription);
+  const hasPlan = subscription.state !== "none" && subscription.state !== "expired" && !subscription.offered;
 
-  const select = async (plan: PlanId) => {
-    if (plan === subscription.plan && subscription.status !== "cancelled")
-      return;
-    setBusy(plan);
+  const refresh = async () => {
+    setRefreshing(true);
     try {
-      await changePlan(plan);
+      await refreshSubscription();
     } finally {
-      setBusy(null);
+      setRefreshing(false);
     }
   };
-
-  const confirmCancel = () =>
-    Alert.alert(
-      "Résilier l'abonnement ?",
-      "Votre fiche restera visible jusqu'à la fin de la période déjà payée, puis sera masquée.",
-      [
-        { text: "Garder", style: "cancel" },
-        {
-          text: "Résilier",
-          style: "destructive",
-          onPress: async () => {
-            setBusy("cancel");
-            try {
-              await cancelSubscription();
-            } finally {
-              setBusy(null);
-            }
-          },
-        },
-      ],
-    );
 
   const handleSignOut = () =>
     Alert.alert("Se déconnecter ?", "Vous devrez saisir vos identifiants.", [
@@ -142,10 +132,7 @@ export default function ProAccount() {
             borderRadius: radius.xl,
             backgroundColor: theme.surface.raised,
             borderWidth: 1.5,
-            borderColor:
-              subscription.status === "cancelled"
-                ? theme.danger
-                : theme.primary.main,
+            borderColor: toneColor,
             gap: spacing.sm,
           },
           elevation(1, theme.shadow),
@@ -160,144 +147,60 @@ export default function ProAccount() {
         >
           <MaterialCommunityIcons
             name={
-              subscription.status === "cancelled"
-                ? "alert-circle-outline"
-                : subscription.status === "trial"
+              summary.tone === "ok"
+                ? subscription.state === "trialing"
                   ? "gift-outline"
                   : "crown-outline"
+                : "alert-circle-outline"
             }
             size={20}
-            color={
-              subscription.status === "cancelled"
-                ? theme.danger
-                : theme.primary.main
-            }
+            color={toneColor}
           />
-          <Text style={[typography.h2, { color: theme.foreground.white }]}>
-            {subscription.status === "trial"
-              ? "Essai gratuit"
-              : subscription.status === "cancelled"
-                ? "Résilié"
-                : "Abonnement actif"}
+          <Text style={[typography.h2, { color: theme.foreground.white, flex: 1 }]}>
+            {summary.title}
           </Text>
         </View>
-
         <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
-          {subscription.status === "trial"
-            ? "Premier mois offert — " +
-              trialDaysLeft +
-              " jours restants. Le premier prélèvement aura lieu le " +
-              fullDate(new Date(subscription.renewsAt)) +
-              "."
-            : subscription.status === "cancelled"
-              ? "Accès maintenu jusqu'au " +
-                fullDate(new Date(subscription.renewsAt)) +
-                ", puis fiche masquée."
-              : "Renouvellement automatique le " +
-                fullDate(new Date(subscription.renewsAt)) +
-                "."}
+          {summary.detail}
         </Text>
       </View>
 
-      {/* ── Plans ────────────────────────────────────────────────────── */}
+      {/* ── Details ──────────────────────────────────────────────────── */}
+      <Group title="Abonnement">
+        <RowShell
+          icon="eye-outline"
+          label="Fiche visible par les clients"
+          value={subscription.listed ? "Oui" : "Non"}
+        />
+        {hasPlan ? (
+          <RowShell
+            icon="calendar-sync-outline"
+            label="Formule"
+            value={subscription.plan === "yearly" ? "Annuelle" : "Mensuelle"}
+          />
+        ) : null}
+        {date ? (
+          <RowShell icon="calendar-clock-outline" label={date.label} value={date.value} />
+        ) : null}
+        <RowShell
+          icon="storefront-outline"
+          label="Salon"
+          value={profile?.name ?? "—"}
+          isLast
+        />
+      </Group>
       <View style={{ gap: spacing.md }}>
-        <Text style={[typography.overline, { color: theme.foreground.gray }]}>
-          FORMULES
+        <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+          Formule, carte bancaire, factures et résiliation se gèrent depuis
+          votre espace abonnement WorldHair ; nous vous en envoyons le lien
+          par email. Aucune donnée bancaire ne passe par l&apos;application.
         </Text>
-
-        {PLANS.map((plan) => {
-          const active =
-            plan.id === subscription.plan &&
-            subscription.status !== "cancelled";
-          return (
-            <Pressable
-              key={plan.id}
-              onPress={() => void select(plan.id)}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: active }}
-              style={({ pressed }) => [
-                {
-                  padding: spacing.lg,
-                  borderRadius: radius.xl,
-                  backgroundColor: theme.surface.raised,
-                  borderWidth: active ? 2 : 1,
-                  borderColor: active ? theme.primary.main : theme.divider,
-                  gap: spacing.sm,
-                  opacity: pressed ? 0.85 : 1,
-                },
-                elevation(active ? 2 : 1, theme.shadow),
-              ]}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                }}
-              >
-                <Text
-                  style={[typography.h2, { color: theme.foreground.white }]}
-                >
-                  {plan.label}
-                </Text>
-                {plan.saving ? (
-                  <View
-                    style={{
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: 2,
-                      borderRadius: radius.full,
-                      backgroundColor: theme.success + "1f",
-                    }}
-                  >
-                    <Text
-                      style={[typography.caption, { color: theme.success }]}
-                    >
-                      {plan.saving}
-                    </Text>
-                  </View>
-                ) : null}
-                <View style={{ flex: 1 }} />
-                {busy === plan.id ? (
-                  <ActivityIndicator color={theme.primary.main} />
-                ) : active ? (
-                  <MaterialCommunityIcons
-                    name="check-circle"
-                    size={22}
-                    color={theme.primary.main}
-                  />
-                ) : null}
-              </View>
-
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "baseline",
-                  gap: spacing.xs,
-                }}
-              >
-                <Text
-                  style={[typography.display, { color: theme.accent.warm }]}
-                >
-                  {formatAmount(plan.price)}
-                </Text>
-                <Text
-                  style={[
-                    typography.bodySmall,
-                    { color: theme.foreground.gray },
-                  ]}
-                >
-                  {plan.period}
-                </Text>
-              </View>
-
-              <Text
-                style={[typography.caption, { color: theme.foreground.gray }]}
-              >
-                {plan.hint}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <Button
+          label="Actualiser le statut"
+          variant="outline"
+          onPress={() => void refresh()}
+          loading={refreshing}
+        />
       </View>
 
       {/* ── Benefits ─────────────────────────────────────────────────── */}
@@ -330,54 +233,6 @@ export default function ProAccount() {
           </View>
         ))}
       </View>
-
-      {/* ── Billing ──────────────────────────────────────────────────── */}
-      <View style={{ gap: spacing.md }}>
-        <Group title="Facturation">
-          <RowShell
-            icon="credit-card-outline"
-            label="Moyen de paiement"
-            value={
-              Platform.OS === "ios"
-                ? "Achat intégré Apple"
-                : "Google Play Facturation"
-            }
-          />
-          <RowShell
-            icon="calendar-clock-outline"
-            label="Prochain prélèvement"
-            value={fullDate(new Date(subscription.renewsAt))}
-          />
-          <RowShell
-            icon="storefront-outline"
-            label="Salon facturé"
-            value={profile?.name ?? "—"}
-            isLast
-          />
-        </Group>
-        <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-          Le paiement passera par la boutique de votre téléphone : rien
-          n&apos;est débité par cette démo.
-        </Text>
-      </View>
-
-      {subscription.status === "cancelled" ? (
-        <Button
-          label="Réactiver mon abonnement"
-          onPress={() => void reactivateSubscription()}
-          background={theme.primary.main}
-          color={theme.primary.on}
-        />
-      ) : (
-        <Button
-          label="Résilier l'abonnement"
-          variant="outline"
-          background={theme.danger}
-          color={theme.danger}
-          onPress={confirmCancel}
-          loading={busy === "cancel"}
-        />
-      )}
 
       {/* ── Preferences ──────────────────────────────────────────────── */}
       <Group title="Préférences">

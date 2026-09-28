@@ -38,12 +38,43 @@ async function requireAdminRole(
   };
 }
 
-export async function signInAdmin(email: string, password: string): Promise<void> {
+/**
+ * The website's one sign-in: the admin team (back-office) and coiffeurs
+ * (their subscription, TODO.md Phase 4). A client account is signed out
+ * again — clients only use the app.
+ */
+export async function signInToSite(email: string, password: string): Promise<"admin" | "coiffeur"> {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw new AdminAuthError("Identifiants invalides.");
-  if (!data.user) throw new AdminAuthError("Identifiants invalides.");
+  if (error || !data.user) throw new AdminAuthError("Identifiants invalides.");
 
-  await requireAdminRole(data.user.id);
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+  if (profileError) throw new AdminAuthError(profileError.message);
+  if (profile?.role === "admin" || profile?.role === "admin_limited") return "admin";
+  if (profile?.role === "coiffeur") return "coiffeur";
+
+  await supabase.auth.signOut();
+  throw new AdminAuthError("Cet espace est réservé aux coiffeurs et à l'équipe WorldHair. Utilisez l'application.");
+}
+
+export interface CoiffeurSession {
+  userId: string;
+  email: string;
+}
+
+/** A signed-in coiffeur — what the /pro pages need. The real gate is the server's `@Roles('coiffeur')`. */
+export async function getCoiffeurSession(): Promise<CoiffeurSession | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) return null;
+
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  return profile?.role === "coiffeur" ? { userId: user.id, email: user.email ?? "" } : null;
 }
 
 export async function getAdminSession(): Promise<AdminSession | null> {

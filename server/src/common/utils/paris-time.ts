@@ -62,6 +62,18 @@ const frenchFormatter = new Intl.DateTimeFormat('fr-FR', {
   hourCycle: 'h23',
 });
 
+const frenchDayFormatter = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: PARIS_TIME_ZONE,
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+
+/** "mercredi 7 octobre" — the Paris calendar day of an instant, as an email reads it. */
+export function formatParisDate(value: string | Date): string {
+  return frenchDayFormatter.format(new Date(value));
+}
+
 /** "mer. 30 sept. à 10:00" — an instant as a French notification reads it, on a Paris clock. */
 export function formatParisDateTime(value: string | Date): string {
   const parts = new Map(frenchFormatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]));

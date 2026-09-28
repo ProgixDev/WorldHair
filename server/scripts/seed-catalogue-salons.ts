@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { seedSalonReviews, upsertReviewers } from "./lib/seed-reviews";
+import { offerSubscription } from "./lib/seed-subscription";
 
 /**
  * Promotes the mobile app's mock salon catalogue
@@ -330,6 +331,8 @@ async function seedSalon(seed: SalonSeed, reviewerIds: string[]): Promise<void> 
     })),
   );
   if (servicesError) throw servicesError;
+
+  await offerSubscription(supabase, userId);
 
   const reviews = await seedSalonReviews(supabase, {
     coiffeurId: userId,

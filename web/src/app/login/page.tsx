@@ -1,12 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
-import { signInAdmin } from "@/services/adminAuth";
+import { landingAfterSignIn } from "@/lib/subscription";
+import { signInToSite } from "@/services/adminAuth";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export default function AdminLoginPage() {
+/** One sign-in for the admin team and for coiffeurs (their subscription page). */
+export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,8 +20,10 @@ export default function AdminLoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await signInAdmin(email, password);
-      router.push("/admin");
+      const role = await signInToSite(email, password);
+      // Read here rather than with useSearchParams: no Suspense boundary needed around the page.
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.push(landingAfterSignIn(role, next));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Une erreur est survenue.");
     } finally {
@@ -33,10 +37,10 @@ export default function AdminLoginPage() {
         <div className="flex flex-col items-center gap-2 text-center">
           <Image src="/Logo.png" alt="WorldHair" width={40} height={40} />
           <h1 className="text-lg font-medium text-[#f2f6fb]">
-            Espace administrateur
+            Espace professionnel
           </h1>
           <p className="text-xs text-[#93a6bc]">
-            Connectez-vous avec votre compte WorldHair.
+            Coiffeurs et équipe WorldHair : connectez-vous avec votre compte.
           </p>
         </div>
 

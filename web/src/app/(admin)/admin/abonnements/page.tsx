@@ -4,6 +4,7 @@ import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import { cn } from "@/lib/utils";
 import { type AdminSubscriptionSummary, listSubscriptions } from "@/services/adminApi";
+import { ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 const PLAN_LABELS: Record<AdminSubscriptionSummary["plan"], string> = {
@@ -11,21 +12,33 @@ const PLAN_LABELS: Record<AdminSubscriptionSummary["plan"], string> = {
   yearly: "Annuel",
 };
 
-const STATUS_STYLES: Record<AdminSubscriptionSummary["status"], string> = {
-  trial: "bg-[#2a93d5]/15 text-[#2a93d5]",
+const STATE_STYLES: Record<AdminSubscriptionSummary["state"], string> = {
+  none: "bg-white/10 text-[#93a6bc]",
+  trialing: "bg-[#2a93d5]/15 text-[#2a93d5]",
   active: "bg-[#1f9d55]/15 text-[#1f9d55]",
-  cancelled: "bg-[#e4b980]/15 text-[#e4b980]",
+  ending: "bg-[#e4b980]/15 text-[#e4b980]",
+  past_due: "bg-[#ff7a70]/15 text-[#ff7a70]",
+  incomplete: "bg-[#e4b980]/15 text-[#e4b980]",
   expired: "bg-[#ff7a70]/15 text-[#ff7a70]",
-  not_started: "bg-white/10 text-[#93a6bc]",
 };
 
-const STATUS_LABELS: Record<AdminSubscriptionSummary["status"], string> = {
-  trial: "Essai",
+const STATE_LABELS: Record<AdminSubscriptionSummary["state"], string> = {
+  none: "Pas d'abonnement",
+  trialing: "Essai",
   active: "Actif",
-  cancelled: "Annulé",
-  expired: "Expiré",
-  not_started: "Non commencé",
+  ending: "Résilié (fin prévue)",
+  past_due: "Paiement refusé",
+  incomplete: "Paiement en attente",
+  expired: "Terminé",
 };
+
+/** The date that matters: the end if one is set, else the first charge (trial) or the next renewal. */
+function echeanceOf(subscription: AdminSubscriptionSummary): string | null {
+  if (subscription.endsAt) return subscription.endsAt;
+  if (subscription.state === "trialing") return subscription.trialEndsAt;
+  if (subscription.state === "active" || subscription.state === "past_due") return subscription.currentPeriodEnd;
+  return null;
+}
 
 export default function AdminAbonnementsPage() {
   const [subscriptions, setSubscriptions] = useState<AdminSubscriptionSummary[]>([]);
@@ -68,10 +81,8 @@ export default function AdminAbonnementsPage() {
               !error &&
               pageSlice(subscriptions, page).map((subscription) => {
               const fullName = `${subscription.firstName} ${subscription.lastName}`.trim();
-              const echeance =
-                subscription.status === "trial"
-                  ? subscription.trialEndsAt
-                  : subscription.renewsAt;
+              const echeance = echeanceOf(subscription);
+              const offered = subscription.stripeStatus === null && subscription.state !== "none";
 
               return (
                 // Same stacking as the accounts list: the name/email column is
@@ -97,19 +108,32 @@ export default function AdminAbonnementsPage() {
 
                   <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                     <span className="text-xs text-[#93a6bc]">
-                      {PLAN_LABELS[subscription.plan]}
+                      {subscription.state === "none" ? "—" : offered ? "Offert" : PLAN_LABELS[subscription.plan]}
                     </span>
                     <span
                       className={cn(
                         "rounded-full px-3 py-1 text-xs font-medium",
-                        STATUS_STYLES[subscription.status],
+                        STATE_STYLES[subscription.state],
                       )}
                     >
-                      {STATUS_LABELS[subscription.status]}
+                      {STATE_LABELS[subscription.state]}
                     </span>
                     <span className="ml-auto shrink-0 text-right text-xs text-[#93a6bc] sm:ml-0 sm:w-28">
                       {echeance ? new Date(echeance).toLocaleDateString("fr-FR") : "—"}
                     </span>
+                    {subscription.stripeCustomerUrl ? (
+                      <a
+                        href={subscription.stripeCustomerUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Voir ${fullName || subscription.email} dans Stripe`}
+                        className="grid size-8 shrink-0 place-items-center rounded-full text-[#93a6bc] hover:bg-white/10 hover:text-[#f2f6fb]"
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
+                    ) : (
+                      <span className="size-8 shrink-0" aria-hidden />
+                    )}
                   </div>
                 </div>
               );

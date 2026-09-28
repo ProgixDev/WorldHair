@@ -12,6 +12,7 @@ All password `Demo1234!` — one tap via the "Mode démo" bar under the sign-in 
 | `demo.coiffeur.rejected@worldhair.app` | rejected + reason |
 
 Web admin: `admin@admin.com` / `admin123` → `/login`
+Coiffeurs sign in on the same `/login` and land on `/pro/abonnement` (their subscription). After `seed:demo` / `seed:catalogue`, seeded salons have an **offered** subscription (a year, no Stripe) so they stay listed; subscribing through Stripe replaces it.
 Catalogue: 26 salons, 8 cities. `coiffeur.<slug>@worldhair.app` / `Demo1234!`
 Review authors: 6 clients, `client.<name>@worldhair.app` / `Demo1234!` — they wrote the catalogue's real reviews (3 to 6 per salon).
 
@@ -131,6 +132,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Caption shows "Absences : X %" once a past booking is marked; top services count each prestation of a 2-prestation booking on its own
 - [x] Pending requests + today's appointments show
 - [x] Subscription strip shows correct status
+- [ ] Strip reads the new states: « Fiche pas encore en ligne » (never subscribed), « Essai gratuit », « Abonnement actif » / « Abonnement offert », « Abonnement résilié », « Paiement refusé », « Il vous reste N jours d'abonnement » in the last week; a tap opens the account tab
 
 ### `/pro/agenda`
 - [x] Pending requests in red at top, Accept / Refuse both work
@@ -163,10 +165,11 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Hidden reviews still visible here (unlike the public page)
 
 ### `/pro/account`
-- [x] Monthly (€19) / Yearly (€182) plan switch
-- [x] Cancel subscription
-- [x] Reactivate subscription
 - [ ] No "Développement" section any more (the J-7 / expired simulators wrote the subscription directly, which the database now refuses)
+- [ ] Status only: state card, « Fiche visible par les clients » Oui/Non, formule, the next date (premier prélèvement / prochain prélèvement / fiche visible jusqu'au). No price, no plan to pick, no cancel or reactivate button, no link to pay
+- [ ] « Actualiser le statut » picks up a subscription just made on the website
+- [ ] Ended subscription (Stripe says canceled or unpaid): the « Abonnement terminé » veil covers the pro area; « J'ai renouvelé — actualiser » lifts it once the website subscription is active, and says so if it's still not
+- [ ] A salon that never subscribed is **not** veiled (it must still set up its page), but it's absent from search and its page 404s
 
 ---
 
@@ -212,13 +215,34 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Onboarding slide 4 edits + preview matches
 
 ### `/admin/abonnements`
-- [ ] Read-only list, all 5 statuses represented correctly (trial / active / cancelled / expired / not_started)
+- [ ] Read-only list with the state (Pas d'abonnement / Essai / Actif / Résilié (fin prévue) / Paiement refusé / Paiement en attente / Terminé), the plan or « Offert », and the date that matters
+- [ ] The arrow opens the coiffeur's customer in Stripe (test dashboard while in test mode)
 
 ### `/admin/parametres`
+- [ ] « Période d'essai des coiffeurs »: shows 30, save 14 → the next Checkout offers 14 days; 0 → no trial; 400 refused
 - [ ] Email change
 - [ ] Password change
 - [ ] Admin management works for `admin` tier
 - [ ] Admin management returns 403 for `admin_limited`
+
+### Coiffeur — `/pro/abonnement`
+- [ ] Signed out → `/pro/abonnement` sends to `/login`, and back to the page after signing in; a client account is refused on `/login`
+- [ ] Coiffeur not validated yet → « Dossier en cours de validation », no plan to pick
+- [ ] Validated, never subscribed → « Votre salon n'est pas encore en ligne », both prices read from Stripe (19 € / 182 €, « 2 mois offerts »), « 30 jours d'essai gratuit, puis … »
+- [ ] « Continuer vers le paiement » → Stripe Checkout (French) → card `4242 4242 4242 4242`, any future date, any CVC → back on the page with « Merci ! … » → within seconds « Essai gratuit en cours », visible: oui → the salon is back in the app's search
+- [ ] « Annuler » on Checkout → « Paiement annulé : rien n'a été débité. »
+- [ ] « Ouvrir la gestion de l'abonnement » → Stripe's portal: switch monthly ↔ yearly, change card, see invoices, cancel → back: « Abonnement résilié », still visible until the date shown; « Renouveler » in the portal undoes it
+- [ ] A second subscription after one ended gets no free trial
+
+---
+
+## Stripe (test mode) — set up once
+
+- [ ] `STRIPE_SECRET_KEY` (sk_test_…) in `server/.env` and on Render; `WEB_APP_URL` = the website's URL
+- [ ] `cd server && bun run stripe:setup -- --webhook-url https://worldhair-server.onrender.com/webhooks/stripe` → prints `STRIPE_WEBHOOK_SECRET=whsec_…` → put it in `server/.env` and on Render, redeploy
+- [ ] Locally instead: `stripe listen --forward-to localhost:3000/webhooks/stripe` (Stripe CLI) prints a `whsec_…` for `.env`
+- [ ] Stripe dashboard → Settings → Billing → Subscriptions and emails: Smart Retries on; « Send emails about failed card payments », « Send emails about upcoming renewals » and the trial-ending reminder on; after all retries fail → cancel the subscription
+- [ ] Stripe dashboard → Settings → Branding and Business details (name, logo, support email) — shown on Checkout, the portal and invoices
 
 ---
 
@@ -230,14 +254,16 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] **Booking rules**: salon sets 1 h / 1 jour → client can't book a slot 45 min away → books tomorrow 10:00 → salon accepts → after 10:00 today "Modifier" / "Annuler" are gone
 - [ ] **Closure**: stylist adds a closure over a booked slot → warned, booking kept → the client can't book anything else inside it
 - [ ] **Review**: past appointment → review → stylist replies → report it (API) → admin hides it → gone from the public page
-- [ ] **Subscription**: waits for Stripe (TODO.md Phase 4) — the in-app simulators are gone; until then J-7 / expired can only be forced in the dev database
+- [ ] **Subscription**: new coiffeur → admin validates → email « Choisir mon abonnement » → `/pro/abonnement` → Checkout with 4242 → salon listed, app shows « Essai gratuit »
+- [ ] **Failed renewal** (Stripe test clock, or card `4000 0000 0000 0341` then end the trial from the dashboard): « Paiement refusé » banner in the app + push, salon still listed → after the retries Stripe cancels → salon gone from search, « Abonnement terminé » veil, email with the link → subscribe again → listed again
+- [ ] **J-7**: a subscription cancelled in the portal with its end 7 days away → push + email « se termine le … » once
 
 ---
 
 ## Mocked — don't report as bugs
 
 - **Service payment**: simulated, always succeeds, no charge and no refund (real payment: TODO.md Phase 5).
-- **Subscriptions**: no Stripe yet (TODO.md Phase 4) — only plan/status/dates are real.
+- **Subscriptions**: Stripe in **test mode** — test cards only, nothing is charged. Seeded salons run on an offered year (no Stripe) until they subscribe.
 - **Push**: no `eas.projectId` in `app.json` → token registration fails silently. Every notification is created server-side (see `notifications_log`) but can't reach a phone until `eas init` is run with the WorldHair Expo account.
 - **Emails**: sent via Resend + a Supabase "Send Email" hook. Only sends to real inboxes once `worldhair.app` is verified in Resend — until then, sending is limited to the Resend account's own registered address.
 - **Render**: first request after idle takes 30–60s.

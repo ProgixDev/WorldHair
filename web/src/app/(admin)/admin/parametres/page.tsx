@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
+import { TrialSettingsCard } from "@/components/admin/TrialSettingsCard";
 import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import {
   type AdminSession,
@@ -203,6 +204,8 @@ export default function AdminParametresPage() {
               {passwordMessage && <p className="text-xs text-[#1f9d55]">{passwordMessage}</p>}
             </div>
           </div>
+
+          <TrialSettingsCard />
 
           {session?.tier === "admin" && (
             <div className="flex flex-col gap-4 rounded-2xl bg-[#111c2e] p-5">

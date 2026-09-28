@@ -10,7 +10,6 @@ import type {
   Attendance,
   AvailabilityDay,
   GalleryPhoto,
-  PlanId,
   ProAppointment,
   ProAppointmentStatus,
   ProProfile,
@@ -55,9 +54,8 @@ interface ProContextValue {
     label?: string;
   }) => Promise<TimeOffConflict[]>;
   deleteTimeOff: (id: string) => Promise<void>;
-  changePlan: (plan: PlanId) => Promise<void>;
-  cancelSubscription: () => Promise<void>;
-  reactivateSubscription: () => Promise<void>;
+  /** Reads the subscription again — after the coiffeur subscribed or renewed on the website. */
+  refreshSubscription: () => Promise<void>;
   saveReply: (reviewId: string, text: string) => Promise<void>;
   deleteReply: (reviewId: string) => Promise<void>;
 }
@@ -154,11 +152,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
         return result.conflicts;
       },
       deleteTimeOff: async (id) => setTimeOff(await pro.deleteTimeOff(id)),
-      changePlan: async (plan) => setSubscription(await pro.changePlan(plan)),
-      cancelSubscription: async () =>
-        setSubscription(await pro.cancelSubscription()),
-      reactivateSubscription: async () =>
-        setSubscription(await pro.reactivateSubscription()),
+      refreshSubscription: async () => setSubscription(await pro.getSubscription()),
       saveReply: async (reviewId, text) =>
         setReviews(await pro.saveReply(reviewId, text)),
       deleteReply: async (reviewId) =>

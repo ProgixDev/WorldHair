@@ -9,6 +9,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { Role } from '../common/types/role';
 import { isAccountActive } from '../common/utils/account-status';
+import { isSalonListed } from '../common/utils/subscription-status';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonProfile, SalonService, SalonServiceItem } from '../salon/salon.service';
 import { BookingRules, BusyBooking, DaySlots, refusalFor, SlotRefusal, slotsForDay } from './booking-rules';
@@ -539,14 +540,21 @@ export class AppointmentsService {
     }
   }
 
-  /** Validated, shop-complete and not suspended/banned — anything else can't be booked (or even seen). */
+  /** Validated, shop-complete, subscribed and not suspended/banned — anything else can't be booked (or even seen). */
   private async bookableSalon(coiffeurId: string): Promise<SalonProfile> {
-    const [application, profile, accountActive] = await Promise.all([
+    const [application, profile, accountActive, listed] = await Promise.all([
       this.applications.getMine(coiffeurId),
       this.salon.getProfile(coiffeurId),
       isAccountActive(this.supabase, coiffeurId),
+      isSalonListed(this.supabase, coiffeurId),
     ]);
-    if (!application || application.status !== 'validated' || !application.shopProfileComplete || !accountActive) {
+    if (
+      !application ||
+      application.status !== 'validated' ||
+      !application.shopProfileComplete ||
+      !accountActive ||
+      !listed
+    ) {
       throw new NotFoundException('Salon not found');
     }
     return profile;

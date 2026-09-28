@@ -1,38 +1,8 @@
-import {
-  AdminSubscriptionSummary,
-  DisplaySubscriptionStatus,
-  Subscription,
-  SubscriptionPlan,
-  SubscriptionStatus,
-} from '../subscriptions.service';
+import { IsIn } from 'class-validator';
+import { SubscriptionPlan } from '../subscription-state';
 
-/** The coiffeur's own view (mobile/src/features/pro/types.ts's `Subscription`). */
-export class SubscriptionDto {
-  profileId!: string;
+/** Which price Stripe Checkout starts with. */
+export class CreateCheckoutSessionDto {
+  @IsIn(['monthly', 'yearly'])
   plan!: SubscriptionPlan;
-  status!: SubscriptionStatus;
-  trialEndsAt!: string | null;
-  renewsAt!: string;
-}
-
-export function toSubscriptionDto(subscription: Subscription): SubscriptionDto {
-  return { ...subscription };
-}
-
-/** One row per coiffeur in the admin's `/admin/abonnements` list. */
-export class AdminSubscriptionSummaryDto {
-  profileId!: string;
-  firstName!: string;
-  lastName!: string;
-  email!: string;
-  plan!: SubscriptionPlan;
-  status!: DisplaySubscriptionStatus;
-  trialEndsAt!: string | null;
-  renewsAt!: string | null;
-}
-
-export function toAdminSubscriptionSummaryDto(
-  summary: AdminSubscriptionSummary,
-): AdminSubscriptionSummaryDto {
-  return { ...summary };
 }

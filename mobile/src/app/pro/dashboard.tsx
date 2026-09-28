@@ -11,7 +11,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button } from "../../components/ui/Button";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
@@ -26,7 +25,7 @@ import {
   servicesLabel,
   weeklySeries,
 } from "../../features/pro/stats";
-import { daysRemaining, isNearingExpiry } from "../../features/pro/subscription";
+import { describeSubscription } from "../../features/pro/subscription";
 import {
   avatarFor,
   coverFor,
@@ -81,8 +80,13 @@ export default function ProDashboard() {
       </View>
     );
 
-  const daysLeft = subscription ? Math.max(0, daysRemaining(subscription)) : 0;
-  const nearingExpiry = subscription ? isNearingExpiry(subscription) : false;
+  const subscriptionSummary = subscription ? describeSubscription(subscription) : null;
+  const toneColor =
+    subscriptionSummary?.tone === "danger"
+      ? theme.danger
+      : subscriptionSummary?.tone === "warning"
+        ? theme.accent.warm
+        : theme.primary.main;
 
   const maxWeek = Math.max(...series.map((week) => week.count), 1);
 
@@ -144,88 +148,39 @@ export default function ProDashboard() {
       </View>
 
       <View style={{ paddingHorizontal: gutter, gap: spacing.xl }}>
-        {/* ── Trial / subscription strip ───────────────────────────────── */}
-        {subscription ? (
-          <View
-            style={{
-              borderRadius: radius.xl,
-              borderWidth: nearingExpiry ? 1.5 : 1,
-              borderColor:
-                nearingExpiry || subscription.status === "cancelled"
-                  ? theme.danger
-                  : theme.primary.main,
-              backgroundColor: nearingExpiry
-                ? theme.danger + "14"
-                : theme.surface.raised,
+        {/* ── Subscription strip ───────────────────────────────────────── */}
+        {subscriptionSummary ? (
+          <Pressable
+            onPress={() => router.push(ROUTES.proAccount as never)}
+            accessibilityRole="button"
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
               gap: spacing.md,
               padding: spacing.lg,
-            }}
+              borderRadius: radius.xl,
+              borderWidth: subscriptionSummary.tone === "ok" ? 1 : 1.5,
+              borderColor: toneColor,
+              backgroundColor:
+                subscriptionSummary.tone === "danger" ? theme.danger + "14" : theme.surface.raised,
+              opacity: pressed ? 0.8 : 1,
+            })}
           >
-            <Pressable
-              onPress={() => router.push(ROUTES.proAccount as never)}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                { flexDirection: "row", alignItems: "center", gap: spacing.md },
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name={
-                  nearingExpiry || subscription.status === "cancelled"
-                    ? "alert-circle-outline"
-                    : "crown-outline"
-                }
-                size={22}
-                color={
-                  nearingExpiry || subscription.status === "cancelled"
-                    ? theme.danger
-                    : theme.primary.main
-                }
-              />
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text
-                  style={[typography.label, { color: theme.foreground.white }]}
-                >
-                  {nearingExpiry
-                    ? "Il vous reste " +
-                      daysLeft +
-                      (daysLeft > 1 ? " jours" : " jour") +
-                      " d'abonnement"
-                    : subscription.status === "trial"
-                      ? "Essai gratuit — " + daysLeft + " jours restants"
-                      : subscription.status === "cancelled"
-                        ? "Abonnement résilié"
-                        : "Abonnement actif"}
-                </Text>
-                <Text
-                  style={[typography.caption, { color: theme.foreground.gray }]}
-                >
-                  {nearingExpiry
-                    ? "Renouvelez pour garder votre fiche visible."
-                    : subscription.status === "cancelled"
-                      ? "Votre fiche sera masquée à la fin de la période."
-                      : "Formule " +
-                        (subscription.plan === "yearly"
-                          ? "annuelle"
-                          : "mensuelle")}
-                </Text>
-              </View>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={20}
-                color={theme.foreground.gray}
-              />
-            </Pressable>
-
-            {nearingExpiry ? (
-              <Button
-                label="Renouveler mon abonnement"
-                onPress={() => router.push(ROUTES.proAccount as never)}
-                background={theme.danger}
-                color="#ffffff"
-              />
-            ) : null}
-          </View>
+            <MaterialCommunityIcons
+              name={subscriptionSummary.tone === "ok" ? "crown-outline" : "alert-circle-outline"}
+              size={22}
+              color={toneColor}
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[typography.label, { color: theme.foreground.white }]}>
+                {subscriptionSummary.title}
+              </Text>
+              <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                {subscriptionSummary.detail}
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={theme.foreground.gray} />
+          </Pressable>
         ) : null}
 
         {/* ── KPI grid ─────────────────────────────────────────────────── */}

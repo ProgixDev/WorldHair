@@ -9,21 +9,24 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { Button } from "../ui/Button";
 
 /**
- * Full-screen block once the subscription has lapsed (issue #8): a
- * translucent cover over the whole pro area, message centered, one way out.
- * Real billing goes through the phone's store; this mock reactivates
- * straight away, same as the button on the account tab.
+ * Full-screen block once the subscription has ended (issue #8): a
+ * translucent cover over the whole pro area, message centered. Renewing
+ * happens on the website (the email tells how); the button reads the
+ * status again once that's done.
  */
 export function SubscriptionExpiredOverlay() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { reactivateSubscription } = usePro();
+  const { refreshSubscription } = usePro();
   const [busy, setBusy] = useState(false);
+  const [stillExpired, setStillExpired] = useState(false);
 
-  const handleReactivate = async () => {
+  const handleRefresh = async () => {
     setBusy(true);
     try {
-      await reactivateSubscription();
+      await refreshSubscription();
+      // Still mounted means still expired: say so rather than look stuck.
+      setStillExpired(true);
     } finally {
       setBusy(false);
     }
@@ -91,14 +94,26 @@ export function SubscriptionExpiredOverlay() {
               { color: theme.foreground.gray, textAlign: "center" },
             ]}
           >
-            Réabonnez-vous pour retrouver votre agenda, vos prestations et
-            votre fiche visible par les clients.
+            Votre fiche n&apos;est plus visible par les clients. Nous vous
+            avons envoyé par email la marche à suivre pour la remettre en
+            ligne et retrouver votre agenda.
           </Text>
+          {stillExpired ? (
+            <Text
+              style={[
+                typography.caption,
+                { color: theme.danger, textAlign: "center" },
+              ]}
+            >
+              Toujours pas d&apos;abonnement actif. Réessayez dans un instant
+              si vous venez de le renouveler.
+            </Text>
+          ) : null}
         </View>
 
         <Button
-          label="Se réabonner"
-          onPress={() => void handleReactivate()}
+          label="J'ai renouvelé — actualiser"
+          onPress={() => void handleRefresh()}
           loading={busy}
           background={theme.primary.main}
           color={theme.primary.on}

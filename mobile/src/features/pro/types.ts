@@ -99,39 +99,37 @@ export interface ProAppointment {
 
 export type PlanId = "monthly" | "yearly";
 
-export interface Subscription {
-  plan: PlanId;
-  status: "trial" | "active" | "cancelled";
-  /** ISO — end of the free month. */
-  trialEndsAt: string | null;
-  /** ISO — next automatic renewal. */
-  renewsAt: string;
-}
+/** How the server reads the coiffeur's Stripe subscription (server/src/subscriptions/subscription-state.ts). */
+export type SubscriptionState =
+  | "none"
+  | "trialing"
+  | "active"
+  /** A cancellation is scheduled: listed until `endsAt`. */
+  | "ending"
+  /** A payment failed and Stripe retries it: still listed meanwhile. */
+  | "past_due"
+  /** The first payment awaits the coiffeur's confirmation: not listed yet. */
+  | "incomplete"
+  | "expired";
 
-export const PLANS: {
-  id: PlanId;
-  label: string;
-  price: number;
-  period: string;
-  hint: string;
-  saving?: string;
-}[] = [
-  {
-    id: "monthly",
-    label: "Mensuel",
-    price: 19,
-    period: "par mois",
-    hint: "Sans engagement, résiliable à tout moment.",
-  },
-  {
-    id: "yearly",
-    label: "Annuel",
-    price: 182,
-    period: "par an",
-    hint: "Deux mois offerts par rapport au mensuel.",
-    saving: "-20 %",
-  },
-];
+/**
+ * The coiffeur's subscription, read-only in the app: it's sold and managed
+ * on the website, through Stripe (TODO.md Phase 4).
+ */
+export interface Subscription {
+  state: SubscriptionState;
+  plan: PlanId;
+  /** Visible in search and bookable right now. */
+  listed: boolean;
+  /** Offered without Stripe (demo salons, launch partners). */
+  offered: boolean;
+  /** ISO — end of the free trial: the first charge. */
+  trialEndsAt: string | null;
+  /** ISO — next renewal. */
+  currentPeriodEnd: string | null;
+  /** ISO — when the salon leaves search if nothing changes; `null` while it renews on its own. */
+  endsAt: string | null;
+}
 
 export type ProService = Service;
 

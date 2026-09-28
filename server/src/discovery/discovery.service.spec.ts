@@ -54,6 +54,16 @@ describe('DiscoveryService', () => {
       expect(result.total).toBe(1);
     });
 
+    it('hides salons without a live subscription', async () => {
+      supabase.seedValidatedSalon({ profileId: 'p1', firstName: 'A', lastName: 'B', salonName: 'Subscribed' });
+      supabase.seedValidatedSalon({ profileId: 'p2', firstName: 'C', lastName: 'D', salonName: 'Never subscribed', subscribed: false });
+      supabase.seedValidatedSalon({ profileId: 'p3', firstName: 'E', lastName: 'F', salonName: 'Unpaid' });
+      supabase.seedSubscription({ profileId: 'p3', status: 'unpaid', stripeSubscriptionId: 'sub_3' });
+
+      const result = await discovery.search({ limit: 20, offset: 0 });
+      expect(result.items.map((item) => item.id)).toEqual(['p1']);
+    });
+
     it('filters by specialty and city', async () => {
       supabase.seedValidatedSalon({
         profileId: 'p1',
@@ -207,6 +217,12 @@ describe('DiscoveryService', () => {
     it('404s a salon whose account is suspended or banned', async () => {
       supabase.seedValidatedSalon({ profileId: 'p1', firstName: 'A', lastName: 'B', salonName: 'Banned' });
       supabase.setAccountStatus('p1', 'banned');
+
+      await expect(discovery.getById('p1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('404s a salon without a live subscription', async () => {
+      supabase.seedValidatedSalon({ profileId: 'p1', firstName: 'A', lastName: 'B', salonName: 'Lapsed', subscribed: false });
 
       await expect(discovery.getById('p1')).rejects.toThrow(NotFoundException);
     });

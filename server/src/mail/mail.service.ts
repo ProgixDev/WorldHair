@@ -2,11 +2,14 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
 import { EnvironmentVariables } from '../config/env.validation';
-import { formatParisDateTime } from '../common/utils/paris-time';
+import { formatParisDate, formatParisDateTime } from '../common/utils/paris-time';
+import { subscriptionPageUrl } from '../common/utils/web-links';
 import {
   appointmentReminderMail,
   coiffeurApplicationDecidedMail,
   passwordResetMail,
+  subscriptionEndedMail,
+  subscriptionEndingSoonMail,
   verificationMail,
 } from './mail.templates';
 import { buildMailTransport } from './mail.transport';
@@ -85,7 +88,22 @@ export class MailService implements OnModuleDestroy {
     status: 'validated' | 'rejected',
     reviewMessage?: string | null,
   ): Promise<void> {
-    await this.send(to, coiffeurApplicationDecidedMail(status, reviewMessage));
+    await this.send(
+      to,
+      coiffeurApplicationDecidedMail(status, reviewMessage, status === 'validated' ? this.subscriptionPage() : null),
+    );
+  }
+
+  async sendSubscriptionEndedEmail(to: string): Promise<void> {
+    await this.send(to, subscriptionEndedMail(this.subscriptionPage()));
+  }
+
+  async sendSubscriptionEndingSoonEmail(to: string, endsAt: string): Promise<void> {
+    await this.send(to, subscriptionEndingSoonMail(formatParisDate(endsAt), this.subscriptionPage()));
+  }
+
+  private subscriptionPage(): string | null {
+    return subscriptionPageUrl(this.config.get('WEB_APP_URL', { infer: true }));
   }
 
   async sendAppointmentReminderEmail(to: string, serviceName: string, startsAt: string): Promise<void> {

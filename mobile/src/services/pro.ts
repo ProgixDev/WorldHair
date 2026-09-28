@@ -11,7 +11,6 @@ import type {
   Attendance,
   AvailabilityDay,
   GalleryPhoto,
-  PlanId,
   ProAppointment,
   ProAppointmentStatus,
   ProProfile,
@@ -72,16 +71,6 @@ export function proErrorMessage(err: unknown): string {
     if (match) return match[1];
   }
   return "Une erreur est survenue. Réessayez.";
-}
-
-// ─── Seeding ─────────────────────────────────────────────────────────────────
-
-/**
- * Ensures a subscription row exists — the server lazily creates a 30-day
- * trial on first read (`getOrCreateMine`), so this just triggers that.
- */
-export async function seedProWorkspace(): Promise<void> {
-  await getSubscription();
 }
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -374,40 +363,18 @@ export async function deleteTimeOff(id: string): Promise<TimeOff[]> {
 
 // ─── Subscription ────────────────────────────────────────────────────────────
 
-interface SubscriptionApiResponse {
-  profileId: string;
-  plan: PlanId;
-  status: "trial" | "active" | "cancelled";
-  trialEndsAt: string | null;
-  renewsAt: string;
-}
-
-function toSubscription(row: SubscriptionApiResponse): Subscription {
-  return { plan: row.plan, status: row.status, trialEndsAt: row.trialEndsAt, renewsAt: row.renewsAt };
-}
-
+/** Read-only: subscriptions are sold and managed on the website, through Stripe. */
 export async function getSubscription(): Promise<Subscription> {
-  const { data } = await apiClient.get<SubscriptionApiResponse>("/subscriptions/mine");
-  return toSubscription(data);
-}
-
-export async function changePlan(plan: PlanId): Promise<Subscription> {
-  const { data } = await apiClient.patch<SubscriptionApiResponse>("/subscriptions/mine/plan", {
-    plan,
-  });
-  return toSubscription(data);
-}
-
-export async function cancelSubscription(): Promise<Subscription> {
-  const { data } = await apiClient.patch<SubscriptionApiResponse>("/subscriptions/mine/cancel");
-  return toSubscription(data);
-}
-
-export async function reactivateSubscription(): Promise<Subscription> {
-  const { data } = await apiClient.patch<SubscriptionApiResponse>(
-    "/subscriptions/mine/reactivate",
-  );
-  return toSubscription(data);
+  const { data } = await apiClient.get<Subscription>("/subscriptions/mine");
+  return {
+    state: data.state,
+    plan: data.plan,
+    listed: data.listed,
+    offered: data.offered,
+    trialEndsAt: data.trialEndsAt,
+    currentPeriodEnd: data.currentPeriodEnd,
+    endsAt: data.endsAt,
+  };
 }
 
 // ─── Reviews ─────────────────────────────────────────────────────────────────

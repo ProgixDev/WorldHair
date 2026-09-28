@@ -232,20 +232,42 @@ export async function getBookingStats(range: StatsRange): Promise<BookingStats> 
   return data;
 }
 
-/** Mirrors server/src/subscriptions/dto/subscription.dto.ts's AdminSubscriptionSummaryDto. */
+/** Mirrors server/src/subscriptions/subscriptions.service.ts's AdminSubscriptionSummary. */
 export interface AdminSubscriptionSummary {
   profileId: string;
   firstName: string;
   lastName: string;
   email: string;
   plan: "monthly" | "yearly";
-  status: "trial" | "active" | "cancelled" | "expired" | "not_started";
+  state: "none" | "trialing" | "active" | "ending" | "past_due" | "incomplete" | "expired";
+  /** Stripe's own status; `null` for an offered subscription or none at all. */
+  stripeStatus: string | null;
   trialEndsAt: string | null;
-  renewsAt: string | null;
+  currentPeriodEnd: string | null;
+  /** When the salon leaves search if nothing changes. */
+  endsAt: string | null;
+  /** The customer in Stripe's dashboard (its test side in test mode). */
+  stripeCustomerUrl: string | null;
 }
 
 export async function listSubscriptions(): Promise<AdminSubscriptionSummary[]> {
   const { data } = await apiClient.get<AdminSubscriptionSummary[]>("/admin/subscriptions");
+  return data;
+}
+
+/** Mirrors server/src/settings/platform-settings.service.ts. */
+export interface PlatformSettings {
+  /** Free days a coiffeur's first subscription starts with. */
+  trialDays: number;
+}
+
+export async function getPlatformSettings(): Promise<PlatformSettings> {
+  const { data } = await apiClient.get<PlatformSettings>("/admin/settings");
+  return data;
+}
+
+export async function updatePlatformSettings(patch: Partial<PlatformSettings>): Promise<PlatformSettings> {
+  const { data } = await apiClient.patch<PlatformSettings>("/admin/settings", patch);
   return data;
 }
 

@@ -105,6 +105,17 @@ describe('AppointmentsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('404s a salon without a live subscription, for booking and for its slots', async () => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'canceled', stripeSubscriptionId: 'sub_1' });
+
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, { date: '2026-10-07', serviceIds: [serviceId] }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
     it('404s an unknown or unvalidated coiffeur', async () => {
       await expect(
         service.create(PARTICULIER_ID, {

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { parisParts, parisTime } from "../src/common/utils/paris-time";
 import { seedSalonReviews, upsertReviewers } from "./lib/seed-reviews";
+import { offerSubscription } from "./lib/seed-subscription";
 
 /**
  * Seeds the 4 preview/demo accounts the mobile app's DemoLoginBar signs into
@@ -449,7 +450,9 @@ async function seedSalonWorkspace(
   );
   if (servicesError) throw servicesError;
 
-  console.log(`  ${userId}: salon workspace seeded (${salon.services.length} services)`);
+  await offerSubscription(supabase, userId);
+
+  console.log(`  ${userId}: salon workspace seeded (${salon.services.length} services, offered subscription)`);
 }
 
 async function main(): Promise<void> {

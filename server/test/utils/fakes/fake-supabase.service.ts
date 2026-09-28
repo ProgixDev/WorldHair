@@ -189,10 +189,33 @@ interface SubscriptionRow {
   profile_id: string;
   plan: string;
   status: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
   trial_ends_at: string | null;
-  renews_at: string;
+  current_period_end: string | null;
+  cancel_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface PlatformSettingsRow {
+  id: true;
+  trial_days: number;
+  updated_at: string;
+}
+
+/** Same default as schema.sql's platform_settings row. */
+function defaultPlatformSettings(): PlatformSettingsRow {
+  return { id: true, trial_days: 30, updated_at: new Date().toISOString() };
+}
+
+/** Mirrors search_salons()'s subscription join: Stripe's live statuses, or an offered one until its end date. */
+function isListedSubscription(row: SubscriptionRow | undefined): boolean {
+  if (!row || !['trialing', 'active', 'past_due'].includes(row.status)) return false;
+  return (
+    row.stripe_subscription_id !== null ||
+    (row.current_period_end !== null && new Date(row.current_period_end).getTime() > Date.now())
+  );
 }
 
 interface AdSlotRow {
@@ -416,6 +439,7 @@ export class FakeSupabaseService {
   private readonly adSlots = new Map<string, AdSlotRow>(defaultAdSlots());
   private readonly appContent = new Map<string, AppContentRow>(defaultAppContent());
   private readonly subscriptions = new Map<string, SubscriptionRow>();
+  private platformSettings: PlatformSettingsRow = defaultPlatformSettings();
 
   readonly client = {
     auth: {
@@ -523,6 +547,9 @@ export class FakeSupabaseService {
       if (table === 'coiffeur_subscriptions') {
         return this.subscriptionsTable();
       }
+      if (table === 'platform_settings') {
+        return this.platformSettingsTable();
+      }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
     rpc: async (fn: string, params: Record<string, unknown> = {}) => {
@@ -586,6 +613,7 @@ export class FakeSupabaseService {
     this.appContent.clear();
     for (const [key, row] of defaultAppContent()) this.appContent.set(key, row);
     this.subscriptions.clear();
+    this.platformSettings = defaultPlatformSettings();
   }
 
   /**
@@ -665,25 +693,42 @@ export class FakeSupabaseService {
     return [...this.notificationsLog.values()].filter((row) => row.user_id === userId);
   }
 
-  /** Test convenience: seeds or overwrites a `coiffeur_subscriptions` row directly, bypassing SubscriptionsService's own get-or-create/plan-change flow. */
+  /** Test convenience: seeds or overwrites a `coiffeur_subscriptions` row directly, as Stripe's webhooks would have left it. */
   seedSubscription(params: {
     profileId: string;
     plan?: string;
     status?: string;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
     trialEndsAt?: string | null;
-    renewsAt?: string;
+    currentPeriodEnd?: string | null;
+    cancelAt?: string | null;
   }): void {
     const existing = this.subscriptions.get(params.profileId);
     const now = new Date().toISOString();
+    const pick = <T>(value: T | undefined, fallback: T): T => (value !== undefined ? value : fallback);
     this.subscriptions.set(params.profileId, {
       profile_id: params.profileId,
       plan: params.plan ?? existing?.plan ?? 'monthly',
-      status: params.status ?? existing?.status ?? 'trial',
-      trial_ends_at: params.trialEndsAt !== undefined ? params.trialEndsAt : (existing?.trial_ends_at ?? null),
-      renews_at: params.renewsAt ?? existing?.renews_at ?? now,
+      status: params.status ?? existing?.status ?? 'none',
+      stripe_customer_id: pick(params.stripeCustomerId, existing?.stripe_customer_id ?? null),
+      stripe_subscription_id: pick(params.stripeSubscriptionId, existing?.stripe_subscription_id ?? null),
+      trial_ends_at: pick(params.trialEndsAt, existing?.trial_ends_at ?? null),
+      current_period_end: pick(params.currentPeriodEnd, existing?.current_period_end ?? null),
+      cancel_at: pick(params.cancelAt, existing?.cancel_at ?? null),
       created_at: existing?.created_at ?? now,
       updated_at: now,
     });
+  }
+
+  /** Test convenience: the platform_settings row as the admin left it. */
+  seedPlatformSettings(params: { trialDays: number }): void {
+    this.platformSettings = { ...this.platformSettings, trial_days: params.trialDays };
+  }
+
+  /** Test convenience: reads a `coiffeur_subscriptions` row back, for assertions. */
+  subscriptionFor(profileId: string): SubscriptionRow | undefined {
+    return this.subscriptions.get(profileId);
   }
 
   /**
@@ -761,7 +806,16 @@ export class FakeSupabaseService {
     bookingNoticeMinutes?: number;
     cancellationNoticeMinutes?: number;
     services?: { name: string; price: number; durationMin: number; specialty: string }[];
+    /** Listed salons need a live subscription (TODO.md Phase 4): by default an offered one, a year long. `false` = never subscribed. */
+    subscribed?: boolean;
   }): void {
+    if (params.subscribed !== false && !this.subscriptions.has(params.profileId)) {
+      this.seedSubscription({
+        profileId: params.profileId,
+        status: 'active',
+        currentPeriodEnd: new Date(Date.now() + 365 * 86_400_000).toISOString(),
+      });
+    }
     this.seedApplication({
       profileId: params.profileId,
       firstName: params.firstName,
@@ -835,6 +889,8 @@ export class FakeSupabaseService {
       .filter(({ application }) => application?.status === 'validated' && application?.shop_profile_complete === true)
       // Mirrors search_salons()'s join on profiles.account_status = 'active'.
       .filter(({ profile }) => this.profiles.get(profile.profile_id)?.account_status === 'active')
+      // ...and its join on a live subscription.
+      .filter(({ profile }) => isListedSubscription(this.subscriptions.get(profile.profile_id)))
       .filter(({ profile }) => specialty == null || profile.specialties.includes(specialty))
       .filter(({ profile }) => city == null || profile.city.toLowerCase() === city.toLowerCase())
       .filter(({ profile }) => query == null || profile.salon_name.toLowerCase().includes(query.toLowerCase()))
@@ -1366,16 +1422,27 @@ export class FakeSupabaseService {
     return {
       select: () => new FakeSelectQuery<SubscriptionRow>(() => [...rows.values()]),
 
-      insert: (row: Record<string, unknown>) => ({
-        select: () => ({
-          single: async (): Promise<QueryResult> => {
-            const now = new Date().toISOString();
-            const created = { ...row, created_at: now, updated_at: now } as SubscriptionRow;
-            rows.set(created.profile_id, created);
-            return { data: created, error: null };
-          },
-        }),
-      }),
+      /** `onConflict: 'profile_id'`, merging like PostgREST: columns left out keep their value, a new row gets the schema defaults. */
+      upsert: async (row: Record<string, unknown>): Promise<QueryResult> => {
+        const now = new Date().toISOString();
+        const profileId = row.profile_id as string;
+        const existing = rows.get(profileId);
+        const merged = {
+          plan: 'monthly',
+          status: 'none',
+          stripe_customer_id: null,
+          stripe_subscription_id: null,
+          trial_ends_at: null,
+          current_period_end: null,
+          cancel_at: null,
+          created_at: now,
+          ...existing,
+          ...row,
+          updated_at: now,
+        } as SubscriptionRow;
+        rows.set(profileId, merged);
+        return { data: null, error: null };
+      },
 
       update: (patch: Record<string, unknown>) =>
         new FakeMutationQuery<SubscriptionRow>((matches) => {
@@ -1386,6 +1453,21 @@ export class FakeSupabaseService {
           const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
           rows.set(existing.profile_id, updated);
           return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private platformSettingsTable() {
+    return {
+      select: () => new FakeSelectQuery<PlatformSettingsRow>(() => [this.platformSettings]),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<PlatformSettingsRow>((matches) => {
+          if (!matches(this.platformSettings)) {
+            return { data: null, count: 0 };
+          }
+          this.platformSettings = { ...this.platformSettings, ...patch, updated_at: new Date().toISOString() };
+          return { data: this.platformSettings, count: 1 };
         }),
     };
   }

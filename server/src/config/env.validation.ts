@@ -144,6 +144,29 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   SEND_EMAIL_HOOK_SECRET = '';
+
+  /**
+   * The client's Stripe account (TODO.md Phase 4): `sk_test_…` in test mode,
+   * `sk_live_…` in production. Empty = subscriptions can't be sold (checkout,
+   * portal and prices answer 503); everything else runs.
+   */
+  @IsString()
+  @IsOptional()
+  STRIPE_SECRET_KEY = '';
+
+  /** Signs Stripe's webhook calls (`whsec_…`): the endpoint's signing secret in Stripe's dashboard, or what `stripe listen` prints locally. */
+  @IsString()
+  @IsOptional()
+  STRIPE_WEBHOOK_SECRET = '';
+
+  /**
+   * The website's public URL, e.g. https://worldhair.onrender.com. Stripe
+   * Checkout and the Customer Portal send the coiffeur back to its
+   * /pro/abonnement page, and subscription emails link there.
+   */
+  @IsString()
+  @IsOptional()
+  WEB_APP_URL = '';
 }
 
 /**

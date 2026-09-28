@@ -1,15 +1,13 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
-import { ChangePlanDto } from './dto/change-plan.dto';
-import { SubscriptionDto, toSubscriptionDto } from './dto/subscription.dto';
-import { SubscriptionsService } from './subscriptions.service';
+import { CreateCheckoutSessionDto } from './dto/subscription.dto';
+import { PlanPrice, SubscriptionsService, SubscriptionView } from './subscriptions.service';
 
 /**
- * The coiffeur's own side of "Écran abonnement" (mobile) — no real payment
- * processing (Apple IAP / Google Play Billing, still TODO.md work), just
- * plan/status/dates.
+ * The coiffeur's subscription. The app only reads it (`mine`); the website
+ * sells and manages it through Stripe (checkout-session, portal-session).
  */
 @Roles('coiffeur')
 @Controller('subscriptions')
@@ -17,25 +15,25 @@ export class SubscriptionsController {
   constructor(private readonly subscriptions: SubscriptionsService) {}
 
   @Get('mine')
-  async getMine(@CurrentUser() current: AuthenticatedUser): Promise<SubscriptionDto> {
-    return toSubscriptionDto(await this.subscriptions.getOrCreateMine(current.id));
+  getMine(@CurrentUser() current: AuthenticatedUser): Promise<SubscriptionView> {
+    return this.subscriptions.getMine(current.id);
   }
 
-  @Patch('mine/plan')
-  async changePlan(
+  @Get('prices')
+  listPrices(): Promise<PlanPrice[]> {
+    return this.subscriptions.listPrices();
+  }
+
+  @Post('checkout-session')
+  createCheckoutSession(
     @CurrentUser() current: AuthenticatedUser,
-    @Body() dto: ChangePlanDto,
-  ): Promise<SubscriptionDto> {
-    return toSubscriptionDto(await this.subscriptions.changePlan(current.id, dto.plan));
+    @Body() dto: CreateCheckoutSessionDto,
+  ): Promise<{ url: string }> {
+    return this.subscriptions.createCheckoutSession(current.id, dto.plan);
   }
 
-  @Patch('mine/cancel')
-  async cancel(@CurrentUser() current: AuthenticatedUser): Promise<SubscriptionDto> {
-    return toSubscriptionDto(await this.subscriptions.cancel(current.id));
-  }
-
-  @Patch('mine/reactivate')
-  async reactivate(@CurrentUser() current: AuthenticatedUser): Promise<SubscriptionDto> {
-    return toSubscriptionDto(await this.subscriptions.reactivate(current.id));
+  @Post('portal-session')
+  createPortalSession(@CurrentUser() current: AuthenticatedUser): Promise<{ url: string }> {
+    return this.subscriptions.createPortalSession(current.id);
   }
 }

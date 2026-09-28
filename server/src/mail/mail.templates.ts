@@ -132,18 +132,56 @@ export function appointmentReminderMail(serviceName: string, when: string): Rend
   };
 }
 
+/** A French call-to-action button, with the link spelled out for mail clients that hide buttons. */
+function frenchButton(url: string, label: string): string {
+  return `<p><a href="${url}" style="display:inline-block;padding:12px 20px;background:#0c2340;color:#fff;border-radius:8px;text-decoration:none">${label}</a></p>
+  <p style="font-size:12px;color:#666">Si le bouton ne s'affiche pas, copiez ce lien : ${url}</p>`;
+}
+
+/** The subscription ended (Stripe says canceled or unpaid): the salon left search. */
+export function subscriptionEndedMail(link: string | null): RenderedMail {
+  const lead =
+    "Votre abonnement WorldHair a pris fin : votre salon n'apparaît plus dans la recherche et ne peut plus être réservé.";
+  return {
+    subject: "Votre salon n'est plus visible sur WorldHair",
+    text: link ? `${lead} Pour le remettre en ligne, réabonnez-vous depuis votre espace : ${link}` : lead,
+    html: layout(
+      'Abonnement terminé',
+      `<p>${lead}</p>${link ? `<p>Pour le remettre en ligne, réabonnez-vous depuis votre espace.</p>${frenchButton(link, 'Me réabonner')}` : ''}`,
+    ),
+  };
+}
+
+/** A week before a scheduled end (cancelled in the portal, or an offered subscription running out). */
+export function subscriptionEndingSoonMail(when: string, link: string | null): RenderedMail {
+  const lead = `Votre abonnement WorldHair se termine le ${when} : votre salon ne sera alors plus visible par les clients.`;
+  return {
+    subject: `Votre abonnement WorldHair se termine le ${when}`,
+    text: link ? `${lead} Pour le garder en ligne, gérez votre abonnement depuis votre espace : ${link}` : lead,
+    html: layout(
+      'Votre abonnement se termine bientôt',
+      `<p>${lead}</p>${link ? `<p>Pour le garder en ligne, gérez votre abonnement depuis votre espace.</p>${frenchButton(link, 'Garder mon abonnement')}` : ''}`,
+    ),
+  };
+}
+
 /** "Validation/refus compte coiffeur" (TODO.md → Notifications) — the one notification type that also goes by email, alongside push, since it's an account-lifecycle decision. */
 export function coiffeurApplicationDecidedMail(
   status: 'validated' | 'rejected',
   reviewMessage?: string | null,
+  /** The website's subscription page: a validated salon goes online once subscribed. */
+  subscribeLink?: string | null,
 ): RenderedMail {
   if (status === 'validated') {
+    const lead =
+      'Bonne nouvelle : votre dossier coiffeur a été validé. Vous pouvez maintenant compléter votre fiche boutique dans l\'application.';
+    const nextStep = 'Dernière étape pour apparaître dans la recherche : choisissez votre abonnement.';
     return {
       subject: 'Votre compte coiffeur a été validé',
-      text: 'Bonne nouvelle : votre dossier coiffeur a été validé. Vous pouvez maintenant compléter votre fiche boutique dans l\'application.',
+      text: subscribeLink ? `${lead} ${nextStep} ${subscribeLink}` : lead,
       html: layout(
         'Compte validé',
-        '<p>Bonne nouvelle : votre dossier coiffeur a été validé. Vous pouvez maintenant compléter votre fiche boutique dans l\'application.</p>',
+        `<p>${lead}</p>${subscribeLink ? `<p>${nextStep}</p>${frenchButton(subscribeLink, 'Choisir mon abonnement')}` : ''}`,
       ),
     };
   }

@@ -2,7 +2,6 @@ import { isAxiosError } from "axios";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
-import { seedProWorkspace } from "./pro";
 
 /**
  * Real auth service: Supabase Auth directly for signup/login/verify/reset
@@ -499,8 +498,6 @@ export async function signInAsDemo(persona: DemoPersona): Promise<Session> {
       "UNKNOWN_EMAIL",
       "Compte démo indisponible — a-t-il bien été seedé côté Supabase ?",
     );
-
-  if (persona === "coiffeur_active") await seedProWorkspace();
 
   const session = await buildSession();
   if (!session) throw new AuthError("NO_SESSION", "Session introuvable.");

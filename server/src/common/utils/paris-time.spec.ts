@@ -1,4 +1,4 @@
-import { formatParisDateTime, parisParts, parisTime } from './paris-time';
+import { formatParisDate, formatParisDateTime, parisParts, parisTime } from './paris-time';
 
 describe('paris-time', () => {
   it('runs the suite in UTC, like the production server', () => {
@@ -49,6 +49,12 @@ describe('paris-time', () => {
 
     it('normalises an overflowing day, like Date.UTC', () => {
       expect(parisTime(2026, 1, 32, 9, 0).toISOString()).toBe('2026-02-01T08:00:00.000Z');
+    });
+  });
+
+  describe('formatParisDate', () => {
+    it('writes the Paris calendar day, even when UTC is still on the day before', () => {
+      expect(formatParisDate('2026-10-06T22:30:00Z')).toBe('mercredi 7 octobre');
     });
   });
 
