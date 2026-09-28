@@ -12,6 +12,7 @@ import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.s
 import { Role } from '../common/types/role';
 import { isAccountActive } from '../common/utils/account-status';
 import { formatParisDateTime } from '../common/utils/paris-time';
+import { slices } from '../common/utils/slices';
 import { findSalonSubscription, isSalonListed } from '../common/utils/subscription-status';
 import { subscriptionEndsAt } from '../subscriptions/subscription-state';
 import { SupabaseService } from '../database/supabase.service';
@@ -1071,37 +1072,36 @@ export class AppointmentsService {
     }
   }
 
+  /** A hundred at a time: a client's salons, however many. */
   private async salonsFor(
     coiffeurIds: string[],
   ): Promise<Map<string, { name: string; cancellationNoticeMinutes: number }>> {
-    if (coiffeurIds.length === 0) return new Map();
-    const { data, error } = await this.supabase.client
-      .from('coiffeur_profiles')
-      .select()
-      .in('profile_id', coiffeurIds);
-    if (error) {
-      throw new InternalServerErrorException(error.message);
+    const salons = new Map<string, { name: string; cancellationNoticeMinutes: number }>();
+    for (const slice of slices(coiffeurIds)) {
+      const { data, error } = await this.supabase.client.from('coiffeur_profiles').select().in('profile_id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as { profile_id: string; salon_name: string; cancellation_notice_minutes: number }[]) {
+        salons.set(row.profile_id, { name: row.salon_name, cancellationNoticeMinutes: row.cancellation_notice_minutes ?? 0 });
+      }
     }
-    return new Map(
-      (data as { profile_id: string; salon_name: string; cancellation_notice_minutes: number }[]).map((row) => [
-        row.profile_id,
-        { name: row.salon_name, cancellationNoticeMinutes: row.cancellation_notice_minutes ?? 0 },
-      ]),
-    );
+    return salons;
   }
 
+  /** A hundred at a time: a busy salon's clients, however many. */
   private async particulierNamesFor(ids: string[]): Promise<Map<string, string>> {
-    if (ids.length === 0) return new Map();
-    const { data, error } = await this.supabase.client.from('profiles').select().in('id', ids);
-    if (error) {
-      throw new InternalServerErrorException(error.message);
+    const names = new Map<string, string>();
+    for (const slice of slices(ids)) {
+      const { data, error } = await this.supabase.client.from('profiles').select().in('id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as { id: string; first_name: string; last_name: string }[]) {
+        names.set(row.id, `${row.first_name} ${row.last_name}`.trim() || 'Client');
+      }
     }
-    return new Map(
-      (data as { id: string; first_name: string; last_name: string }[]).map((row) => [
-        row.id,
-        `${row.first_name} ${row.last_name}`.trim() || 'Client',
-      ]),
-    );
+    return names;
   }
 
   private mapParticulier(

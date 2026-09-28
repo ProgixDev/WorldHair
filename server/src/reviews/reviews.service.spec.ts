@@ -178,6 +178,39 @@ describe('ReviewsService', () => {
       expect((await service.listReported()).map((r) => r.id)).toEqual([review.id]);
     });
 
+    it("doesn't put a review the admins cleared back in their queue when its reporter reports it again", async () => {
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
+      await service.report(review.id, SALON, { reason: 'fake' });
+      await service.moderate(review.id, 'restore');
+
+      await expect(service.report(review.id, SALON, { reason: 'fake' })).rejects.toThrow(ConflictException);
+
+      expect(await service.listReported()).toEqual([]);
+      // Someone else's report still reaches the admins.
+      await service.report(review.id, CLIENT, { reason: 'offensive' });
+      expect((await service.listReported()).map((r) => r.id)).toEqual([review.id]);
+    });
+
+    it('lists every hidden review, however many authors — ids go to the database a hundred at a time', async () => {
+      const hidden: string[] = [];
+      for (let i = 0; i < 101; i++) {
+        const authorId = `author-${i}`;
+        supabase.addUser(`author-token-${i}`, { id: authorId, email: `a${i}@example.com`, email_confirmed_at: null }, 'particulier', {
+          firstName: `Auteur${i}`,
+          lastName: 'Test',
+        });
+        const appointmentId = supabase.seedAppointment({ particulierId: authorId, coiffeurId: COIFFEUR_ID, startsAt: PAST, status: 'confirmed' });
+        const review = await service.create(authorId, { appointmentId, rating: 1 });
+        await service.moderate(review.id, 'hide');
+        hidden.push(review.id);
+      }
+
+      const list = await service.listHidden();
+
+      expect(list.map((review) => review.id).sort()).toEqual(hidden.sort());
+      expect(list.every((review) => review.authorFullName.startsWith('Auteur'))).toBe(true);
+    });
+
     it('refuses a second report from the same person, and an author reporting their own review', async () => {
       const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
       await service.report(review.id, CLIENT, { reason: 'spam' });

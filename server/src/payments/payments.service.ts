@@ -416,7 +416,12 @@ export class PaymentsService {
   private async takeBackShare(payment: PaymentRow, refundedTotal: number): Promise<void> {
     const transfer = await this.sentTransfer(payment);
     if (!transfer) {
-      throw new ConflictException("The salon's payout is on its way: try again in an hour");
+      if (await this.isStillOn(payment.appointment_id)) {
+        throw new ConflictException("The salon's payout is on its way: try again in an hour");
+      }
+      // A payout Stripe refused, for a booking cancelled since (a dispute): it's never tried again, so nothing was sent and nothing will be.
+      await this.update(payment.id, { transfer_attempted_at: null });
+      return;
     }
     const kept = round2(Number(payment.amount) - refundedTotal);
     const reversedTotal = round2(
@@ -451,6 +456,9 @@ export class PaymentsService {
       await this.recordTransfer(payment.id, earlier, kept);
       return true;
     }
+
+    // Cancelled since the run listed it (an admin settling a dispute): the salon isn't paid.
+    if (!(await this.isStillOn(payment.appointment_id))) return false;
 
     const share = salonShare(kept, Number(payment.commission_rate));
     if (share <= 0) return false;
@@ -575,6 +583,15 @@ export class PaymentsService {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /** The booking still stands as accepted — the only kind a salon is paid for. */
+  private async isStillOn(appointmentId: string): Promise<boolean> {
+    const { data, error } = await this.supabase.client.from('appointments').select('status').eq('id', appointmentId).maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return (data as { status: string } | null)?.status === 'confirmed';
+  }
 
   private async findWhere(column: 'appointment_id' | 'payment_intent_id', value: string): Promise<PaymentRow | null> {
     const { data, error } = await this.supabase.client.from('payments').select().eq(column, value).maybeSingle();

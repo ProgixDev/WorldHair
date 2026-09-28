@@ -29,6 +29,7 @@ export default function AdminAvisPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   /** Bumped after a decision: the list is read again. */
   const [version, setVersion] = useState(0);
@@ -58,6 +59,8 @@ export default function AdminAvisPage() {
   const changeTab = (next: Tab) => {
     if (next === tab) return;
     setLoading(true);
+    setError(null);
+    setActionError(null);
     setReviews([]);
     setPage(1);
     setTab(next);
@@ -65,9 +68,12 @@ export default function AdminAvisPage() {
 
   const handleModerate = async (id: string, decision: "hide" | "restore") => {
     setActioningId(id);
+    setActionError(null);
     try {
       await moderateReview(id, decision);
       setVersion((count) => count + 1);
+    } catch {
+      setActionError("La décision n'a pas pu être enregistrée. Réessayez.");
     } finally {
       setActioningId(null);
     }
@@ -107,6 +113,7 @@ export default function AdminAvisPage() {
           </p>
 
           <div className="mt-6 flex flex-col gap-3">
+            {actionError && <p className="text-sm text-[#ff7a70]">{actionError}</p>}
             {loading && <p className="py-8 text-center text-sm text-[#93a6bc]">Chargement…</p>}
             {error && <p className="py-8 text-center text-sm text-[#ff7a70]">{error}</p>}
             {!loading && !error && reviews.length === 0 && (

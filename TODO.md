@@ -487,7 +487,8 @@ and offers « Réessayer ».
       The cancellation refunds all that's left — after the payout, the
       salon's share comes back first — and both sides get the reason by
       push and on the booking in the app. « Rembourser le reste » when
-      Stripe was down. Bookings now keep who cancelled them.
+      Stripe was down; the payout run never pays a booking cancelled
+      meanwhile. Bookings now keep who cancelled them.
 - [x] **Reported reviews**: show the reason and the reporter; keep hide and
       restore.
       Done: every report with its reason, the reporter (a salon by its

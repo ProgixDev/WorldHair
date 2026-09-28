@@ -20,15 +20,15 @@ export class AdminAppointmentsQueryDto extends PaginationQueryDto {
   @MaxLength(100)
   client?: string;
 
-  /** Starting on or after this Paris day. */
+  /** Starting on or after this Paris day — this century's. */
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'from must be YYYY-MM-DD' })
+  @Matches(/^20\d{2}-\d{2}-\d{2}$/, { message: 'from must be YYYY-MM-DD, from 2000 to 2099' })
   @IsISO8601({ strict: true }, { message: 'from must be a real day' })
   from?: string;
 
-  /** Starting on or before this Paris day. */
+  /** Starting on or before this Paris day — this century's. */
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'to must be YYYY-MM-DD' })
+  @Matches(/^20\d{2}-\d{2}-\d{2}$/, { message: 'to must be YYYY-MM-DD, from 2000 to 2099' })
   @IsISO8601({ strict: true }, { message: 'to must be a real day' })
   to?: string;
 }

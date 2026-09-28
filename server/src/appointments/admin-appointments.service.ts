@@ -176,10 +176,11 @@ export class AdminAppointmentsService {
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
-    if (!data) {
+    const row = data as unknown as AppointmentRow | null;
+    // A slot held while its client pays isn't a booking yet — the list leaves it out too.
+    if (!row || row.status === 'awaiting_payment') {
       throw new NotFoundException('Appointment not found');
     }
-    const row = data as unknown as AppointmentRow;
 
     const [salon, application, client, clientEmail, salonEmail] = await Promise.all([
       this.single<{ salon_name: string; phone: string; city: string }>('coiffeur_profiles', 'profile_id', row.coiffeur_id),

@@ -1,9 +1,11 @@
 "use client";
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
-import { Pagination } from "@/components/admin/Pagination";
+import { Pagination, pageCount } from "@/components/admin/Pagination";
 import {
   APPOINTMENT_STATUS_STYLES,
+  FIRST_DAY,
+  LAST_DAY,
   STATUS_FILTERS,
   appointmentQuery,
   appointmentStatusLabel,
@@ -15,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { type AdminAppointment, type AdminAppointmentFilters, listAdminAppointments } from "@/services/adminApi";
 import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 const PAGE_SIZE = 20;
@@ -44,6 +46,18 @@ export default function AdminRendezVousPage() {
   );
 }
 
+/** The page the address asks for: a whole number from 1. */
+function pageFrom(search: URLSearchParams): number {
+  return Math.max(1, Math.floor(Number(search.get("page"))) || 1);
+}
+
+/** The list's own address for these filters and this page. */
+function searchFor(filters: AdminAppointmentFilters, page: number): string {
+  const search = new URLSearchParams(filtersToSearch(filters));
+  if (page > 1) search.set("page", String(page));
+  return search.toString();
+}
+
 /**
  * Every booking (TODO.md Phase 7), filtered and paged by the server — a
  * booking opens in full, where it can be cancelled to settle a dispute. The
@@ -51,41 +65,58 @@ export default function AdminRendezVousPage() {
  * same list.
  */
 function AdminRendezVousPageContent() {
-  const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [filters, setFilters] = useState<AdminAppointmentFilters>(() =>
-    filtersFromSearch(new URLSearchParams(searchParams.toString())),
-  );
-  const [page, setPage] = useState(() => Math.max(1, Math.floor(Number(searchParams.get("page"))) || 1));
+  const search = useSearchParams().toString();
+  const [filters, setFilters] = useState<AdminAppointmentFilters>(() => filtersFromSearch(new URLSearchParams(search)));
+  const [page, setPage] = useState(() => pageFrom(new URLSearchParams(search)));
+  /** The address as last seen, and as this page last wrote it. */
+  const [address, setAddress] = useState({ seen: search, written: search });
   const [result, setResult] = useState<{ items: AdminAppointment[]; total: number }>({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(0);
 
+  // The address changed by a link to this list (the menu's « Rendez-vous »,
+  // say), not by the filters writing it: the address wins.
+  if (search !== address.seen) {
+    setAddress({ seen: search, written: address.written });
+    if (search !== address.written) {
+      const params = new URLSearchParams(search);
+      setFilters(filtersFromSearch(params));
+      setPage(pageFrom(params));
+      setLoading(true);
+    }
+  }
+
   useEffect(() => {
     const request = ++latest.current;
     const timer = setTimeout(() => {
-      const search = new URLSearchParams(filtersToSearch(filters));
-      if (page > 1) search.set("page", String(page));
-      const query = search.toString();
-      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      // The address follows the filters — in place, without asking the server for the page again.
+      const query = searchFor(filters, page);
+      setAddress((current) => ({ ...current, written: query }));
+      window.history.replaceState(null, "", query ? `${pathname}?${query}` : pathname);
 
       listAdminAppointments(appointmentQuery(filters, page, PAGE_SIZE))
         .then((data) => {
           if (latest.current !== request) return;
+          // A page past the end (an old address, or the last booking of the last page gone): the last one instead.
+          const last = pageCount(data.total, PAGE_SIZE);
+          if (data.items.length === 0 && page > last) {
+            setPage(last);
+            return;
+          }
           setResult(data);
           setError(null);
+          setLoading(false);
         })
         .catch(() => {
-          if (latest.current === request) setError("Impossible de charger les rendez-vous.");
-        })
-        .finally(() => {
-          if (latest.current === request) setLoading(false);
+          if (latest.current !== request) return;
+          setError("Impossible de charger les rendez-vous.");
+          setLoading(false);
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [filters, page, pathname, router]);
+  }, [filters, page, pathname]);
 
   // Any new filter lists from the first page — page 3 of a one-page result shows nothing.
   const change = (patch: Partial<AdminAppointmentFilters>) => {
@@ -158,6 +189,8 @@ function AdminRendezVousPageContent() {
                 <span className="w-6 shrink-0 text-xs text-[#93a6bc]">{field.label}</span>
                 <input
                   type="date"
+                  min={FIRST_DAY}
+                  max={LAST_DAY}
                   value={filters[field.key] ?? ""}
                   onChange={(event) => change({ [field.key]: event.target.value || undefined })}
                   aria-label={field.key === "from" ? "À partir du" : "Jusqu'au"}

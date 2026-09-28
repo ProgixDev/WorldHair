@@ -231,7 +231,7 @@ const APPOINTMENT_SEEDS: AppointmentSeed[] = [
     minute: 0,
     status: "cancelled",
     cancelledBy: "admin",
-    cancellationReason: "Le salon était fermé à l'heure du rendez-vous. La cliente est intégralement remboursée.",
+    cancellationReason: "Le salon était fermé à l'heure du rendez-vous : la cliente a trouvé porte close.",
   },
 ];
 

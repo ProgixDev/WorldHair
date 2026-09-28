@@ -22,7 +22,7 @@ const CAMILLE = 'client-1';
 const AWA = 'client-2';
 // A Wednesday, 10:15 in Paris.
 const NOW = parisTime(2026, 9, 30, 10, 15);
-const at = (day: number, hour: number) => parisTime(2026, 9, day, hour, 0).toISOString();
+const at = (day: number, hour: number, minute = 0) => parisTime(2026, 9, day, hour, minute).toISOString();
 
 describe('AdminAppointmentsService', () => {
   let supabase: FakeSupabaseService;
@@ -124,15 +124,31 @@ describe('AdminAppointmentsService', () => {
       expect(await ids({ to: '2026-09-28' })).toEqual([lyon]);
     });
 
-    it('pages, with the total of every match', async () => {
+    it('reads days on a Paris calendar: a booking at 00:30 belongs to its Paris day, not the UTC one', async () => {
+      // 00:30 in Paris is still the day before in UTC.
+      const justAfterMidnight = seed({ startsAt: at(29, 0, 30) });
+      const lateEvening = seed({ startsAt: at(29, 23, 30) });
+      const nextDay = seed({ startsAt: at(30, 0, 30) });
+
+      const ids = async (from: string, to: string) =>
+        (await admin.list({ ...page, from, to })).items.map((item) => item.id);
+
+      expect(await ids('2026-09-29', '2026-09-29')).toEqual([lateEvening, justAfterMidnight]);
+      expect(await ids('2026-09-30', '2026-09-30')).toEqual([nextDay]);
+    });
+
+    it('pages, with the total of every match — also on a page past the end', async () => {
       for (const day of [25, 26, 27, 28, 29]) seed({ startsAt: at(day, 10) });
 
       const first = await admin.list({ ...page, limit: 2 });
       const last = await admin.list({ ...page, limit: 2, offset: 4 });
+      const pastTheEnd = await admin.list({ ...page, limit: 2, offset: 10 });
 
       expect(first).toMatchObject({ total: 5 });
       expect(first.items).toHaveLength(2);
+      expect(last).toMatchObject({ total: 5 });
       expect(last.items).toHaveLength(1);
+      expect(pastTheEnd).toEqual({ items: [], total: 5 });
     });
   });
 
@@ -150,6 +166,12 @@ describe('AdminAppointmentsService', () => {
         payment: { amount: 40, paymentIntentId: 'pi_1' },
       });
       await expect(admin.detail('no-such-booking', NOW)).rejects.toThrow(NotFoundException);
+    });
+
+    it("doesn't show a slot held while its client pays: it isn't a booking yet", async () => {
+      const held = seed({ status: 'awaiting_payment' });
+
+      await expect(admin.detail(held, NOW)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -185,6 +207,16 @@ describe('AdminAppointmentsService', () => {
       await expect(appointments.cancelByAdmin(id, 'Le client a été refusé à la porte.')).resolves.toEqual({ refunded: 40, refundFailed: false });
 
       expect(stripe.reversalsCreated).toEqual([{ transferId: 'tr_1', params: { amount: 3600 } }]);
+    });
+
+    it('refunds in full a booking whose payout Stripe refused: now cancelled, it will never be paid out', async () => {
+      const id = seed({ startsAt: at(20, 10) });
+      supabase.seedPayment({ appointmentId: id, particulierId: CAMILLE, coiffeurId: STUDIO, amount: 40, transferAttemptedAt: at(21, 11) });
+
+      await expect(appointments.cancelByAdmin(id, 'Litige')).resolves.toEqual({ refunded: 40, refundFailed: false });
+
+      expect(stripe.reversalsCreated).toEqual([]);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 40, transfer_id: null, transfer_attempted_at: null });
     });
 
     it('still cancels when Stripe cannot refund right now, and says so', async () => {

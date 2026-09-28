@@ -123,12 +123,15 @@ export default function AdminPaiementsPage() {
                         <span className={cn("rounded-full px-3 py-1 text-xs font-medium", PAYMENT_STATE_STYLES[state])}>
                           {state}
                         </span>
-                        <Link
-                          href={`/admin/rendez-vous/${payment.appointmentId}`}
-                          className="text-xs text-[#2a93d5] hover:text-white"
-                        >
-                          Voir le rendez-vous
-                        </Link>
+                        {/* Unpaid: the slot is only held while its client pays — not a booking yet. */}
+                        {payment.status === "succeeded" ? (
+                          <Link
+                            href={`/admin/rendez-vous/${payment.appointmentId}`}
+                            className="text-xs text-[#2a93d5] hover:text-white"
+                          >
+                            Voir le rendez-vous
+                          </Link>
+                        ) : null}
                         {payment.status === "succeeded" && left > 0 ? (
                           <button
                             type="button"

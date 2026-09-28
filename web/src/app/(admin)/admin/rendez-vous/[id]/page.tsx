@@ -104,7 +104,7 @@ export default function AdminRendezVousDetailPage() {
       const { refunded, refundFailed } = await cancelAdminAppointment(booking.id, why);
       setNotice(
         refundFailed
-          ? "Rendez-vous annulé, mais Stripe n'a pas pu rembourser le client pour l'instant : réessayez avec « Rembourser le reste »."
+          ? "Rendez-vous annulé, mais le client n'a pas pu être remboursé pour l'instant : réessayez dans quelques minutes avec « Rembourser le reste »."
           : refunded > 0
             ? `Rendez-vous annulé, ${euros.format(refunded)} remboursés au client.`
             : "Rendez-vous annulé.",
@@ -252,7 +252,7 @@ function AppointmentView({
               {appointment.client.email}
             </a>
           ) : (
-            <p className="text-xs text-[#5b7186]">Compte supprimé</p>
+            <p className="text-xs text-[#5b7186]">E-mail indisponible</p>
           )}
         </Card>
 
@@ -304,7 +304,9 @@ function AppointmentView({
             <p className="text-xs text-[#5b7186]">
               {payment.transferredAt
                 ? `Versé au salon le ${shortDate.format(new Date(payment.transferredAt))}.`
-                : "Pas encore versé au salon (24 h après le rendez-vous)."}
+                : appointment.status === "cancelled" || appointment.status === "refused" || payment.refundedAmount >= payment.amount
+                  ? "Non versé au salon."
+                  : "Pas encore versé au salon (24 h après le rendez-vous)."}
               {payment.paymentIntentId ? (
                 <>
                   {" "}Référence Stripe : <span className="font-mono select-all">{payment.paymentIntentId}</span>
@@ -333,7 +335,10 @@ function AppointmentView({
           >
             Rembourser le reste ({euros.format(owed)})
           </button>
-          <p className="text-xs text-[#93a6bc]">Ce rendez-vous annulé doit encore être remboursé au client.</p>
+          <p className="text-xs text-[#93a6bc]">
+            {appointment.status === "refused" ? "Ce rendez-vous refusé" : "Ce rendez-vous annulé"} doit encore être remboursé
+            au client.
+          </p>
         </div>
       )}
 

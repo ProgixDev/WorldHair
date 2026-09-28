@@ -3,6 +3,8 @@ import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+/** Far past any list here, well inside the database's integer. */
+const MAX_OFFSET = 1_000_000;
 
 // A reusable list-pagination convention — lives here (not in a feature-specific
 // service file) so any module can share it without importing a type out of
@@ -24,6 +26,7 @@ export class PaginationQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(MAX_OFFSET)
   offset?: number;
 }
 

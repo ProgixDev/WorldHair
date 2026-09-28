@@ -326,6 +326,13 @@ function defaultAppContent(): [string, AppContentRow][] {
 /** PostgREST's default max-rows (Supabase → API settings): no select returns more, whatever range it asks for. */
 const MAX_ROWS = 1000;
 
+/**
+ * Longest `in` list a request may carry (src/common/utils/slices.ts): a real
+ * one past it overflows the request's URL — here it fails loudly instead, so
+ * an unsliced list can't pass the tests.
+ */
+const MAX_IN_VALUES = 100;
+
 /** Like `extensions.unaccent(lower(...))`: accents off, the œ/æ ligatures spelt out, lower case. */
 function folded(text: string): string {
   return text
@@ -385,6 +392,9 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   }
 
   in(column: keyof TRow, values: unknown[]): this {
+    if (values.length > MAX_IN_VALUES) {
+      throw new Error(`FakeSupabaseService: ${values.length} values in one in() on "${String(column)}" — slice them (common/utils/slices.ts)`);
+    }
     this.inFilters.push([column, values]);
     return this;
   }
@@ -552,6 +562,7 @@ export class FakeSupabaseService {
   private readonly favorites = new Map<string, FavoriteRow>();
   private readonly reviewReports: ReviewReportRow[] = [];
   private lastFavoriteAt = 0;
+  private lastReportAt = 0;
 
   readonly client = {
     auth: {
@@ -761,8 +772,14 @@ export class FakeSupabaseService {
       reporter_id: params.reporterId,
       reason: params.reason,
       details: null,
-      created_at: new Date().toISOString(),
+      created_at: this.nextReportAt(),
     });
+  }
+
+  /** Each report a moment after the last, so "oldest first" means something in the tests. */
+  private nextReportAt(): string {
+    this.lastReportAt = Math.max(Date.now(), this.lastReportAt + 1);
+    return new Date(this.lastReportAt).toISOString();
   }
 
   /** Test convenience: a review flagged before each report was kept — its reason on the review itself, no report rows. */
@@ -1231,7 +1248,8 @@ export class FakeSupabaseService {
         const ended = new Date(row.starts_at).getTime() + row.duration_min * 60_000 < now;
         if (status === 'upcoming') return row.status === 'confirmed' && !ended;
         if (status === 'done') return row.status === 'confirmed' && ended;
-        return row.status === status;
+        // Like the SQL: any other value matches nothing.
+        return ['pending', 'refused', 'cancelled'].includes(status) && row.status === status;
       })
       .filter((row) => from == null || new Date(row.starts_at).getTime() >= new Date(from).getTime())
       .filter((row) => to == null || new Date(row.starts_at).getTime() < new Date(to).getTime())
@@ -2093,13 +2111,30 @@ export class FakeSupabaseService {
     return {
       select: () => new FakeSelectQuery<ReviewReportRow>(() => [...rows]),
 
-      /** The (review_id, reporter_id) primary key: one report per person per review. */
-      insert: async (row: Record<string, unknown>): Promise<QueryResult> => {
-        if (rows.some((report) => report.review_id === row.review_id && report.reporter_id === row.reporter_id)) {
-          return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+      /** The (review_id, reporter_id) primary key: one report per person per review. Awaited bare, or `.select().single()` for the row. */
+      insert: (row: Record<string, unknown>) => {
+        const duplicate = rows.some((report) => report.review_id === row.review_id && report.reporter_id === row.reporter_id);
+        let result: QueryResult;
+        if (duplicate) {
+          result = { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+        } else {
+          const created: ReviewReportRow = {
+            ...(row as unknown as ReviewReportRow),
+            details: (row.details as string | null | undefined) ?? null,
+            created_at: this.nextReportAt(),
+          };
+          rows.push(created);
+          result = { data: created, error: null };
         }
-        rows.push({ ...(row as unknown as ReviewReportRow), details: (row.details as string | null | undefined) ?? null, created_at: new Date().toISOString() });
-        return { data: null, error: null };
+        return {
+          select: () => ({ single: async (): Promise<QueryResult> => result }),
+          then<TResult1 = QueryResult, TResult2 = never>(
+            onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+            onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+          ): PromiseLike<TResult1 | TResult2> {
+            return Promise.resolve(result).then(onfulfilled, onrejected);
+          },
+        };
       },
     };
   }

@@ -34,6 +34,13 @@ describe('admin appointments (e2e)', () => {
 
   afterAll(() => harness.close());
 
+  /** Listeners run after the response is sent: waits a moment for what they write. */
+  async function eventually(check: () => boolean): Promise<void> {
+    for (let tries = 0; tries < 50 && !check(); tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
   /** An accepted booking in two days, paid in the app. */
   function seedPaidBooking(): string {
     const id = harness.supabase.seedAppointment({
@@ -77,7 +84,16 @@ describe('admin appointments (e2e)', () => {
   });
 
   it('rejects a malformed filter, and an unknown booking', async () => {
-    for (const query of ['status=soon', 'from=2026-02-30', 'to=demain', 'limit=500', 'salon=' + 'x'.repeat(101)]) {
+    for (const query of [
+      'status=soon',
+      'from=2026-02-30',
+      'to=demain',
+      // Past what the database's dates and integers hold: refused here, not a 500 there.
+      'to=9999-12-31',
+      'offset=5000000',
+      'limit=500',
+      'salon=' + 'x'.repeat(101),
+    ]) {
       await request(server).get(`/admin/appointments?${query}`).set('Authorization', `Bearer ${adminToken}`).expect(400);
     }
     await request(server).get(`/admin/appointments/${randomUUID()}`).set('Authorization', `Bearer ${adminToken}`).expect(404);
@@ -96,6 +112,13 @@ describe('admin appointments (e2e)', () => {
 
     await cancel(adminToken, { reason: 'Litige client' }).expect(200).expect({ refunded: 40, refundFailed: false });
     await cancel(adminToken, { reason: 'Litige client' }).expect(400);
+
+    // Both sides told why.
+    const told = (userId: string) =>
+      harness.supabase.notifyLogFor(userId).find((row) => row.type === 'appointment_cancelled_admin');
+    await eventually(() => Boolean(told(particulier.id) && told(coiffeur.id)));
+    expect(told(particulier.id)?.body).toContain('Motif : Litige client.');
+    expect(told(coiffeur.id)?.body).toContain('Motif : Litige client.');
     await request(server)
       .get(`/admin/appointments/${id}`)
       .set('Authorization', `Bearer ${adminToken}`)

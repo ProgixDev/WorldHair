@@ -206,18 +206,25 @@ export class ReviewsService {
       throw new ForbiddenException("A salon can only report its own salon's reviews");
     }
     const details = input.details?.trim() || null;
-    const { error } = await this.supabase.client
+    const { data, error } = await this.supabase.client
       .from('review_reports')
-      .insert({ review_id: reviewId, reporter_id: reporter.id, reason: input.reason, details });
+      .insert({ review_id: reviewId, reporter_id: reporter.id, reason: input.reason, details })
+      .select()
+      .single();
     if (error && error.code !== '23505') {
       throw new InternalServerErrorException(error.message);
     }
-    // Also on a repeat: a first try whose flag never landed still reaches the admins.
-    await this.updateRow(reviewId, {
-      ...(row.status === 'hidden' ? {} : { status: 'reported' }),
-      report_reason: details ? `${input.reason}: ${details}` : input.reason,
-      reported_at: new Date().toISOString(),
-    });
+    // Reported before: flagged again only when that first try's flag never
+    // landed — a repeat never undoes the admins' decision since.
+    const report = (data as ReviewReportRow | null) ?? (await this.unflaggedReportOf(row, reporter.id));
+    if (report) {
+      await this.updateRow(reviewId, {
+        ...(row.status === 'hidden' ? {} : { status: 'reported' }),
+        report_reason: report.details ? `${report.reason}: ${report.details}` : report.reason,
+        // The report's own time (the database's clock): what a repeat compares against.
+        reported_at: report.created_at,
+      });
+    }
     if (error) {
       throw new ConflictException('You already reported this review');
     }
@@ -254,6 +261,23 @@ export class ReviewsService {
     return data as ReviewRow[];
   }
 
+  /** This person's report on the review, when its flag never landed: the review wasn't flagged at, or after, the time it was filed. */
+  private async unflaggedReportOf(row: ReviewRow, reporterId: string): Promise<ReviewReportRow | null> {
+    const { data, error } = await this.supabase.client
+      .from('review_reports')
+      .select()
+      .eq('review_id', row.id)
+      .eq('reporter_id', reporterId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    const report = data as ReviewReportRow | null;
+    if (!report) return null;
+    const flagged = row.reported_at !== null && new Date(row.reported_at).getTime() >= new Date(report.created_at).getTime();
+    return flagged ? null : report;
+  }
+
   /** Every review with this status, however many. */
   private async selectAll(status: 'reported' | 'hidden'): Promise<ReviewRow[]> {
     return allPages<ReviewRow>((from, to) =>
@@ -273,22 +297,28 @@ export class ReviewsService {
       ...new Set([...rows.map((row) => row.particulier_id), ...reports.map((report) => report.reporter_id)]),
     ]);
     const salons = await this.salonNamesFor([
-      ...new Set([...rows.map((row) => row.coiffeur_id), ...reports.map((report) => report.reporter_id)]),
+      ...new Set([
+        ...rows.map((row) => row.coiffeur_id),
+        ...reports.filter((report) => people.get(report.reporter_id)?.role === 'coiffeur').map((report) => report.reporter_id),
+      ]),
     ]);
+    const reportsOf = new Map<string, ReviewReportRow[]>();
+    for (const report of reports) reportsOf.set(report.review_id, [...(reportsOf.get(report.review_id) ?? []), report]);
     const nameOf = (id: string) => {
       const person = people.get(id);
       return `${person?.first_name ?? ''} ${person?.last_name ?? ''}`.trim();
     };
 
-    return (await this.mapAll(rows)).map((review) => {
-      const row = rows.find((candidate) => candidate.id === review.id)!;
-      return {
-        ...review,
-        salonName: salons.get(row.coiffeur_id) || nameOf(row.coiffeur_id) || 'Salon',
-        authorFullName: nameOf(row.particulier_id) || 'Client',
-        reports: reports
-          .filter((report) => report.review_id === row.id)
-          .map((report) => {
+    return rows
+      .slice()
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map((row) => {
+        const author = people.get(row.particulier_id);
+        return {
+          ...this.map(row, this.formatAuthorName(author?.first_name ?? '', author?.last_name ?? '')),
+          salonName: salons.get(row.coiffeur_id) || nameOf(row.coiffeur_id) || 'Salon',
+          authorFullName: nameOf(row.particulier_id) || 'Client',
+          reports: (reportsOf.get(row.id) ?? []).map((report) => {
             const role = people.get(report.reporter_id)?.role ?? 'particulier';
             return {
               reporterId: report.reporter_id,
@@ -302,10 +332,10 @@ export class ReviewsService {
               createdAt: report.created_at,
             };
           }),
-        reportReason: row.report_reason,
-        reportedAt: row.reported_at,
-      };
-    });
+          reportReason: row.report_reason,
+          reportedAt: row.reported_at,
+        };
+      });
   }
 
   /** Every report on these reviews, oldest first. */
@@ -319,6 +349,7 @@ export class ReviewsService {
             .select()
             .in('review_id', slice)
             .order('created_at')
+            .order('review_id')
             .order('reporter_id')
             .range(from, to),
         )),
@@ -381,15 +412,11 @@ export class ReviewsService {
     }
   }
 
+  /** A hundred at a time: a salon's authors, however many. */
   private async authorNamesFor(ids: string[]): Promise<Map<string, string>> {
-    if (ids.length === 0) return new Map();
-    const { data, error } = await this.supabase.client.from('profiles').select().in('id', ids);
-    if (error) {
-      throw new InternalServerErrorException(error.message);
-    }
-    return new Map(
-      (data as ProfileNameRow[]).map((row) => [row.id, this.formatAuthorName(row.first_name, row.last_name)]),
-    );
+    const names = new Map<string, string>();
+    for (const [id, row] of await this.profilesFor(ids)) names.set(id, this.formatAuthorName(row.first_name, row.last_name));
+    return names;
   }
 
   /** "Camille Durand" -> "Camille D." — the last name's initial only, for a public review byline. */

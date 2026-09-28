@@ -251,7 +251,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 ### `/admin/avis`
 - [ ] « Signalés »: each review with its salon, its author's full name and every report — reason (the app's words), who (a client by name, a salon by its name) and when, their words in quotes (after `seed:demo`: Studio W's latest review, 2 reports)
 - [ ] Hide → gone from public salon page, still visible to stylist, now under « Masqués »
-- [ ] « Marquer comme sûr » → off the list, still on the public page
+- [ ] « Marquer comme sûr » → off the list, still on the public page; the same person reporting it again (API) doesn't bring it back — someone else's report does
 - [ ] « Masqués » → « Remettre en ligne » → back on the public page and in the salon's average
 
 ### `/admin/rendez-vous`
@@ -260,7 +260,8 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] A booking: date, prestations, the client (email) and the salon (city, phone, email) linking to their accounts, the payment (paid, refunded, commission, paid out, Stripe reference)
 - [ ] « Annuler le rendez-vous (litige) » → reason (3 characters at least) → confirm → « Rendez-vous annulé, 40,00 € remboursés au client. »; the client and the salon each get « Rendez-vous annulé par WorldHair » with the reason (see `notifications_log`), and the app shows it on the booking
 - [ ] Cancelling after the payout: the salon's share comes back first (a transfer reversal in Stripe), then the client gets everything left
-- [ ] Stripe down during a cancel → « Rendez-vous annulé, mais Stripe n'a pas pu rembourser… » → « Rembourser le reste » refunds it
+- [ ] Stripe down during a cancel → « Rendez-vous annulé, mais le client n'a pas pu être remboursé pour l'instant… » → « Rembourser le reste » refunds it
+- [ ] A booking cancelled here is never paid out to the salon afterwards, even if the hourly payout run had already listed it
 - [ ] A cancelled or refused booking has no « Annuler »; `admin_limited` can cancel too
 - [ ] `/admin/paiements` → « Voir le rendez-vous » opens the booking
 
@@ -345,10 +346,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 412 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test` | 420 ✅ (runs in UTC, like Render) |
 | `cd server && bun run test:e2e` | 78 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API, nor list every booking (live dev database) |
 | `cd mobile && bun run test` | 101 ✅ |
-| `cd web && bun run test` | 34 ✅ |
+| `cd web && bun run test` | 35 ✅ |
 
 `typecheck` + `lint` green on all three packages.

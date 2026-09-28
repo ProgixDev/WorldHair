@@ -234,6 +234,24 @@ describe('PaymentsService', () => {
       expect(stripe.refundsCreated).toEqual([]);
     });
 
+    it('refunds in full a booking cancelled after a payout Stripe refused: nothing was sent, and nothing ever will be', async () => {
+      const id = appointment({ status: 'cancelled' });
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, transferAttemptedAt: hoursAgo(2) });
+
+      await expect(payments.refund(id, { reason: 'admin' })).resolves.toBe(100);
+
+      expect(stripe.reversalsCreated).toEqual([]);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 100, transfer_id: null, transfer_attempted_at: null });
+    });
+
+    it('still waits on a payout under way for a booking that is still on', async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, transferAttemptedAt: hoursAgo(1) });
+
+      await expect(payments.refund(id, { reason: 'admin' })).rejects.toThrow(ConflictException);
+      expect(stripe.refundsCreated).toEqual([]);
+    });
+
     it("counts what Stripe already refunded, from its dashboard say, before that event arrives", async () => {
       const id = appointment();
       supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, paymentIntentId: 'pi_1', chargeId: 'ch_1' });
@@ -396,6 +414,20 @@ describe('PaymentsService', () => {
 
       await expect(payments.transferDue()).resolves.toBe(0);
       expect(stripe.transfersCreated).toEqual([]);
+    });
+
+    it('never pays out a booking cancelled after the run listed it (an admin settling a dispute)', async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100 });
+      // Listed as due, then cancelled before its turn came.
+      const listed = [supabase.paymentFor(id)];
+      supabase.setAppointmentStatus(id, 'cancelled');
+      jest.spyOn(supabase.client, 'rpc').mockResolvedValueOnce({ data: listed, error: null });
+
+      await expect(payments.transferDue()).resolves.toBe(0);
+
+      expect(stripe.transfersCreated).toEqual([]);
+      expect(supabase.paymentFor(id)).toMatchObject({ transfer_attempted_at: null, locked_until: null });
     });
 
     it('keeps the money while the salon has no payout account (the demo salon)', async () => {

@@ -22,20 +22,26 @@ const FILTER_KEYS = ["status", "salon", "client", "from", "to"] as const;
 
 const round2 = (euros: number) => Math.round(euros * 100) / 100;
 
-/** A real calendar day, written YYYY-MM-DD — what a date input gives. */
+/** The days the server takes (server/src/appointments/dto/admin-appointments-query.dto.ts) — also the date inputs' bounds. */
+export const FIRST_DAY = "2000-01-01";
+export const LAST_DAY = "2099-12-31";
+
+/** A real calendar day of this century, written YYYY-MM-DD — what a date input gives. */
 function isDay(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (!/^20\d{2}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-/** The filters filled in, trimmed — blank ones left out. */
+/** The filters filled in, trimmed — blank ones, and days the server would refuse, left out. */
 function filledIn(filters: AdminAppointmentFilters): Partial<Record<(typeof FILTER_KEYS)[number], string>> {
   const filled: Partial<Record<(typeof FILTER_KEYS)[number], string>> = {};
   for (const key of FILTER_KEYS) {
     const value = filters[key]?.trim();
-    if (value) filled[key] = value;
+    if (!value) continue;
+    if ((key === "from" || key === "to") && !isDay(value)) continue;
+    filled[key] = value;
   }
   return filled;
 }

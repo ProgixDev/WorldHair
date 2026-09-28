@@ -46,6 +46,11 @@ describe("appointmentQuery", () => {
     ).toEqual({ status: "upcoming", salon: "studio", from: "2026-10-01", limit: 20, offset: 40 });
     expect(appointmentQuery({}, 1, 20)).toEqual({ limit: 20, offset: 0 });
   });
+
+  it("leaves out a day the server would refuse — outside 2000–2099, or not a real one", () => {
+    expect(appointmentQuery({ from: "1999-12-31", to: "9999-12-31" }, 1, 20)).toEqual({ limit: 20, offset: 0 });
+    expect(appointmentQuery({ from: "2026-02-30" }, 1, 20)).toEqual({ limit: 20, offset: 0 });
+  });
 });
 
 describe("filters in the address", () => {
