@@ -314,9 +314,8 @@ demo salon, which takes bookings without its own Stripe account (its money
 waits with WorldHair, and would be paid out if it ever set up payouts); a
 salon is paid 24 h after the appointment ends; a request the salon never
 answers is cancelled and refunded at its start time; the commission starts
-at 10 %. Not yet run against a real Stripe account: it needs the keys,
-Connect switched on, and a new build of the app (Stripe's SDK is a native
-module) — see TESTING.md, "Stripe".
+at 10 %. Not yet run against a real Stripe account: it needs the keys and
+Connect switched on — see TESTING.md, "Stripe".
 
 Reviewed the same day (migration `phase5_payment_hardening`), fixed: a
 refund and the salon's payout never run at once on a payment, and a payout
@@ -327,8 +326,13 @@ nothing; a refund Stripe can't make at the time (outage) no longer fails the
 cancellation, a job makes it within 10 minutes; the payout job reads only
 what is due, however many bookings pile up; a client holds one unpaid slot
 at a time; a salon can't read an unpaid hold even straight from the
-database; the expiry push only says "remboursé" when it was; Stripe's return
-link after 3-D Secure goes to Stripe's SDK instead of opening a blank screen.
+database; the expiry push only says "remboursé" when it was.
+
+Then, per the owner (same day): the client pays on Stripe's own payment page
+(Checkout) in the browser instead of a payment sheet inside the app — told
+that Apple and Google take nothing on bookings either way (physical
+services), the owner still preferred the web. The app no longer carries
+Stripe's native SDK (migration `phase5_web_checkout`).
 
 - [x] **Salons connect Stripe to get paid**
   - Stripe: enable Connect on the client's account (platform profile), Express
@@ -363,10 +367,13 @@ link after 3-D Secure goes to Stripe's SDK instead of opening a blank screen.
     the receipt.
   - Done when: a test card pays and only then does the coiffeur see the
     request; a declined card leaves no request and frees the slot.
-  - Done: the slot is held 15 minutes; leaving the payment step frees it at
-    once, and a job frees unpaid holds every minute. Card and Google Pay;
-    Apple Pay needs an Apple merchant id, set up with the store accounts.
-    A payment landing after its hold was freed is refunded automatically.
+  - Done: « Payer » opens Stripe's payment page in the browser (cards;
+    Stripe shows Apple Pay / Google Pay there when the phone has them), and
+    the website's `/paiement/retour` hands back to the app, which asks the
+    server. The slot is held 15 minutes; releasing it closes Stripe's page
+    (Stripe keeps one open 30 minutes). Leaving the payment step frees it at
+    once, and a job frees unpaid holds every minute. A payment landing after
+    its hold was freed is refunded automatically.
 - [x] **Refunds**: automatic full refund when the coiffeur refuses or cancels,
       or when the client cancels before the salon's deadline. None after the
       deadline or for a no-show. The coiffeur can still refund by hand, fully or

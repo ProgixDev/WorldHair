@@ -77,12 +77,13 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Two phones on the same slot: the second one gets "Ce créneau n'est plus disponible. Choisissez un autre horaire." and the grid reloads with that slot struck through
 - [ ] Recap step shows the salon's cancellation rule and confirmation mode
 - [ ] Steps are Prestation → Créneau → Paiement; the Paiement step shows the recap, the salon's rules and « Remboursé intégralement si le salon refuse ou annule… »
-- [ ] « Payer 40 € » opens Stripe's payment sheet (card, Google Pay on Android); `4242…` → « Demande envoyée. » + « Paiement reçu. Le salon doit encore confirmer votre créneau. »; the salon sees the request only now
-- [ ] `4000 0025 0000 3155` asks for 3-D Secure and comes back to the app; `4000 0000 0000 0002` is declined inside the sheet, nothing is booked, « Payer » works again
-- [ ] Closing the sheet, then « Payer » again, reopens it (same held slot); going back to the grid frees the slot at once (another phone can take it)
+- [ ] « Payer 40 € » opens Stripe's payment page in the browser (salon, prestations, day and time, 40 €, button « Réserver »; the email is already filled in); `4242…` → « Paiement reçu » → back in the app on its own → « Demande envoyée. » + « Paiement reçu. Le salon doit encore confirmer votre créneau. »; the salon sees the request only now
+- [ ] `4000 0025 0000 3155` asks for 3-D Secure on Stripe's page, then back in the app as above; `4000 0000 0000 0002` is declined on Stripe's page, nothing is booked, another card can be tried there
+- [ ] Closing Stripe's page (✕ or back) → « Paiement non finalisé… » in the app; « Payer » again reopens the same page (same held slot); going back to the grid frees the slot at once (another phone can take it)
+- [ ] If the browser doesn't return to the app on its own, « Retourner dans l'application » does, and the booking shows as sent
 - [ ] Going back from Paiement and picking another time — even one overlapping the first — works at once, and your own first time shows free on the grid
 - [ ] Leave the Paiement step open 11+ minutes, then « Payer »: the sheet opens and pays normally (a fresh hold is taken)
-- [ ] iPhone: `4000 0025 0000 3155` → the bank page → back in the app on the booking screen (no blank or "not found" screen), « Demande envoyée. »
+- [ ] iPhone: no « … wants to use stripe.com to sign in » prompt before Stripe's page; after paying, back in the app on the booking screen (no blank or "not found" screen)
 - [ ] Someone takes the slot while you're on Paiement → « Ce créneau n'est plus disponible… » and back to the refreshed grid, nothing charged
 - [ ] Stripe emails the receipt (live mode only: test mode sends none)
 - [ ] A catalogue salon's page reads « Réservation en ligne bientôt disponible » (button disabled)
@@ -280,7 +281,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Stripe dashboard → Settings → Branding and Business details (name, logo, support email) — shown on Checkout, the portal and invoices
 - [ ] Stripe dashboard → Connect → Get started: platform in France, Express accounts, "the platform pays out" — then run `stripe:setup` (again) with `--webhook-url`: it also creates the Connect endpoint `…/webhooks/stripe/connect` and prints `STRIPE_CONNECT_WEBHOOK_SECRET=whsec_…` for `server/.env` and Render
 - [ ] Locally: `stripe listen --forward-to localhost:3000/webhooks/stripe --forward-connect-to localhost:3000/webhooks/stripe/connect` prints the secret to use for both
-- [ ] `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (pk_test_…, same account) in `mobile/.env`, then a new build of the app (Stripe's SDK is native: `npx expo prebuild` / `npx expo run:android`, or EAS)
+- [ ] Booking payments use Stripe's own page, sent back through the website: `WEB_APP_URL` must be set on Render, and the website deployed with `/paiement/retour`. Nothing to add to the app: no Stripe key there
 
 ---
 
@@ -313,7 +314,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 364 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test` | 368 ✅ (runs in UTC, like Render) |
 | `cd server && bun run test:e2e` | 68 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
 | `cd mobile && bun run test` | 82 ✅ |

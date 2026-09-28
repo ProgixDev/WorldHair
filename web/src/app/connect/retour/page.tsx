@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { BackToApp } from "./BackToApp";
+import { BackToApp } from "@/components/BackToApp";
+
+/** The app's "Paiements" screen (mobile/src/app/pro/payments.tsx) — it reads the new status on arrival. */
+const APP_URL = "worldhair://pro/payments";
 
 export const metadata: Metadata = {
   title: "Paiements — WorldHair",
@@ -29,7 +32,7 @@ export default async function ConnectReturnPage({ searchParams }: { searchParams
             ? "Ce lien de configuration a expiré. Relancez « Configurer mes paiements » depuis l'application."
             : "Retournez dans l'application WorldHair : l'écran Paiements affiche où en est votre configuration."}
         </p>
-        <BackToApp />
+        <BackToApp href={APP_URL} />
       </div>
     </div>
   );
