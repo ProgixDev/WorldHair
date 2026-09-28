@@ -53,10 +53,10 @@ describe('AppointmentsService', () => {
   let payments: PaymentsService;
   let serviceId: string;
 
-  /** Books like the app: holds the slot, pays with Stripe's test card, then confirms. */
+  /** Books like the app: holds the slot, pays on Stripe's page with a test card, then comes back and confirms. */
   async function book(particulierId: string, input: CreateAppointmentInput): Promise<ParticulierAppointment> {
     const { appointment } = await service.create(particulierId, input);
-    stripe.succeedIntent(supabase.paymentFor(appointment.id)!.payment_intent_id);
+    stripe.completeCheckout(supabase.paymentFor(appointment.id)!.checkout_session_id!);
     return service.completePayment(particulierId, appointment.id);
   }
 
@@ -75,6 +75,7 @@ describe('AppointmentsService', () => {
       new PlatformSettingsService(supabase as unknown as SupabaseService),
       payouts,
       events,
+      config,
     );
     const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, events);
     salon = new SalonService(supabase as unknown as SupabaseService);
@@ -115,8 +116,12 @@ describe('AppointmentsService', () => {
       });
 
       expect(appointment.status).toBe('awaiting_payment');
-      expect(payment).toEqual({ clientSecret: 'pi_test_1_secret_test', amount: 40 });
-      expect(stripe.paymentIntentsCreated[0].params).toMatchObject({ amount: 4000, transfer_group: appointment.id });
+      expect(payment).toEqual({ url: 'https://checkout.stripe.test/cs_test_1', amount: 40 });
+      expect(stripe.checkoutSessionsCreated[0]).toMatchObject({
+        mode: 'payment',
+        line_items: [{ price_data: { unit_amount: 4000, product_data: { name: 'Studio W — Coupe & brushing' } } }],
+        payment_intent_data: { transfer_group: appointment.id },
+      });
       expect(heard).not.toHaveBeenCalled();
       await expect(service.listForCoiffeur(COIFFEUR_ID)).resolves.toEqual([]);
       await expect(service.listForParticulier(PARTICULIER_ID)).resolves.toEqual([]);
@@ -140,18 +145,34 @@ describe('AppointmentsService', () => {
       });
 
       await expect(service.completePayment(PARTICULIER_ID, appointment.id)).resolves.toMatchObject({ status: 'awaiting_payment' });
-      stripe.succeedIntent('pi_test_1');
+      const intent = stripe.completeCheckout('cs_test_1');
       await expect(service.completePayment(PARTICULIER_ID, appointment.id)).resolves.toMatchObject({
         status: 'pending',
         payment: { amount: 40, refundedAmount: 0 },
       });
-      await service.handlePaymentEvent({
-        type: 'payment_intent.succeeded',
-        data: { object: stripe.succeedIntent('pi_test_1') },
-      } as unknown as Stripe.Event);
+      await service.handlePaymentEvent({ type: 'payment_intent.succeeded', data: { object: intent } } as unknown as Stripe.Event);
 
       expect(heard).toHaveBeenCalledTimes(1);
-      expect(supabase.paymentFor(appointment.id)).toMatchObject({ status: 'succeeded', charge_id: 'ch_pi_test_1' });
+      expect(supabase.paymentFor(appointment.id)).toMatchObject({
+        status: 'succeeded',
+        payment_intent_id: 'pi_test_1',
+        charge_id: 'ch_pi_test_1',
+      });
+    });
+
+    it("takes Stripe's word first when its webhook beats the client back to the app — never as a stray payment", async () => {
+      const { appointment } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      const intent = stripe.completeCheckout('cs_test_1');
+
+      await service.handlePaymentEvent({ type: 'payment_intent.succeeded', data: { object: intent } } as unknown as Stripe.Event);
+
+      expect(stripe.refundsCreated).toEqual([]);
+      const [forSalon] = await service.listForCoiffeur(COIFFEUR_ID);
+      expect(forSalon).toMatchObject({ id: appointment.id, status: 'pending' });
     });
 
     it("refuses a salon that can't be paid online yet, but the demo salon takes bookings anyway", async () => {
@@ -173,7 +194,7 @@ describe('AppointmentsService', () => {
         startsAt: WEDNESDAY_10AM().toISOString(),
       });
       await service.releaseHold(PARTICULIER_ID, left.id);
-      expect(stripe.intentStatus('pi_test_1')).toBe('canceled');
+      expect(stripe.sessionStatus('cs_test_1')).toBe('expired');
       expect(supabase.paymentFor(left.id)).toBeUndefined();
 
       const { appointment: paid } = await service.create(PARTICULIER_ID, {
@@ -181,7 +202,7 @@ describe('AppointmentsService', () => {
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
       });
-      stripe.succeedIntent('pi_test_2');
+      stripe.completeCheckout('cs_test_2');
       await service.releaseHold(PARTICULIER_ID, paid.id);
       const [kept] = await service.listForParticulier(PARTICULIER_ID);
       expect(kept).toMatchObject({ id: paid.id, status: 'pending' });
@@ -213,7 +234,7 @@ describe('AppointmentsService', () => {
         startsAt: nextWeekday(3, 15).toISOString(),
       });
 
-      expect(stripe.intentStatus('pi_test_1')).toBe('canceled');
+      expect(stripe.sessionStatus('cs_test_1')).toBe('expired');
       expect(supabase.paymentFor(first.id)).toBeUndefined();
       expect(supabase.paymentFor(second.id)).toMatchObject({ status: 'requires_payment' });
     });

@@ -39,6 +39,7 @@ describe('PaymentsService', () => {
       new PlatformSettingsService(supabase as unknown as SupabaseService),
       new PayoutAccountsService(supabase as unknown as SupabaseService, stripeService, config),
       events,
+      config,
     );
   });
 
@@ -52,39 +53,92 @@ describe('PaymentsService', () => {
     });
   }
 
+  function startFor(id: string) {
+    return payments.startPayment({
+      appointmentId: id,
+      particulierId: CLIENT_ID,
+      coiffeurId: COIFFEUR_ID,
+      amount: 45,
+      label: 'Studio W — Coupe & brushing',
+      details: 'mer. 30 sept. à 10:00',
+      email: 'camille@example.com',
+    });
+  }
+
   describe('startPayment', () => {
-    it("asks Stripe for the full price, tagged with the appointment, and keeps the day's commission rate", async () => {
+    it("opens Stripe's payment page for the full price, tagged with the appointment, and keeps the day's commission rate", async () => {
       supabase.seedPlatformSettings({ commissionPercent: 12 });
       const id = appointment({ status: 'awaiting_payment' });
 
-      const { clientSecret } = await payments.startPayment({
-        appointmentId: id,
-        particulierId: CLIENT_ID,
-        coiffeurId: COIFFEUR_ID,
-        amount: 45,
-        description: 'WorldHair — Studio W',
-        email: 'camille@example.com',
-      });
+      const { url } = await startFor(id);
 
-      expect(clientSecret).toBe('pi_test_1_secret_test');
-      expect(stripe.paymentIntentsCreated[0]).toMatchObject({
-        params: {
-          amount: 4500,
-          currency: 'eur',
-          automatic_payment_methods: { enabled: true },
+      expect(url).toBe('https://checkout.stripe.test/cs_test_1');
+      expect(stripe.checkoutSessionsCreated[0]).toMatchObject({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        submit_type: 'book',
+        locale: 'fr',
+        customer_email: 'camille@example.com',
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'eur',
+              unit_amount: 4500,
+              product_data: { name: 'Studio W — Coupe & brushing', description: 'mer. 30 sept. à 10:00' },
+            },
+          },
+        ],
+        payment_intent_data: {
           transfer_group: id,
           receipt_email: 'camille@example.com',
           metadata: { appointment_id: id, particulier_id: CLIENT_ID, coiffeur_id: COIFFEUR_ID },
         },
-        idempotencyKey: `payment-${id}`,
+        success_url: 'https://worldhair.test/paiement/retour?etat=paye',
+        cancel_url: 'https://worldhair.test/paiement/retour?etat=annule',
       });
+      expect(stripe.checkoutIdempotencyKeys[0]).toBe(`checkout-${id}`);
+      // Stripe keeps a page open 30 minutes at least; the hold closes it sooner (closeCheckout).
+      expect((stripe.checkoutSessionsCreated[0].expires_at ?? 0) * 1000 - Date.now()).toBeGreaterThan(30 * 60_000);
       expect(supabase.paymentFor(id)).toMatchObject({
         amount: 45,
         status: 'requires_payment',
         commission_rate: 12,
         commission_amount: 5.4,
-        payment_intent_id: 'pi_test_1',
+        checkout_session_id: 'cs_test_1',
+        payment_intent_id: null,
       });
+    });
+  });
+
+  describe('paidIntent / closeCheckout', () => {
+    it('knows nothing is paid until the client pays on the page, then finds the payment', async () => {
+      const id = appointment({ status: 'awaiting_payment' });
+      await startFor(id);
+
+      await expect(payments.paidIntent((await payments.findByAppointment(id))!)).resolves.toBeNull();
+      stripe.completeCheckout('cs_test_1');
+      await expect(payments.paidIntent((await payments.findByAppointment(id))!)).resolves.toMatchObject({ id: 'pi_test_1', latest_charge: 'ch_pi_test_1' });
+    });
+
+    it("closes Stripe's page when the hold goes, so it can't be paid any more", async () => {
+      const id = appointment({ status: 'awaiting_payment' });
+      await startFor(id);
+
+      await expect(payments.closeCheckout((await payments.findByAppointment(id))!)).resolves.toBeNull();
+
+      expect(stripe.sessionStatus('cs_test_1')).toBe('expired');
+      expect(supabase.paymentFor(id)).toMatchObject({ status: 'canceled' });
+    });
+
+    it('answers the payment instead when the client paid first', async () => {
+      const id = appointment({ status: 'awaiting_payment' });
+      await startFor(id);
+      stripe.completeCheckout('cs_test_1');
+
+      await expect(payments.closeCheckout((await payments.findByAppointment(id))!)).resolves.toMatchObject({ id: 'pi_test_1' });
+      expect(stripe.sessionStatus('cs_test_1')).toBe('complete');
+      expect(supabase.paymentFor(id)).toMatchObject({ status: 'requires_payment' });
     });
   });
 

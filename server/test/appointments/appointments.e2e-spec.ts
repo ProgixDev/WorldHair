@@ -55,15 +55,15 @@ describe('appointments (e2e)', () => {
 
   afterAll(() => harness.close());
 
-  /** Books like the app: POST holds the slot, Stripe's test card pays, then the app confirms. */
+  /** Books like the app: POST holds the slot, the client pays on Stripe's page, then the app confirms. */
   async function book(body: Record<string, unknown>): Promise<request.Response> {
     const held = await request(server)
       .post('/appointments')
       .set('Authorization', `Bearer ${particulierToken}`)
       .send(body)
       .expect(201);
-    expect(held.body.payment.clientSecret).toMatch(/_secret_/);
-    harness.stripe.succeedIntent(harness.supabase.paymentFor(held.body.appointment.id)!.payment_intent_id);
+    expect(held.body.payment.url).toMatch(/^https:\/\/checkout\.stripe\.test\//);
+    harness.stripe.completeCheckout(harness.supabase.paymentFor(held.body.appointment.id)!.checkout_session_id!);
     return request(server)
       .post(`/appointments/${held.body.appointment.id}/payment/confirm`)
       .set('Authorization', `Bearer ${particulierToken}`)

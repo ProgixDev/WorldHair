@@ -11,6 +11,7 @@ import type Stripe from 'stripe';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { Role } from '../common/types/role';
 import { isAccountActive } from '../common/utils/account-status';
+import { formatParisDateTime } from '../common/utils/paris-time';
 import { findSalonSubscription, isSalonListed } from '../common/utils/subscription-status';
 import { subscriptionEndsAt } from '../subscriptions/subscription-state';
 import { SupabaseService } from '../database/supabase.service';
@@ -75,10 +76,10 @@ export interface CoiffeurPayment {
   paidOutAt: string | null;
 }
 
-/** POST /appointments: the held booking, and what the app's Stripe payment sheet needs to charge it. */
+/** POST /appointments: the held booking, and Stripe's payment page for it — the app opens it in the browser. */
 export interface HeldAppointment {
   appointment: ParticulierAppointment;
-  payment: { clientSecret: string; amount: number };
+  payment: { url: string; amount: number };
 }
 
 export interface CoiffeurAppointment {
@@ -279,10 +280,10 @@ export class AppointmentsService {
   // ─── Create (particulier) ────────────────────────────────────────────────
 
   /**
-   * Holds the slot and asks Stripe to charge the total (TODO.md Phase 5): the
-   * app's payment sheet pays it, and only then does the salon get the
-   * request (`completePayment`, or Stripe's webhook). An unpaid hold is
-   * released after PAYMENT_HOLD_MS.
+   * Holds the slot and opens Stripe's payment page for the total (TODO.md
+   * Phase 5): the client pays there, in the browser, and only then does the
+   * salon get the request (`completePayment` when they're back in the app,
+   * or Stripe's webhook). An unpaid hold is released after PAYMENT_HOLD_MS.
    */
   async create(particulierId: string, input: CreateAppointmentInput): Promise<HeldAppointment> {
     const serviceIds = [...new Set(input.serviceIds ?? (input.serviceId ? [input.serviceId] : []))];
@@ -357,14 +358,15 @@ export class AppointmentsService {
       throw new InternalServerErrorException(linesError.message);
     }
 
-    let clientSecret: string;
+    let url: string;
     try {
-      ({ clientSecret } = await this.payments.startPayment({
+      ({ url } = await this.payments.startPayment({
         appointmentId: created.id,
         particulierId,
         coiffeurId: input.coiffeurId,
         amount: price,
-        description: `WorldHair — ${profile.salonName} — ${serviceName}`,
+        label: `${profile.salonName} — ${serviceName}`,
+        details: `Rendez-vous le ${formatParisDateTime(created.starts_at)}`,
         email: await this.emailOf(particulierId),
       }));
     } catch (err) {
@@ -374,13 +376,13 @@ export class AppointmentsService {
 
     return {
       appointment: this.mapParticulier(created, profile.salonName, profile.cancellationNoticeMinutes, new Date(), lines),
-      payment: { clientSecret, amount: price },
+      payment: { url, amount: price },
     };
   }
 
   // ─── Payment (particulier, Stripe) ───────────────────────────────────────
 
-  /** "I've paid": Stripe is asked directly, so the request goes out without waiting for its webhook. */
+  /** Back from Stripe's page: Stripe is asked directly, so the request goes out without waiting for its webhook. */
   async completePayment(particulierId: string, id: string): Promise<ParticulierAppointment> {
     let row = await this.rowOrThrow(id);
     if (row.particulier_id !== particulierId) {
@@ -388,10 +390,8 @@ export class AppointmentsService {
     }
     if (row.status === 'awaiting_payment') {
       const payment = await this.payments.findByAppointment(id);
-      if (payment) {
-        const intent = await this.payments.retrieveIntent(payment);
-        if (intent.status === 'succeeded') row = await this.finalizePayment(row, payment, intent);
-      }
+      const intent = payment ? await this.payments.paidIntent(payment) : null;
+      if (payment && intent) row = await this.finalizePayment(row, payment, intent);
     }
     const profile = await this.salon.getProfile(row.coiffeur_id);
     return this.mapParticulier(row, profile.salonName, profile.cancellationNoticeMinutes);
@@ -463,10 +463,14 @@ export class AppointmentsService {
   async handlePaymentEvent(event: Stripe.Event): Promise<void> {
     if (event.type === 'payment_intent.succeeded') {
       const intent = event.data.object;
-      const payment = await this.payments.findByIntent(intent.id);
+      // Found by its appointment: paid on Stripe's page, the intent isn't recorded here until now.
+      const appointmentId = intent.metadata?.appointment_id;
+      const payment = appointmentId
+        ? await this.payments.findByAppointment(appointmentId)
+        : await this.payments.findByIntent(intent.id);
       if (!payment) {
-        // One of ours (it names an appointment) whose hold is already gone: nothing was booked.
-        if (intent.metadata?.appointment_id) await this.payments.refundOrphan(intent);
+        // One of ours whose hold is already gone: nothing was booked.
+        if (appointmentId) await this.payments.refundOrphan(intent);
         return;
       }
       const row = await this.findRow(payment.appointment_id);
@@ -538,13 +542,11 @@ export class AppointmentsService {
     if (row.status !== 'awaiting_payment') return;
     const payment = await this.payments.findByAppointment(row.id);
     if (payment) {
-      const outcome = await this.payments.cancelIntent(payment);
-      if (outcome === 'succeeded') {
-        await this.finalizePayment(row, payment, await this.payments.retrieveIntent(payment));
+      const paid = await this.payments.closeCheckout(payment);
+      if (paid) {
+        await this.finalizePayment(row, payment, paid);
         return;
       }
-      // Still going through the bank: the hold stays until Stripe says.
-      if (outcome === 'processing') return;
     }
     await this.supabase.client.from('appointments').delete().eq('id', row.id).eq('status', 'awaiting_payment');
   }

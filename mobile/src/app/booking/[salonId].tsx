@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { PaymentSheetError, useStripe } from "@stripe/stripe-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,7 +12,7 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { STRIPE_RETURN_URL } from "../../features/payments/stripeReturn";
+import { PAYMENT_RETURN_URL } from "../../features/payments/paymentReturn";
 import { fetchSalonById, fetchSlots } from "../../features/salons/api";
 import { bookingRuleLines } from "../../features/salons/rules";
 import { bookingDays, dateKey, type DaySlots } from "../../features/salons/slots";
@@ -49,15 +49,16 @@ const RESCHEDULE_STEPS: { id: Step; label: string }[] = [
   { id: "confirm", label: "Confirmation" },
 ];
 
-/** The slot held while the client pays (server-side, 15 minutes at most), and what Stripe's sheet was set up with. */
+/** The slot held while the client pays (server-side, 15 minutes at most), and Stripe's payment page for it. */
 interface Hold {
   appointment: Appointment;
+  pageUrl: string;
   startsAt: string;
-  /** When the server took it: an older hold is replaced before paying, so the sheet never outlives it. */
+  /** When the server took it: an older hold is replaced before paying, so the page never outlives it. */
   heldAt: number;
 }
 
-/** The server frees a hold after 15 minutes: past this, "Payer" takes a fresh one, leaving at least 5 to pay. */
+/** The server frees a hold (and closes its page) after 15 minutes: past this, "Payer" takes a fresh one, leaving at least 5 to pay. */
 const HOLD_REUSE_MS = 10 * 60_000;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -95,7 +96,6 @@ export default function BookingFlow() {
   const [salon, setSalon] = useState<Salon | null | undefined>(undefined);
   const isReschedule = Boolean(appointmentId);
   const steps = isReschedule ? RESCHEDULE_STEPS : BOOKING_STEPS;
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const [step, setStep] = useState<Step>(
     serviceId || isReschedule ? "slot" : "service",
@@ -259,7 +259,7 @@ export default function BookingFlow() {
     hold.current = null;
   };
 
-  /** The sheet failed: the server knows whether the payment went through anyway. */
+  /** Stripe's page closed without saying "paid": one look, in case it was paid just before. */
   const paidAfterAll = async (id: string): Promise<Appointment | null> => {
     try {
       const appointment = await confirmPayment(id);
@@ -269,20 +269,25 @@ export default function BookingFlow() {
     }
   };
 
-  /** After the sheet: the server checks with Stripe and sends the request — a moment for a bank to answer. */
-  const confirmUntilSent = async (id: string): Promise<Appointment> => {
-    let appointment = await confirmPayment(id);
-    for (let tries = 0; appointment.status === "awaiting_payment" && tries < 4; tries += 1) {
-      await wait(1500);
-      appointment = await confirmPayment(id);
+  /** Paid on Stripe's page: the server asks Stripe and sends the request — a moment for the bank to answer. */
+  const sentOrPending = async (held: Appointment): Promise<Appointment> => {
+    try {
+      let appointment = await confirmPayment(held.id);
+      for (let tries = 0; appointment.status === "awaiting_payment" && tries < 4; tries += 1) {
+        await wait(1500);
+        appointment = await confirmPayment(held.id);
+      }
+      return appointment;
+    } catch {
+      // Paid, but the answer got lost on the way: Stripe's webhook sends the request all the same.
+      return held;
     }
-    return appointment;
   };
 
   /**
-   * Holds the slot and charges it with Stripe's payment sheet (card, Google
-   * Pay): the salon only gets the request once it's paid. A declined card
-   * stays inside the sheet; a closed sheet keeps the same hold for another
+   * Holds the slot and opens Stripe's payment page in the browser: the
+   * salon only gets the request once it's paid. Back in the app, the server
+   * asks Stripe. Coming back unpaid keeps the same hold and page for another
    * try, unless it's getting old — then "Payer" takes a fresh one.
    */
   const handlePay = async () => {
@@ -303,45 +308,21 @@ export default function BookingFlow() {
           void releaseHold(appointment.id);
           return;
         }
-        hold.current = { appointment, startsAt: slotStart, heldAt: Date.now() };
-        const { error: initError } = await initPaymentSheet({
-          merchantDisplayName: "WorldHair",
-          paymentIntentClientSecret: payment.clientSecret,
-          returnURL: STRIPE_RETURN_URL,
-          defaultBillingDetails: { address: { country: "FR" } },
-          googlePay: { merchantCountryCode: "FR", currencyCode: "EUR", testEnv: __DEV__ },
-        });
-        if (initError) {
-          releaseCurrentHold();
-          setError("Le paiement n'a pas pu s'ouvrir. Réessayez.");
-          return;
-        }
+        hold.current = { appointment, pageUrl: payment.url, startsAt: slotStart, heldAt: Date.now() };
       }
 
       const held = hold.current!;
-      const { error: sheetError } = await presentPaymentSheet();
-      if (sheetError) {
-        if (sheetError.code === PaymentSheetError.Canceled) return;
-        // Anything else (the hold ran out, say): paid all the same? If not, the next try starts afresh.
-        const paid = await paidAfterAll(held.appointment.id);
-        if (paid) {
-          hold.current = null;
-          setBooked(paid);
-          return;
-        }
-        releaseCurrentHold();
-        setError("Le paiement n'a pas abouti. Réessayez.");
+      // A private session: no "sign in" prompt on iOS. The website's way back closes the page by itself.
+      const result = await WebBrowser.openAuthSessionAsync(held.pageUrl, PAYMENT_RETURN_URL, {
+        preferEphemeralSession: true,
+      });
+      const saysPaid = result.type === "success" && result.url.includes("etat=paye");
+      const appointment = saysPaid ? await sentOrPending(held.appointment) : await paidAfterAll(held.appointment.id);
+      if (!appointment) {
+        setError("Paiement non finalisé. Touchez « Payer » pour reprendre.");
         return;
       }
-
       hold.current = null;
-      let appointment: Appointment;
-      try {
-        appointment = await confirmUntilSent(held.appointment.id);
-      } catch {
-        // Paid, but the answer got lost on the way: Stripe's webhook sends the request all the same.
-        appointment = held.appointment;
-      }
       setBooked(appointment);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Paiement impossible. Réessayez.");
@@ -409,7 +390,7 @@ export default function BookingFlow() {
   };
 
   const goBack = () => {
-    // Mid-payment: the hold being taken, or the sheet about to open.
+    // Mid-payment: the hold being taken, or Stripe's page open.
     if (submitting) return;
     setError(null);
     if (step === "confirm") return setStep("slot");
@@ -879,8 +860,9 @@ export default function BookingFlow() {
                   { color: theme.foreground.gray, flex: 1 },
                 ]}
               >
-                Paiement sécurisé par Stripe : vos données bancaires ne
-                transitent jamais par WorldHair.
+                Vous payez sur la page sécurisée de Stripe, puis revenez
+                ici. Vos données bancaires ne transitent jamais par
+                WorldHair.
               </Text>
             </View>
 

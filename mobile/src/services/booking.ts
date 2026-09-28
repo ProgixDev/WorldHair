@@ -50,7 +50,8 @@ export interface Appointment {
 /** POST /appointments: the slot held for the client, and what Stripe's payment sheet needs. */
 export interface HeldBooking {
   appointment: Appointment;
-  payment: { clientSecret: string; amount: number };
+  /** Stripe's payment page for the held slot, opened in the browser. */
+  payment: { url: string; amount: number };
 }
 
 export interface UserReview {

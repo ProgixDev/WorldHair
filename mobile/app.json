@@ -45,12 +45,6 @@
     },
     "plugins": [
       [
-        "@stripe/stripe-react-native",
-        {
-          "enableGooglePay": true
-        }
-      ],
-      [
         "expo-router",
         {
           "root": "./src/app"

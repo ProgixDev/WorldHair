@@ -72,7 +72,7 @@ describe('payments (e2e)', () => {
 
   it("sends the request when Stripe's webhook says the card went through", async () => {
     const id = await hold();
-    const intent = harness.stripe.succeedIntent(harness.supabase.paymentFor(id)!.payment_intent_id);
+    const intent = harness.stripe.completeCheckout(harness.supabase.paymentFor(id)!.checkout_session_id!);
 
     await signed('/webhooks/stripe', PLATFORM_SECRET, { id: 'evt_1', type: 'payment_intent.succeeded', data: { object: intent } })
       .expect(200);
@@ -121,7 +121,7 @@ describe('payments (e2e)', () => {
 
   it('lets the admin see every payment and refund one', async () => {
     const id = await hold();
-    harness.stripe.succeedIntent(harness.supabase.paymentFor(id)!.payment_intent_id);
+    harness.stripe.completeCheckout(harness.supabase.paymentFor(id)!.checkout_session_id!);
     await request(server).post(`/appointments/${id}/payment/confirm`).set('Authorization', `Bearer ${particulierToken}`).expect(200);
 
     await request(server)

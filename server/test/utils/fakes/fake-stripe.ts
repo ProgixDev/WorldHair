@@ -24,9 +24,15 @@ export interface FakeSubscriptionInput {
 
 interface FakeSession {
   id: string;
-  customer: string;
+  customer: string | null;
   status: 'open' | 'complete' | 'expired';
   url: string;
+  mode?: string;
+  payment_status?: 'paid' | 'unpaid';
+  payment_intent?: string | null;
+  /** Payment mode: cents, and what the PaymentIntent gets once the client pays (`completeCheckout`). */
+  amount_total?: number;
+  paymentIntentData?: Stripe.Checkout.SessionCreateParams.PaymentIntentData;
 }
 
 interface FakeTransfer {
@@ -47,6 +53,8 @@ interface FakeTransfer {
 export class FakeStripe {
   readonly customersCreated: { params: Stripe.CustomerCreateParams; idempotencyKey?: string }[] = [];
   readonly checkoutSessionsCreated: Stripe.Checkout.SessionCreateParams[] = [];
+  /** Each created session's idempotency key, in the same order. */
+  readonly checkoutIdempotencyKeys: (string | undefined)[] = [];
   readonly portalSessionsCreated: Stripe.BillingPortal.SessionCreateParams[] = [];
   /** Set to [] to play a Stripe account where the setup script was never run. */
   prices_: typeof PRICES = PRICES;
@@ -58,6 +66,7 @@ export class FakeStripe {
   private readonly subscriptionsById = new Map<string, Record<string, unknown>>();
   private readonly customerIdByKey = new Map<string, string>();
   private readonly sessions: FakeSession[] = [];
+  private readonly sessionIdByKey = new Map<string, string>();
   private customerCount = 0;
 
   readonly customers = {
@@ -75,17 +84,40 @@ export class FakeStripe {
 
   readonly checkout = {
     sessions: {
-      create: async (params: Stripe.Checkout.SessionCreateParams) => {
+      /** Like Stripe, a repeated idempotency key answers with the session the first call made. */
+      create: async (params: Stripe.Checkout.SessionCreateParams, options?: Stripe.RequestOptions) => {
+        const key = options?.idempotencyKey;
+        const known = key ? this.sessions.find((session) => session.id === this.sessionIdByKey.get(key)) : undefined;
+        if (known) return structuredClone(known);
         this.checkoutSessionsCreated.push(params);
+        this.checkoutIdempotencyKeys.push(key);
         const id = `cs_test_${this.checkoutSessionsCreated.length}`;
         const session: FakeSession = {
           id,
-          customer: params.customer as string,
+          customer: (params.customer as string | undefined) ?? null,
           status: 'open',
           url: `https://checkout.stripe.test/${id}`,
+          mode: params.mode,
+          ...(params.mode === 'payment'
+            ? {
+                payment_status: 'unpaid' as const,
+                payment_intent: null,
+                amount_total: (params.line_items ?? []).reduce(
+                  (sum, item) => sum + (item.price_data?.unit_amount ?? 0) * (item.quantity ?? 1),
+                  0,
+                ),
+                paymentIntentData: params.payment_intent_data,
+              }
+            : {}),
         };
         this.sessions.push(session);
-        return session;
+        if (key) this.sessionIdByKey.set(key, id);
+        return structuredClone(session);
+      },
+      retrieve: async (id: string) => {
+        const session = this.sessions.find((candidate) => candidate.id === id);
+        if (!session) throw new Error(`No such checkout.session: '${id}'`);
+        return structuredClone(session);
       },
       list: async (params: Stripe.Checkout.SessionListParams) => ({
         data: this.sessions.filter(
@@ -146,7 +178,8 @@ export class FakeStripe {
 
   // ─── Payments (TODO.md Phase 5) ─────────────────────────────────────────
 
-  readonly paymentIntentsCreated: { params: Stripe.PaymentIntentCreateParams; idempotencyKey?: string }[] = [];
+  /** PaymentIntents Stripe's pages made when clients paid (`completeCheckout`). */
+  readonly paymentIntentsCreated: { params: Stripe.PaymentIntentCreateParams }[] = [];
   /** Refunds that moved money — a replayed idempotency key adds none, like Stripe. */
   readonly refundsCreated: { params: Stripe.RefundCreateParams; idempotencyKey?: string }[] = [];
   readonly transfersCreated: { params: Stripe.TransferCreateParams; idempotencyKey?: string }[] = [];
@@ -154,7 +187,6 @@ export class FakeStripe {
   readonly accountsCreated: { params: Stripe.AccountCreateParams; idempotencyKey?: string }[] = [];
   readonly accountLinksCreated: Stripe.AccountLinkCreateParams[] = [];
   private readonly intents = new Map<string, Record<string, unknown>>();
-  private readonly intentIdByKey = new Map<string, string>();
   private readonly accountsById = new Map<string, Record<string, unknown>>();
   private readonly accountIdByKey = new Map<string, string>();
   private readonly refundIdByKey = new Map<string, { id: string; amount: number }>();
@@ -167,54 +199,41 @@ export class FakeStripe {
   private readonly reversalIdByKey = new Map<string, string>();
 
   readonly paymentIntents = {
-    create: async (params: Stripe.PaymentIntentCreateParams, options?: Stripe.RequestOptions) => {
-      const key = options?.idempotencyKey;
-      const known = key ? this.intentIdByKey.get(key) : undefined;
-      if (known) return structuredClone(this.intents.get(known));
-      this.paymentIntentsCreated.push({ params, idempotencyKey: key });
-      const id = `pi_test_${this.paymentIntentsCreated.length}`;
-      const intent = {
-        id,
-        object: 'payment_intent',
-        amount: params.amount,
-        currency: params.currency,
-        status: 'requires_payment_method',
-        client_secret: `${id}_secret_test`,
-        latest_charge: null,
-        metadata: params.metadata ?? {},
-      };
-      this.intents.set(id, intent);
-      if (key) this.intentIdByKey.set(key, id);
-      return structuredClone(intent);
-    },
     retrieve: async (id: string) => {
       const intent = this.intents.get(id);
       if (!intent) throw new Error(`No such payment_intent: '${id}'`);
       return structuredClone(intent);
     },
-    cancel: async (id: string) => {
-      const intent = this.intents.get(id);
-      if (!intent) throw new Error(`No such payment_intent: '${id}'`);
-      if (intent.status === 'succeeded') {
-        throw new Error('You cannot cancel this PaymentIntent because it has a status of succeeded.');
-      }
-      intent.status = 'canceled';
-      return structuredClone(intent);
-    },
   };
 
-  /** Test convenience: the client's card went through. */
-  succeedIntent(id: string): Record<string, unknown> {
-    const intent = this.intents.get(id);
-    if (!intent) throw new Error(`No such payment_intent: '${id}'`);
-    intent.status = 'succeeded';
-    intent.latest_charge = `ch_${id}`;
+  /**
+   * Test convenience: the client paid on Stripe's page — its PaymentIntent,
+   * carrying the session's `payment_intent_data`, succeeded. Answers it, as
+   * `payment_intent.succeeded` would carry it.
+   */
+  completeCheckout(sessionId: string): Record<string, unknown> {
+    const session = this.sessions.find((candidate) => candidate.id === sessionId);
+    if (!session || session.status !== 'open') throw new Error(`Session ${sessionId} is not open`);
+    const data = session.paymentIntentData ?? {};
+    this.paymentIntentsCreated.push({
+      params: { ...data, amount: session.amount_total ?? 0, currency: 'eur' } as Stripe.PaymentIntentCreateParams,
+    });
+    const id = `pi_test_${this.paymentIntentsCreated.length}`;
+    const intent = {
+      id,
+      object: 'payment_intent',
+      amount: session.amount_total ?? 0,
+      currency: 'eur',
+      status: 'succeeded',
+      latest_charge: `ch_${id}`,
+      metadata: data.metadata ?? {},
+    };
+    this.intents.set(id, intent);
     this.intentIdByCharge.set(`ch_${id}`, id);
+    session.status = 'complete';
+    session.payment_status = 'paid';
+    session.payment_intent = id;
     return structuredClone(intent);
-  }
-
-  intentStatus(id: string): unknown {
-    return this.intents.get(id)?.status;
   }
 
   readonly refunds = {

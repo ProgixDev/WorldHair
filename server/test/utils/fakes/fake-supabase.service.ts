@@ -226,7 +226,9 @@ interface PaymentRow {
   appointment_id: string;
   particulier_id: string;
   coiffeur_id: string;
-  payment_intent_id: string;
+  /** Known once the client paid on Stripe's page. */
+  payment_intent_id: string | null;
+  checkout_session_id: string | null;
   charge_id: string | null;
   amount: number;
   currency: string;
@@ -875,6 +877,7 @@ export class FakeSupabaseService {
       particulier_id: params.particulierId,
       coiffeur_id: params.coiffeurId,
       payment_intent_id: params.paymentIntentId ?? `pi_${id}`,
+      checkout_session_id: null,
       charge_id: params.chargeId !== undefined ? params.chargeId : `ch_${id}`,
       amount: params.amount,
       currency: 'eur',
@@ -1732,6 +1735,8 @@ export class FakeSupabaseService {
             const now = new Date().toISOString();
             const id = randomUUID();
             const created = {
+              payment_intent_id: null,
+              checkout_session_id: null,
               charge_id: null,
               currency: 'eur',
               status: 'requires_payment',

@@ -1,6 +1,16 @@
-import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type Stripe from 'stripe';
+import { paymentReturnPageUrl } from '../common/utils/web-links';
+import { EnvironmentVariables } from '../config/env.validation';
 import { SupabaseService } from '../database/supabase.service';
 import { PlatformSettingsService } from '../settings/platform-settings.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -22,7 +32,10 @@ export interface PaymentRow {
   appointment_id: string;
   particulier_id: string;
   coiffeur_id: string;
-  payment_intent_id: string;
+  /** Known once the client paid on Stripe's page. */
+  payment_intent_id: string | null;
+  /** Stripe's payment page (Checkout) the app opened for this booking. */
+  checkout_session_id: string | null;
   charge_id: string | null;
   amount: number | string;
   currency: string;
@@ -48,8 +61,11 @@ export interface StartPaymentInput {
   coiffeurId: string;
   /** Euros, TTC: the prestations' total. */
   amount: number;
-  description: string;
-  /** Stripe emails the receipt there. */
+  /** What Stripe's page, the receipt and the bank statement read: the salon and the prestations. */
+  label: string;
+  /** Under it on Stripe's page: the day and time. */
+  details: string;
+  /** Filled in on Stripe's page, and where it emails the receipt. */
   email: string | null;
 }
 
@@ -77,6 +93,9 @@ interface SentTransfer {
 
 /** A salon is paid a day after the appointment: time to mark a no-show or refund by hand first. */
 export const PAYOUT_DELAY_MS = 24 * 3_600_000;
+
+/** Stripe keeps a payment page open 30 minutes at least; the slot's hold is shorter and closes it itself (`closeCheckout`). */
+const CHECKOUT_OPEN_MINUTES = 31;
 
 /** How long a refund or a payout may hold a payment: Stripe's slowest answer, retries included. A server that dies holding it frees it by then. */
 const LOCK_MS = 5 * 60_000;
@@ -106,7 +125,8 @@ function slices<T>(items: T[], size: number): T[][] {
 /**
  * The money side of a booking (TODO.md Phase 5), with separate charges and
  * transfers: WorldHair charges the client's card for the full price when
- * the request is sent, holds it, and a day after the appointment transfers
+ * the request is sent — on Stripe's own payment page, which the app opens
+ * in the browser — holds it, and a day after the appointment transfers
  * the salon's share — the price minus the commission, on what the client
  * kept — to its Stripe account. Refunds and transfers carry idempotency
  * keys, so a retry never pays or refunds twice, and never run at the same
@@ -122,28 +142,59 @@ export class PaymentsService {
     private readonly settings: PlatformSettingsService,
     private readonly payouts: PayoutAccountsService,
     private readonly events: EventEmitter2,
+    private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {}
 
-  async startPayment(input: StartPaymentInput): Promise<{ clientSecret: string }> {
+  /**
+   * Stripe's payment page for a held booking: the app opens it in the
+   * browser, the client pays there (3-D Secure too, when the bank asks) and
+   * Stripe sends them back through the website to the app. Cards only: an
+   * answer at once, well within the slot's hold.
+   */
+  async startPayment(input: StartPaymentInput): Promise<{ url: string }> {
+    const back = paymentReturnPageUrl(this.config.get('WEB_APP_URL', { infer: true }));
+    if (!back) {
+      throw new ServiceUnavailableException('WEB_APP_URL is not configured');
+    }
     const { commissionPercent } = await this.settings.get();
-    const intent = await this.stripe.client.paymentIntents.create(
+    const metadata = {
+      appointment_id: input.appointmentId,
+      particulier_id: input.particulierId,
+      coiffeur_id: input.coiffeurId,
+    };
+    const session = await this.stripe.client.checkout.sessions.create(
       {
-        amount: toCents(input.amount),
-        currency: 'eur',
-        automatic_payment_methods: { enabled: true },
-        description: input.description,
-        ...(input.email ? { receipt_email: input.email } : {}),
-        transfer_group: input.appointmentId,
-        metadata: {
-          appointment_id: input.appointmentId,
-          particulier_id: input.particulierId,
-          coiffeur_id: input.coiffeurId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'eur',
+              unit_amount: toCents(input.amount),
+              product_data: { name: input.label, description: input.details },
+            },
+          },
+        ],
+        submit_type: 'book',
+        locale: 'fr',
+        client_reference_id: input.appointmentId,
+        ...(input.email ? { customer_email: input.email } : {}),
+        payment_intent_data: {
+          description: `WorldHair — ${input.label}`,
+          transfer_group: input.appointmentId,
+          metadata,
+          ...(input.email ? { receipt_email: input.email } : {}),
         },
+        metadata,
+        success_url: `${back}?etat=paye`,
+        cancel_url: `${back}?etat=annule`,
+        expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_OPEN_MINUTES * 60,
       },
-      { idempotencyKey: `payment-${input.appointmentId}` },
+      { idempotencyKey: `checkout-${input.appointmentId}` },
     );
-    if (!intent.client_secret) {
-      throw new InternalServerErrorException('Stripe returned no client secret');
+    if (!session.url) {
+      throw new InternalServerErrorException('Stripe returned no payment page');
     }
 
     const { error } = await this.supabase.client
@@ -152,7 +203,7 @@ export class PaymentsService {
         appointment_id: input.appointmentId,
         particulier_id: input.particulierId,
         coiffeur_id: input.coiffeurId,
-        payment_intent_id: intent.id,
+        checkout_session_id: session.id,
         amount: input.amount,
         commission_rate: commissionPercent,
         commission_amount: round2((input.amount * commissionPercent) / 100),
@@ -163,7 +214,7 @@ export class PaymentsService {
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
-    return { clientSecret: intent.client_secret };
+    return { url: session.url };
   }
 
   async findByAppointment(appointmentId: string): Promise<PaymentRow | null> {
@@ -174,30 +225,47 @@ export class PaymentsService {
     return this.findWhere('payment_intent_id', paymentIntentId);
   }
 
-  /** Stripe's own word on whether the client paid. */
-  async retrieveIntent(payment: PaymentRow): Promise<Stripe.PaymentIntent> {
-    return this.stripe.client.paymentIntents.retrieve(payment.payment_intent_id);
+  /** Stripe's own word: the client's PaymentIntent once they paid on the page, `null` until then. */
+  async paidIntent(payment: PaymentRow): Promise<Stripe.PaymentIntent | null> {
+    let intentId = payment.payment_intent_id;
+    if (!intentId && payment.checkout_session_id) {
+      const session = await this.stripe.client.checkout.sessions.retrieve(payment.checkout_session_id);
+      if (session.payment_status !== 'paid' || !session.payment_intent) return null;
+      intentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id;
+    }
+    if (!intentId) return null;
+    const intent = await this.stripe.client.paymentIntents.retrieve(intentId);
+    return intent.status === 'succeeded' ? intent : null;
   }
 
   async markSucceeded(payment: PaymentRow, intent: Stripe.PaymentIntent): Promise<void> {
     const chargeId = intent.latest_charge ? (typeof intent.latest_charge === 'string' ? intent.latest_charge : intent.latest_charge.id) : null;
-    await this.update(payment.id, { status: 'succeeded', charge_id: chargeId });
+    await this.update(payment.id, { status: 'succeeded', payment_intent_id: intent.id, charge_id: chargeId });
   }
 
   /**
-   * Releasing a hold: the payment can't go through any more. Answers what
-   * Stripe says if the client paid (or is paying) after all — then the hold
-   * must be kept.
+   * Releasing a hold: Stripe's page is closed, so it can't be paid any more
+   * (Stripe would keep it open 30 minutes). Answers the payment when the
+   * client paid after all — then the hold must stay.
    */
-  async cancelIntent(payment: PaymentRow): Promise<'canceled' | 'succeeded' | 'processing'> {
-    const intent = await this.retrieveIntent(payment);
-    if (intent.status === 'succeeded') return 'succeeded';
-    if (intent.status === 'processing') return 'processing';
-    if (intent.status !== 'canceled') {
-      await this.stripe.client.paymentIntents.cancel(intent.id);
+  async closeCheckout(payment: PaymentRow): Promise<Stripe.PaymentIntent | null> {
+    const paid = await this.paidIntent(payment);
+    if (paid) return paid;
+    if (payment.checkout_session_id) {
+      const session = await this.stripe.client.checkout.sessions.retrieve(payment.checkout_session_id);
+      if (session.status === 'open') {
+        try {
+          await this.stripe.client.checkout.sessions.expire(session.id);
+        } catch (err) {
+          // Paid that very moment: the page can't be closed any more.
+          const justPaid = await this.paidIntent(payment);
+          if (justPaid) return justPaid;
+          throw err;
+        }
+      }
     }
     await this.update(payment.id, { status: 'canceled' });
-    return 'canceled';
+    return null;
   }
 
   /**
@@ -329,7 +397,7 @@ export class PaymentsService {
 
     await this.stripe.client.refunds.create(
       {
-        payment_intent: payment.payment_intent_id,
+        payment_intent: payment.payment_intent_id!,
         amount: toCents(wanted),
         reason: 'requested_by_customer',
         metadata: { appointment_id: payment.appointment_id, why: options.reason },

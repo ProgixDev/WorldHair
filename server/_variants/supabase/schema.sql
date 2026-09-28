@@ -535,8 +535,9 @@ before update on public.coiffeur_payout_accounts for each row
 execute procedure public.set_updated_at ();
 
 -- The client's payment for an appointment (TODO.md Phase 5): WorldHair
--- charges the full price when the request is sent (a Stripe PaymentIntent),
--- holds it, and transfers the price minus the commission to the salon a
+-- charges the full price when the request is sent — on Stripe's payment page
+-- (Checkout), opened by the app in the browser; its PaymentIntent is known
+-- once the client paid — holds it, and transfers the price minus the commission to the salon a
 -- day after the appointment. The commission rate is copied from
 -- platform_settings when the client pays; the amount kept is settled at
 -- transfer time, after any refund. A refund and the salon's transfer never
@@ -547,7 +548,8 @@ create table public.payments (
   appointment_id uuid not null unique references public.appointments (id) on delete cascade,
   particulier_id uuid not null references public.profiles (id) on delete cascade,
   coiffeur_id uuid not null references public.profiles (id) on delete cascade,
-  payment_intent_id text not null unique,
+  payment_intent_id text unique,
+  checkout_session_id text unique,
   charge_id text,
   amount numeric(10, 2) not null check (amount > 0),
   currency text not null default 'eur',
