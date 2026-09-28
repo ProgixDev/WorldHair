@@ -2,7 +2,7 @@
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { Pagination, pageSlice } from "@/components/admin/Pagination";
-import { paymentState, paymentTotals } from "@/lib/payments";
+import { paymentState, paymentTotals, refundErrorMessage } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 import { type AdminPayment, listPayments, refundPayment } from "@/services/adminApi";
 import { isAxiosError } from "axios";
@@ -65,11 +65,8 @@ export default function AdminPaiementsPage() {
       setAmount("");
       load();
     } catch (err) {
-      setRefundError(
-        isAxiosError(err) && err.response?.status === 400
-          ? "Remboursement refusé : le montant dépasse ce qui reste."
-          : "Remboursement impossible. Réessayez.",
-      );
+      const body = isAxiosError(err) ? (err.response?.data as { message?: string } | undefined) : undefined;
+      setRefundError(refundErrorMessage(isAxiosError(err) ? err.response?.status : undefined, body?.message ?? ""));
     } finally {
       setSaving(false);
     }

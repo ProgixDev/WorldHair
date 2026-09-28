@@ -47,6 +47,8 @@ export interface AppointmentExpiredEvent {
   coiffeurId: string;
   serviceName: string;
   startsAt: string;
+  /** Euros given back now: 0 for a request not paid in the app, or a refund the job makes later (its own push then). */
+  refunded: number;
 }
 
 /** Money went back to the client (payments/payments.service.ts). */
@@ -193,7 +195,9 @@ export class AppointmentNotificationsListener {
         type: 'appointment_expired',
         dedupeKey: event.appointmentId,
         title: 'Demande sans réponse',
-        body: `Le salon n'a pas répondu à votre demande du ${formatParisDateTime(event.startsAt)} pour ${event.serviceName}. Vous êtes intégralement remboursé.`,
+        body:
+          `Le salon n'a pas répondu à votre demande du ${formatParisDateTime(event.startsAt)} pour ${event.serviceName}.` +
+          (event.refunded > 0 ? ' Vous êtes intégralement remboursé.' : ''),
         data: { appointmentId: event.appointmentId },
       }),
     );

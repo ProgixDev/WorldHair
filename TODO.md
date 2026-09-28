@@ -311,11 +311,24 @@ Done 2026-09-28 in code, tests and the dev database (migration
 `phase5_payments`). Decided on the way: salons without payouts stay listed
 but can't be booked ("Réservation en ligne bientôt disponible"), except the
 demo salon, which takes bookings without its own Stripe account (its money
-stays with WorldHair); a salon is paid 24 h after the appointment ends; a
-request the salon never answers is cancelled and refunded at its start time;
-the commission starts at 10 %. Not yet run against a real Stripe account:
-it needs the keys, Connect switched on, and a new build of the app (Stripe's
-SDK is a native module) — see TESTING.md, "Stripe".
+waits with WorldHair, and would be paid out if it ever set up payouts); a
+salon is paid 24 h after the appointment ends; a request the salon never
+answers is cancelled and refunded at its start time; the commission starts
+at 10 %. Not yet run against a real Stripe account: it needs the keys,
+Connect switched on, and a new build of the app (Stripe's SDK is a native
+module) — see TESTING.md, "Stripe".
+
+Reviewed the same day (migration `phase5_payment_hardening`), fixed: a
+refund and the salon's payout never run at once on a payment, and a payout
+whose answer was lost is found again on Stripe instead of being sent twice;
+an admin refund after the payout takes back exactly the salon's share of it;
+what was refunded is Stripe's own count, so a late or lost webhook changes
+nothing; a refund Stripe can't make at the time (outage) no longer fails the
+cancellation, a job makes it within 10 minutes; the payout job reads only
+what is due, however many bookings pile up; a client holds one unpaid slot
+at a time; a salon can't read an unpaid hold even straight from the
+database; the expiry push only says "remboursé" when it was; Stripe's return
+link after 3-D Secure goes to Stripe's SDK instead of opening a blank screen.
 
 - [x] **Salons connect Stripe to get paid**
   - Stripe: enable Connect on the client's account (platform profile), Express
@@ -360,7 +373,8 @@ SDK is a native module) — see TESTING.md, "Stripe".
       partly, from the appointment. The client sees the refund in "Mes
       rendez-vous" and gets a push.
       Done, plus: a request the salon never answered is cancelled and fully
-      refunded at its start time, with its own push.
+      refunded at its start time, with its own push. A refund Stripe can't
+      make at the time is made again every 10 minutes until it goes through.
 - [x] **Paying the salon after the appointment**: a scheduled job transfers the
       amount minus the commission to the salon's Stripe account once the
       appointment has passed (separate charges and transfers, `transfer_group`

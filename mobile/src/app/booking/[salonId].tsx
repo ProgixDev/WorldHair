@@ -12,6 +12,7 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
+import { STRIPE_RETURN_URL } from "../../features/payments/stripeReturn";
 import { fetchSalonById, fetchSlots } from "../../features/salons/api";
 import { bookingRuleLines } from "../../features/salons/rules";
 import { bookingDays, dateKey, type DaySlots } from "../../features/salons/slots";
@@ -50,9 +51,14 @@ const RESCHEDULE_STEPS: { id: Step; label: string }[] = [
 
 /** The slot held while the client pays (server-side, 15 minutes at most), and what Stripe's sheet was set up with. */
 interface Hold {
-  appointmentId: string;
+  appointment: Appointment;
   startsAt: string;
+  /** When the server took it: an older hold is replaced before paying, so the sheet never outlives it. */
+  heldAt: number;
 }
+
+/** The server frees a hold after 15 minutes: past this, "Payer" takes a fresh one, leaving at least 5 to pay. */
+const HOLD_REUSE_MS = 10 * 60_000;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -111,14 +117,17 @@ export default function BookingFlow() {
   const [booked, setBooked] = useState<Appointment | null>(null);
   /** Kept in a ref too: leaving the screen releases the hold, whatever render we're on. */
   const hold = useRef<Hold | null>(null);
+  /** False once the screen is gone: a hold that arrives after that goes straight back. */
+  const mounted = useRef(true);
 
   // Leaving before paying gives the slot back at once (the server would after 15 minutes).
-  useEffect(
-    () => () => {
-      if (hold.current) void releaseHold(hold.current.appointmentId);
-    },
-    [],
-  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (hold.current) void releaseHold(hold.current.appointment.id);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -246,8 +255,18 @@ export default function BookingFlow() {
     );
 
   const releaseCurrentHold = () => {
-    if (hold.current) void releaseHold(hold.current.appointmentId);
+    if (hold.current) void releaseHold(hold.current.appointment.id);
     hold.current = null;
+  };
+
+  /** The sheet failed: the server knows whether the payment went through anyway. */
+  const paidAfterAll = async (id: string): Promise<Appointment | null> => {
+    try {
+      const appointment = await confirmPayment(id);
+      return appointment.status === "awaiting_payment" ? null : appointment;
+    } catch {
+      return null;
+    }
   };
 
   /** After the sheet: the server checks with Stripe and sends the request — a moment for a bank to answer. */
@@ -262,26 +281,33 @@ export default function BookingFlow() {
 
   /**
    * Holds the slot and charges it with Stripe's payment sheet (card, Google
-   * Pay): the salon only gets the request once it's paid. A declined card or
-   * a closed sheet keeps the same hold for another try.
+   * Pay): the salon only gets the request once it's paid. A declined card
+   * stays inside the sheet; a closed sheet keeps the same hold for another
+   * try, unless it's getting old — then "Payer" takes a fresh one.
    */
   const handlePay = async () => {
     if (!startsAt || !slotStart) return;
     setError(null);
     setSubmitting(true);
     try {
-      if (hold.current?.startsAt !== slotStart) {
+      const current = hold.current;
+      if (!current || current.startsAt !== slotStart || Date.now() - current.heldAt > HOLD_REUSE_MS) {
         releaseCurrentHold();
         const { appointment, payment } = await bookAppointment({
           salonId: salon.id,
           serviceIds: picked.map((service) => service.id),
           startsAt,
         });
-        hold.current = { appointmentId: appointment.id, startsAt: slotStart };
+        if (!mounted.current) {
+          // Left while the slot was being held: give it straight back.
+          void releaseHold(appointment.id);
+          return;
+        }
+        hold.current = { appointment, startsAt: slotStart, heldAt: Date.now() };
         const { error: initError } = await initPaymentSheet({
           merchantDisplayName: "WorldHair",
           paymentIntentClientSecret: payment.clientSecret,
-          returnURL: "worldhair://stripe-redirect",
+          returnURL: STRIPE_RETURN_URL,
           defaultBillingDetails: { address: { country: "FR" } },
           googlePay: { merchantCountryCode: "FR", currencyCode: "EUR", testEnv: __DEV__ },
         });
@@ -292,14 +318,30 @@ export default function BookingFlow() {
         }
       }
 
+      const held = hold.current!;
       const { error: sheetError } = await presentPaymentSheet();
       if (sheetError) {
-        if (sheetError.code !== PaymentSheetError.Canceled) setError(sheetError.message);
+        if (sheetError.code === PaymentSheetError.Canceled) return;
+        // Anything else (the hold ran out, say): paid all the same? If not, the next try starts afresh.
+        const paid = await paidAfterAll(held.appointment.id);
+        if (paid) {
+          hold.current = null;
+          setBooked(paid);
+          return;
+        }
+        releaseCurrentHold();
+        setError("Le paiement n'a pas abouti. Réessayez.");
         return;
       }
 
-      const appointment = await confirmUntilSent(hold.current!.appointmentId);
       hold.current = null;
+      let appointment: Appointment;
+      try {
+        appointment = await confirmUntilSent(held.appointment.id);
+      } catch {
+        // Paid, but the answer got lost on the way: Stripe's webhook sends the request all the same.
+        appointment = held.appointment;
+      }
       setBooked(appointment);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Paiement impossible. Réessayez.");
@@ -367,6 +409,8 @@ export default function BookingFlow() {
   };
 
   const goBack = () => {
+    // Mid-payment: the hold being taken, or the sheet about to open.
+    if (submitting) return;
     setError(null);
     if (step === "confirm") return setStep("slot");
     if (step === "payment") {

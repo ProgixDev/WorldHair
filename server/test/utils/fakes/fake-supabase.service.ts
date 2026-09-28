@@ -237,6 +237,9 @@ interface PaymentRow {
   transfer_id: string | null;
   transfer_amount: number | null;
   transferred_at: string | null;
+  transfer_attempted_at: string | null;
+  reversed_amount: number;
+  locked_until: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -297,6 +300,17 @@ const MAX_ROWS = 1000;
 
 function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknown][]): boolean {
   return filters.every(([column, value]) => row[column] === value);
+}
+
+/** Numbers as numbers, ISO timestamps as dates, anything else with `<`/`>`. */
+function compareValues(a: unknown, b: unknown): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  const aDate = new Date(a as string).getTime();
+  const bDate = new Date(b as string).getTime();
+  if (!Number.isNaN(aDate) && !Number.isNaN(bDate)) return aDate - bDate;
+  if ((a as number) < (b as number)) return -1;
+  if ((a as number) > (b as number)) return 1;
+  return 0;
 }
 
 /**
@@ -364,19 +378,9 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
       .filter((row) => matchesAll(row, this.eqFilters))
       .filter((row) => this.inFilters.every(([column, values]) => values.includes(row[column])))
       .filter((row) => this.isFilters.every(([column]) => row[column] === null))
-      .filter((row) => this.gteFilters.every(([column, value]) => this.compare(row[column], value) >= 0))
-      .filter((row) => this.lteFilters.every(([column, value]) => this.compare(row[column], value) <= 0));
+      .filter((row) => this.gteFilters.every(([column, value]) => compareValues(row[column], value) >= 0))
+      .filter((row) => this.lteFilters.every(([column, value]) => compareValues(row[column], value) <= 0));
     return rows.slice(this.rangeFrom, Math.min(this.rangeTo + 1, this.rangeFrom + MAX_ROWS));
-  }
-
-  /** Compares as dates when both sides parse as one (ISO timestamp columns), otherwise falls back to `<`/`>`. */
-  private compare(a: unknown, b: unknown): number {
-    const aDate = new Date(a as string).getTime();
-    const bDate = new Date(b as string).getTime();
-    if (!Number.isNaN(aDate) && !Number.isNaN(bDate)) return aDate - bDate;
-    if ((a as number) < (b as number)) return -1;
-    if ((a as number) > (b as number)) return 1;
-    return 0;
   }
 
   async maybeSingle(): Promise<QueryResult> {
@@ -396,19 +400,36 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
   }
 }
 
-/** A `.update()/.delete()` chain: N `.eq()` filters, then a terminal call. */
+/** A `.update()/.delete()` chain: `.eq()`/`.in()`/`.is()`/`.lt()` filters, then a terminal call. */
 class FakeMutationQuery<TRow extends object> {
-  private readonly eqFilters: [keyof TRow, unknown][] = [];
+  private readonly filters: ((row: TRow) => boolean)[] = [];
 
   constructor(private readonly apply: (matches: (row: TRow) => boolean) => { data: TRow | null; count: number }) {}
 
   eq(column: keyof TRow, value: unknown): this {
-    this.eqFilters.push([column, value]);
+    this.filters.push((row) => row[column] === value);
+    return this;
+  }
+
+  in(column: keyof TRow, values: unknown[]): this {
+    this.filters.push((row) => values.includes(row[column]));
+    return this;
+  }
+
+  /** Only `.is(column, null)` is used anywhere in this codebase — that's all this fakes. */
+  is(column: keyof TRow, value: null): this {
+    this.filters.push((row) => row[column] === value);
+    return this;
+  }
+
+  /** A null never matches, like SQL. */
+  lt(column: keyof TRow, value: unknown): this {
+    this.filters.push((row) => row[column] !== null && compareValues(row[column], value) < 0);
     return this;
   }
 
   private run() {
-    return this.apply((row) => matchesAll(row, this.eqFilters));
+    return this.apply((row) => this.filters.every((matches) => matches(row)));
   }
 
   select() {
@@ -463,6 +484,7 @@ export class FakeSupabaseService {
   private readonly appointments = new Map<string, AppointmentRow>();
   private readonly appointmentServices = new Map<string, AppointmentServiceRow>();
   private nextAppointmentInsertError: string | null = null;
+  private beforeAppointmentUpdate: (() => void) | null = null;
   private readonly reviews = new Map<string, ReviewRow>();
   private readonly pushTokens = new Map<string, PushTokenRow>();
   private readonly notificationPreferences = new Map<string, NotificationPreferencesRow>();
@@ -595,6 +617,12 @@ export class FakeSupabaseService {
       if (fn === 'search_salons') {
         return this.searchSalonsRpc(params);
       }
+      if (fn === 'payouts_due') {
+        return this.payoutsDueRpc(params);
+      }
+      if (fn === 'refunds_owed') {
+        return this.refundsOwedRpc(params);
+      }
       throw new Error(`FakeSupabaseService: unsupported rpc "${fn}"`);
     },
     storage: {
@@ -643,6 +671,7 @@ export class FakeSupabaseService {
     this.appointments.clear();
     this.appointmentServices.clear();
     this.nextAppointmentInsertError = null;
+    this.beforeAppointmentUpdate = null;
     this.reviews.clear();
     this.pushTokens.clear();
     this.notificationPreferences.clear();
@@ -703,6 +732,20 @@ export class FakeSupabaseService {
    */
   failNextAppointmentInsert(code: string): void {
     this.nextAppointmentInsertError = code;
+  }
+
+  /** Test convenience: runs once, just before the next `appointments` update lands — another request's change getting there first. */
+  beforeNextAppointmentUpdate(run: () => void): void {
+    this.beforeAppointmentUpdate = run;
+  }
+
+  /** Test convenience: an appointment's status changed behind the service's back (another request, a job). */
+  setAppointmentStatus(id: string, status: string): void {
+    const existing = this.appointments.get(id);
+    if (!existing) {
+      throw new Error(`FakeSupabaseService: no appointment "${id}"`);
+    }
+    this.appointments.set(id, { ...existing, status });
   }
 
   /** Test convenience: seeds a closure directly — e.g. one already over, which addTimeOff() would refuse. */
@@ -813,9 +856,15 @@ export class FakeSupabaseService {
     paymentIntentId?: string;
     chargeId?: string | null;
     commissionRate?: number;
+    /** The rate's share of the amount unless given. */
+    commissionAmount?: number;
     refundedAmount?: number;
     transferId?: string | null;
     transferAmount?: number | null;
+    /** Set with `transferId` unless given: a transfer is always attempted before it's made. */
+    transferAttemptedAt?: string | null;
+    reversedAmount?: number;
+    lockedUntil?: string | null;
   }): string {
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -830,12 +879,15 @@ export class FakeSupabaseService {
       amount: params.amount,
       currency: 'eur',
       commission_rate: rate,
-      commission_amount: Math.round(params.amount * rate) / 100,
+      commission_amount: params.commissionAmount ?? Math.round(params.amount * rate) / 100,
       status: params.status ?? 'succeeded',
       refunded_amount: params.refundedAmount ?? 0,
       transfer_id: params.transferId ?? null,
       transfer_amount: params.transferAmount ?? null,
       transferred_at: params.transferId ? now : null,
+      transfer_attempted_at: params.transferAttemptedAt !== undefined ? params.transferAttemptedAt : params.transferId ? now : null,
+      reversed_amount: params.reversedAmount ?? 0,
+      locked_until: params.lockedUntil ?? null,
       created_at: now,
       updated_at: now,
     });
@@ -994,6 +1046,47 @@ export class FakeSupabaseService {
         specialty: service.specialty,
       });
     }
+  }
+
+  /** Mirrors payouts_due() (schema.sql): paid, accepted bookings over by `p_cutoff`, at salons whose payouts are on. */
+  private payoutsDueRpc(params: Record<string, unknown>): QueryResult {
+    const cutoff = new Date(params.p_cutoff as string).getTime();
+    const due = [...this.payments.values()]
+      .map((payment) => ({ payment, appointment: this.appointments.get(payment.appointment_id) }))
+      .filter(({ payment, appointment }) => {
+        const account = this.payoutAccounts.get(payment.coiffeur_id);
+        return (
+          payment.status === 'succeeded' &&
+          payment.transfer_id === null &&
+          payment.refunded_amount < payment.amount &&
+          appointment?.status === 'confirmed' &&
+          new Date(appointment.starts_at).getTime() + appointment.duration_min * 60_000 <= cutoff &&
+          Boolean(account?.stripe_account_id && account.payouts_enabled)
+        );
+      })
+      // Never tried first, then the longest waiting: a payout that keeps failing never holds the others up.
+      .sort(
+        (a, b) =>
+          (a.payment.transfer_attempted_at ?? '').localeCompare(b.payment.transfer_attempted_at ?? '') ||
+          a.appointment!.starts_at.localeCompare(b.appointment!.starts_at),
+      )
+      .map(({ payment }) => payment);
+    return { data: due.slice(0, params.p_limit as number), error: null };
+  }
+
+  /** Mirrors refunds_owed() (schema.sql): paid bookings cancelled or refused, not fully refunded yet. */
+  private refundsOwedRpc(params: Record<string, unknown>): QueryResult {
+    const owed = [...this.payments.values()].filter((payment) => {
+      const status = this.appointments.get(payment.appointment_id)?.status;
+      return (
+        payment.status === 'succeeded' &&
+        payment.transfer_id === null &&
+        payment.transfer_attempted_at === null &&
+        payment.refunded_amount < payment.amount &&
+        (status === 'cancelled' || status === 'refused')
+      );
+    });
+    return { data: owed.slice(0, params.p_limit as number), error: null };
   }
 
   private searchSalonsRpc(params: Record<string, unknown>): QueryResult {
@@ -1366,6 +1459,9 @@ export class FakeSupabaseService {
 
       update: (patch: Record<string, unknown>) =>
         new FakeMutationQuery<AppointmentRow>((matches) => {
+          const before = this.beforeAppointmentUpdate;
+          this.beforeAppointmentUpdate = null;
+          before?.();
           const existing = [...rows.values()].find(matches);
           if (!existing) {
             return { data: null, count: 0 };
@@ -1643,6 +1739,9 @@ export class FakeSupabaseService {
               transfer_id: null,
               transfer_amount: null,
               transferred_at: null,
+              transfer_attempted_at: null,
+              reversed_amount: 0,
+              locked_until: null,
               ...row,
               id,
               created_at: now,

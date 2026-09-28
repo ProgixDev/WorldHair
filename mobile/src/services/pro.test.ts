@@ -51,6 +51,12 @@ describe("proErrorMessage", () => {
     expect(proErrorMessage(serverRefusal("The client already left a review for this appointment"))).toBe(
       "Le client a déjà laissé un avis sur ce rendez-vous : il ne peut plus être marqué absent.",
     );
+    expect(proErrorMessage(serverRefusal("This payment is being processed: try again in a minute"))).toBe(
+      "Un paiement est en cours sur ce rendez-vous. Réessayez dans une minute.",
+    );
+    expect(proErrorMessage(serverRefusal("This request has already been decided"))).toBe(
+      "Cette demande a déjà été traitée, ou le client l'a annulée.",
+    );
   });
 
   it("falls back to a generic message for anything else", () => {

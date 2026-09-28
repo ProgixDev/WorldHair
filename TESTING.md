@@ -18,7 +18,7 @@ Review authors: 6 clients, `client.<name>@worldhair.app` / `Demo1234!` — they 
 
 Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:catalogue`
 ⚠️ `seed:demo` resets the 4 demo accounts to the states above and replaces every appointment between demo.particulier and demo.coiffeur.active.
-Payments (TODO.md Phase 5): Studio W, the demo salon, takes bookings and payments in the app without its own Stripe account (its money stays with WorldHair); the 26 catalogue salons read « Réservation en ligne bientôt disponible » until each sets up its payouts. Stripe test cards: `4242 4242 4242 4242` (paid), `4000 0025 0000 3155` (asks for 3-D Secure), `4000 0000 0000 0002` (declined) — any future date, any CVC.
+Payments (TODO.md Phase 5): Studio W, the demo salon, takes bookings and payments in the app without its own Stripe account (its money waits with WorldHair); the 26 catalogue salons read « Réservation en ligne bientôt disponible » until each sets up its payouts. Stripe test cards: `4242 4242 4242 4242` (paid), `4000 0025 0000 3155` (asks for 3-D Secure), `4000 0000 0000 0002` (declined) — any future date, any CVC.
 After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2 10:00, a 2-prestation booking at J+5 14:30 (Coloration complète + Soin fondant), two past bookings (J-6 unmarked, J-13 marked « Honoré »), a « Formation » closure on J+8 from 14:00 to 19:00 and « Congés » on J+15 and J+16 (J = the day you ran the seed).
 
 ---
@@ -80,6 +80,9 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] « Payer 40 € » opens Stripe's payment sheet (card, Google Pay on Android); `4242…` → « Demande envoyée. » + « Paiement reçu. Le salon doit encore confirmer votre créneau. »; the salon sees the request only now
 - [ ] `4000 0025 0000 3155` asks for 3-D Secure and comes back to the app; `4000 0000 0000 0002` is declined inside the sheet, nothing is booked, « Payer » works again
 - [ ] Closing the sheet, then « Payer » again, reopens it (same held slot); going back to the grid frees the slot at once (another phone can take it)
+- [ ] Going back from Paiement and picking another time — even one overlapping the first — works at once, and your own first time shows free on the grid
+- [ ] Leave the Paiement step open 11+ minutes, then « Payer »: the sheet opens and pays normally (a fresh hold is taken)
+- [ ] iPhone: `4000 0025 0000 3155` → the bank page → back in the app on the booking screen (no blank or "not found" screen), « Demande envoyée. »
 - [ ] Someone takes the slot while you're on Paiement → « Ce créneau n'est plus disponible… » and back to the refreshed grid, nothing charged
 - [ ] Stripe emails the receipt (live mode only: test mode sends none)
 - [ ] A catalogue salon's page reads « Réservation en ligne bientôt disponible » (button disabled)
@@ -245,6 +248,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Totals: encaissé, remboursé, commission (on payments already paid out), versé aux salons
 - [ ] Each payment: client → salon, date, amount, state (Payé / Versé au salon / Remboursé / Remboursé en partie / Abandonné / En attente)
 - [ ] « Rembourser » → amount (empty = everything left) → the client is refunded; after a payout the salon's share is taken back first (visible in Stripe's dashboard as a transfer reversal)
+- [ ] After a payout of 36 € on 40 €, three refunds of 13,33 / 13,33 / 13,34 all go through, and the three reversals add up to exactly 36 €; the list then shows 0 € kept by the salon
 
 ### `/admin/parametres`
 - [ ] « Commission sur les prestations payées »: shows 10, save 12,5 → the next payments keep 12,5 %; an empty field is refused
@@ -309,10 +313,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 339 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test` | 364 ✅ (runs in UTC, like Render) |
 | `cd server && bun run test:e2e` | 68 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
-| `cd mobile && bun run test` | 80 ✅ |
-| `cd web && bun run test` | 23 ✅ |
+| `cd mobile && bun run test` | 82 ✅ |
+| `cd web && bun run test` | 25 ✅ |
 
 `typecheck` + `lint` green on all three packages.

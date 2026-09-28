@@ -61,6 +61,8 @@ const REFUSALS: [string, string][] = [
   ],
   ["end after it starts", "La fermeture doit se terminer après son début."],
   ["Already paid out", "Le montant vous a déjà été versé : pour rembourser le client, contactez WorldHair."],
+  ["being processed", "Un paiement est en cours sur ce rendez-vous. Réessayez dans une minute."],
+  ["already been decided", "Cette demande a déjà été traitée, ou le client l'a annulée."],
   ["left to refund", "Montant trop élevé : il reste moins que ça à rembourser."],
   ["Nothing was paid in the app", "Ce rendez-vous n'a pas été payé dans l'application."],
   ["Finish setting up payouts", "Terminez d'abord la configuration de vos paiements."],

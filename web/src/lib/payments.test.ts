@@ -1,4 +1,4 @@
-import { paymentState, paymentTotals } from "./payments";
+import { paymentState, paymentTotals, refundErrorMessage } from "./payments";
 import type { AdminPayment } from "@/services/adminApi";
 
 function payment(overrides: Partial<AdminPayment>): AdminPayment {
@@ -39,5 +39,23 @@ describe("paymentState", () => {
     expect(paymentState(payment({ refundedAmount: 10 }))).toBe("Remboursé en partie");
     expect(paymentState(payment({ transferredAt: "2026-10-03T10:00:00.000Z", transferAmount: 36 }))).toBe("Versé au salon");
     expect(paymentState(payment({}))).toBe("Payé");
+  });
+});
+
+describe("refundErrorMessage", () => {
+  it("asks the admin to wait while the salon's payout or another refund is under way", () => {
+    expect(refundErrorMessage(409, "The salon's payout is on its way: try again in an hour")).toBe(
+      "Le versement au salon est en cours d'envoi : réessayez dans une heure.",
+    );
+    expect(refundErrorMessage(409, "This payment is being processed: try again in a minute")).toBe(
+      "Un remboursement ou un versement est en cours sur ce paiement : réessayez dans une minute.",
+    );
+  });
+
+  it("explains an amount the server refused, and falls back for anything else", () => {
+    expect(refundErrorMessage(400, "At most 10 € left to refund")).toBe(
+      "Remboursement refusé : le montant dépasse ce qui reste.",
+    );
+    expect(refundErrorMessage(undefined, "")).toBe("Remboursement impossible. Réessayez.");
   });
 });

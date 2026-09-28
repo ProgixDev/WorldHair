@@ -15,6 +15,7 @@ import { AuthProvider } from "../contexts/AuthContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { ThemeProvider, useTheme } from "../contexts/ThemeContext";
 import { useNotificationRouting } from "../features/notifications/useNotificationRouting";
+import { useStripeReturnLinks } from "../features/payments/useStripeReturnLinks";
 import { usePushTokenSync } from "../features/notifications/usePushRegistration";
 import { queryClient } from "../lib/queryClient";
 
@@ -76,6 +77,7 @@ function RootLayoutWithTheme() {
 
   usePushTokenSync();
   useNotificationRouting();
+  useStripeReturnLinks();
 
   const [fontsLoaded] = useFonts({
     "PlayfairDisplay-Regular": require("../../assets/fonts/PlayfairDisplay/PlayfairDisplay-Regular.ttf"),

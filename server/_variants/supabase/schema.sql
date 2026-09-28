@@ -453,11 +453,16 @@ alter table public.appointments enable row level security;
 -- One combined SELECT policy, not two: a separate policy per side would
 -- both be permissive on the same action, which Postgres evaluates twice
 -- per read for no benefit (same fix as coiffeur_applications' policy).
--- No write policies: booking, moving, cancelling and deciding all go through
--- the API, which checks hours, overlaps and who may do what.
+-- A slot held while its client pays reaches the salon only once paid, here
+-- as in the API. No write policies: booking, moving, cancelling and
+-- deciding all go through the API, which checks hours, overlaps and who may
+-- do what.
 create policy "Participant can view their own appointment"
   on public.appointments for select
-  using ((select auth.uid ()) = particulier_id or (select auth.uid ()) = coiffeur_id);
+  using (
+    (select auth.uid ()) = particulier_id
+    or ((select auth.uid ()) = coiffeur_id and status <> 'awaiting_payment')
+  );
 
 create trigger set_appointments_updated_at
 before update on public.appointments for each row
@@ -534,7 +539,9 @@ execute procedure public.set_updated_at ();
 -- holds it, and transfers the price minus the commission to the salon a
 -- day after the appointment. The commission rate is copied from
 -- platform_settings when the client pays; the amount kept is settled at
--- transfer time, after any refund. API only.
+-- transfer time, after any refund. A refund and the salon's transfer never
+-- run at once on a payment: each holds locked_until (a lease that runs out
+-- by itself) while it talks to Stripe. API only.
 create table public.payments (
   id uuid primary key default gen_random_uuid (),
   appointment_id uuid not null unique references public.appointments (id) on delete cascade,
@@ -553,18 +560,77 @@ create table public.payments (
   transfer_id text unique,
   transfer_amount numeric(10, 2),
   transferred_at timestamptz,
+  -- Set before each try at the transfer: from the first one on, the salon
+  -- counts as paid (only an admin refunds), even if the try's answer was lost.
+  transfer_attempted_at timestamptz,
+  -- Taken back from the transfer by admin refunds after the payout.
+  reversed_amount numeric(10, 2) not null default 0 check (reversed_amount >= 0),
+  locked_until timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index payments_coiffeur_id_idx on public.payments (coiffeur_id);
 create index payments_particulier_id_idx on public.payments (particulier_id);
+-- What the jobs below look through: paid, not transferred yet.
+create index payments_untransferred_idx on public.payments (appointment_id)
+  where status = 'succeeded' and transfer_id is null;
 
 alter table public.payments enable row level security;
 
 create trigger set_payments_updated_at
 before update on public.payments for each row
 execute procedure public.set_updated_at ();
+
+-- The hourly payout job's list (PaymentsService.transferDue): paid,
+-- accepted bookings over by p_cutoff (a day before now), not fully
+-- refunded, at a salon whose payouts are on. Filtered here, so bookings
+-- that will never be paid out (refused, refunded, the demo salon's) don't
+-- pile up in the job's way. Never tried first: one that keeps failing
+-- doesn't hold the others up. The API's service role only.
+create function public.payouts_due (p_cutoff timestamptz, p_limit integer)
+returns setof public.payments
+language sql
+stable
+set search_path = ''
+as $$
+  select p.*
+  from public.payments p
+  join public.appointments a on a.id = p.appointment_id
+  join public.coiffeur_payout_accounts pa on pa.profile_id = p.coiffeur_id
+  where p.status = 'succeeded'
+    and p.transfer_id is null
+    and p.refunded_amount < p.amount
+    and a.status = 'confirmed'
+    and a.starts_at + make_interval(mins => a.duration_min) <= p_cutoff
+    and pa.stripe_account_id is not null
+    and pa.payouts_enabled
+  order by p.transfer_attempted_at nulls first, a.starts_at
+  limit p_limit
+$$;
+
+-- Refunds a cancelled or refused booking is still owed — one that failed
+-- when it happened (Stripe down); PaymentsService.refundOwed makes them.
+create function public.refunds_owed (p_limit integer)
+returns setof public.payments
+language sql
+stable
+set search_path = ''
+as $$
+  select p.*
+  from public.payments p
+  join public.appointments a on a.id = p.appointment_id
+  where p.status = 'succeeded'
+    and p.transfer_id is null
+    and p.transfer_attempted_at is null
+    and p.refunded_amount < p.amount
+    and a.status in ('cancelled', 'refused')
+  order by p.updated_at
+  limit p_limit
+$$;
+
+revoke execute on function public.payouts_due (timestamptz, integer) from public, anon, authenticated;
+revoke execute on function public.refunds_owed (integer) from public, anon, authenticated;
 
 -- "Avis" (TODO.md). One row per appointment (unique), so "Création avis" is
 -- naturally capped at one review per booking. Every change feeds

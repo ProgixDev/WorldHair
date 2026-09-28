@@ -24,6 +24,17 @@ export function paymentTotals(payments: AdminPayment[]): PaymentTotals {
   };
 }
 
+/** Why the server refused a refund, for the admin — its answers are in English (server/src/payments/payments.service.ts). */
+export function refundErrorMessage(status: number | undefined, message: string): string {
+  if (status === 409) {
+    return message.includes("payout")
+      ? "Le versement au salon est en cours d'envoi : réessayez dans une heure."
+      : "Un remboursement ou un versement est en cours sur ce paiement : réessayez dans une minute.";
+  }
+  if (status === 400) return "Remboursement refusé : le montant dépasse ce qui reste.";
+  return "Remboursement impossible. Réessayez.";
+}
+
 /** Where a payment stands, in the admin's words. */
 export function paymentState(payment: AdminPayment): string {
   if (payment.status === "requires_payment") return "En attente de paiement";

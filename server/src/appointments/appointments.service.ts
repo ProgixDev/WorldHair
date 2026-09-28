@@ -14,7 +14,7 @@ import { isAccountActive } from '../common/utils/account-status';
 import { findSalonSubscription, isSalonListed } from '../common/utils/subscription-status';
 import { subscriptionEndsAt } from '../subscriptions/subscription-state';
 import { SupabaseService } from '../database/supabase.service';
-import { PaymentRow, PaymentsService } from '../payments/payments.service';
+import { PaymentRow, PaymentsService, RefundReason } from '../payments/payments.service';
 import { PayoutAccountsService } from '../payments/payout-accounts.service';
 import { SalonProfile, SalonService, SalonServiceItem } from '../salon/salon.service';
 import { BookingRules, BusyBooking, DaySlots, refusalFor, SlotRefusal, slotsForDay } from './booking-rules';
@@ -210,7 +210,8 @@ function salonPayment(row: AppointmentRow): CoiffeurPayment | null {
     amount: Number(payment.amount),
     refundedAmount: Number(payment.refunded_amount),
     commissionAmount: commission,
-    payoutAmount: paidOut ? Number(payment.transfer_amount) : round2(kept - commission),
+    // Paid out: what the salon kept of its transfer, after anything WorldHair took back for an admin refund.
+    payoutAmount: paidOut ? round2(Number(payment.transfer_amount) - Number(payment.reversed_amount)) : round2(kept - commission),
     paidOutAt: payment.transferred_at,
   };
 }
@@ -306,6 +307,8 @@ export class AppointmentsService {
     const serviceName = lines.map((line) => line.name).join(' + ');
 
     const startsAt = this.parseDate(input.startsAt);
+    // One payment at a time per client: going back, or starting over, frees their previous hold.
+    await this.releaseHoldsOf(particulierId);
     const rules = await this.rulesFor(input.coiffeurId, {
       particulierId,
       bookingNoticeMinutes: profile.bookingNoticeMinutes,
@@ -444,13 +447,14 @@ export class AppointmentsService {
         .select()
         .maybeSingle();
       if (updateError || !expired) continue;
-      await this.payments.refund(row.id, { reason: 'request_expired' });
+      const refunded = await this.refundAfter(row.id, 'request_expired');
       this.events.emit('appointment.expired', {
         appointmentId: row.id,
         particulierId: row.particulier_id,
         coiffeurId: row.coiffeur_id,
         serviceName: row.service_name,
         startsAt: row.starts_at,
+        refunded,
       });
     }
   }
@@ -545,6 +549,40 @@ export class AppointmentsService {
     await this.supabase.client.from('appointments').delete().eq('id', row.id).eq('status', 'awaiting_payment');
   }
 
+  private async releaseHoldsOf(particulierId: string): Promise<void> {
+    const { data, error } = await this.supabase.client
+      .from('appointments')
+      .select()
+      .eq('particulier_id', particulierId)
+      .eq('status', 'awaiting_payment');
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    for (const row of data as AppointmentRow[]) {
+      try {
+        await this.releaseRow(row);
+      } catch (err) {
+        // Left to the stale-hold job; meanwhile an overlapping new hold is refused as usual.
+        this.logger.warn(`Couldn't release hold ${row.id}`, err as Error);
+      }
+    }
+  }
+
+  /**
+   * The client's money back after a cancellation, a refusal or an expiry.
+   * The booking's new status is already written, so a refund Stripe can't
+   * make right now (an outage) mustn't fail it: PaymentsService.refundOwed
+   * makes it later. Answers what was refunded now.
+   */
+  private async refundAfter(id: string, reason: RefundReason): Promise<number> {
+    try {
+      return await this.payments.refund(id, { reason });
+    } catch (err) {
+      this.logger.error(`Refund for appointment ${id} failed — the job will make it`, err as Error);
+      return 0;
+    }
+  }
+
   // ─── Particulier: list / reschedule / cancel ────────────────────────────
 
   async listForParticulier(particulierId: string): Promise<ParticulierAppointment[]> {
@@ -604,11 +642,10 @@ export class AppointmentsService {
       const profile = await this.salon.getProfile(row.coiffeur_id);
       this.assertBeforeDeadline(row, profile.cancellationNoticeMinutes);
     }
-    await this.updateRow(id, { status: 'cancelled' });
+    // Only while still active: the salon may have refused it, or the job expired it, meanwhile.
+    await this.updateWhileStatus(id, ['pending', 'confirmed'], { status: 'cancelled' }, 'This appointment can no longer be modified');
     // In time (the client) or not their fault (the salon): the client gets everything back.
-    await this.payments.refund(id, {
-      reason: currentUserId === row.particulier_id ? 'client_cancelled' : 'salon_cancelled',
-    });
+    await this.refundAfter(id, currentUserId === row.particulier_id ? 'client_cancelled' : 'salon_cancelled');
     this.events.emit('appointment.cancelled', {
       appointmentId: id,
       coiffeurId: row.coiffeur_id,
@@ -644,6 +681,7 @@ export class AppointmentsService {
     let durationMin: number;
     let particulierId: string | undefined;
     let excludeAppointmentId: string | undefined;
+    let ignoreHoldsOf: string | undefined;
     let bookingNoticeMinutes = profile.bookingNoticeMinutes;
 
     if (query.appointmentId) {
@@ -665,11 +703,13 @@ export class AppointmentsService {
         return sum + service.durationMin;
       }, 0);
       particulierId = callerRole === 'particulier' ? callerId : undefined;
+      // Booking again replaces the client's unpaid hold (see create): it isn't in their way.
+      ignoreHoldsOf = particulierId;
     } else {
       throw new BadRequestException('Pick at least one service');
     }
 
-    const rules = await this.rulesFor(coiffeurId, { particulierId, excludeAppointmentId, bookingNoticeMinutes });
+    const rules = await this.rulesFor(coiffeurId, { particulierId, excludeAppointmentId, ignoreHoldsOf, bookingNoticeMinutes });
     return slotsForDay(rules, query.date, durationMin);
   }
 
@@ -703,9 +743,10 @@ export class AppointmentsService {
     if (new Date(row.starts_at).getTime() < Date.now()) {
       throw new BadRequestException('This request has expired');
     }
-    await this.updateRow(id, { status: decision });
+    // Only while still pending: the client may have cancelled it, or the job expired it, meanwhile.
+    await this.updateWhileStatus(id, ['pending'], { status: decision }, 'This request has already been decided');
     if (decision === 'refused') {
-      await this.payments.refund(id, { reason: 'salon_refused' });
+      await this.refundAfter(id, 'salon_refused');
     }
     this.events.emit(decision === 'confirmed' ? 'appointment.confirmed' : 'appointment.refused', {
       appointmentId: id,
@@ -822,7 +863,7 @@ export class AppointmentsService {
 
   private async rulesFor(
     coiffeurId: string,
-    options: { particulierId?: string; excludeAppointmentId?: string; bookingNoticeMinutes: number },
+    options: { particulierId?: string; excludeAppointmentId?: string; ignoreHoldsOf?: string; bookingNoticeMinutes: number },
   ): Promise<BookingRules> {
     const [availability, closures, salonRows, clientRows, subscription] = await Promise.all([
       this.salon.getAvailability(coiffeurId),
@@ -831,7 +872,10 @@ export class AppointmentsService {
       options.particulierId ? this.activeRowsWhere('particulier_id', options.particulierId) : Promise.resolve([]),
       findSalonSubscription(this.supabase, coiffeurId),
     ]);
-    const counts = (row: AppointmentRow) => holdsSlot(row) && row.id !== options.excludeAppointmentId;
+    const counts = (row: AppointmentRow) =>
+      holdsSlot(row) &&
+      row.id !== options.excludeAppointmentId &&
+      !(row.status === 'awaiting_payment' && row.particulier_id === options.ignoreHoldsOf);
     // Past the end of a subscription on its way out (cancelled, or an offered one), the
     // salon leaves WorldHair: no time after it can be booked or moved to.
     const subscriptionEnd = subscriptionEndsAt(subscription);
@@ -949,6 +993,23 @@ export class AppointmentsService {
       throw new InternalServerErrorException(error.message);
     }
     return data as unknown as AppointmentRow;
+  }
+
+  /** A status change that only lands while the row is still in one of `from`: another request may have got there first. */
+  private async updateWhileStatus(id: string, from: string[], patch: Record<string, unknown>, refusal: string): Promise<void> {
+    const { data, error } = await this.supabase.client
+      .from('appointments')
+      .update(patch)
+      .eq('id', id)
+      .in('status', from)
+      .select()
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new BadRequestException(refusal);
+    }
   }
 
   private async salonsFor(

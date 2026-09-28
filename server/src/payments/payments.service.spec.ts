@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type Stripe from 'stripe';
@@ -137,15 +137,150 @@ describe('PaymentsService', () => {
       expect(stripe.reversalsCreated).toEqual([{ transferId: 'tr_1', params: { amount: 4500 } }]);
       expect(stripe.refundsCreated[0].params).toMatchObject({ amount: 5000 });
     });
+
+    it("takes back the salon's whole share when the rest goes back after the payout, an earlier refund included", async () => {
+      // 100 € paid, 50 € refunded by the salon, then 45 € sent: the 50 € kept minus the 5 € commission.
+      const id = appointment();
+      supabase.seedPayment({
+        appointmentId: id,
+        particulierId: CLIENT_ID,
+        coiffeurId: COIFFEUR_ID,
+        amount: 100,
+        refundedAmount: 50,
+        commissionAmount: 5,
+        transferId: 'tr_1',
+        transferAmount: 45,
+      });
+      stripe.putTransfer({ id: 'tr_1', amount: 4500, transferGroup: id });
+
+      await expect(payments.refund(id, { reason: 'admin' })).resolves.toBe(50);
+
+      expect(stripe.reversalsCreated).toEqual([{ transferId: 'tr_1', params: { amount: 4500 } }]);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 100, reversed_amount: 45, commission_amount: 0 });
+    });
+
+    it('never takes back more than was sent, however the refunds after the payout are split', async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, transferId: 'tr_1', transferAmount: 90 });
+      stripe.putTransfer({ id: 'tr_1', amount: 9000, transferGroup: id });
+
+      for (const amount of [33.33, 33.33, 33.34]) {
+        await payments.refund(id, { amount, reason: 'admin' });
+      }
+
+      expect(stripe.reversalsCreated.map((reversal) => reversal.params?.amount)).toEqual([3000, 2999, 3001]);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 100, reversed_amount: 90, commission_amount: 0 });
+    });
+
+    it("refuses a salon's refund once its payout has started, even when the transfer wasn't written down", async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, transferAttemptedAt: hoursAgo(1) });
+
+      await expect(payments.refund(id, { reason: 'coiffeur_manual' })).rejects.toThrow(/Already paid out/);
+      expect(stripe.refundsCreated).toEqual([]);
+    });
+
+    it("counts what Stripe already refunded, from its dashboard say, before that event arrives", async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, paymentIntentId: 'pi_1', chargeId: 'ch_1' });
+      stripe.putCharge({ id: 'ch_1', paymentIntent: 'pi_1', amountRefunded: 6000 });
+
+      await expect(payments.refund(id, { amount: 50, reason: 'coiffeur_manual' })).rejects.toThrow(/At most 40/);
+      await expect(payments.refund(id, { reason: 'salon_cancelled' })).resolves.toBe(40);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 100 });
+    });
+
+    it('waits while a payout or another refund is being worked out on the same payment', async () => {
+      const id = appointment();
+      supabase.seedPayment({
+        appointmentId: id,
+        particulierId: CLIENT_ID,
+        coiffeurId: COIFFEUR_ID,
+        amount: 45,
+        lockedUntil: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+      await expect(payments.refund(id, { reason: 'coiffeur_manual' })).rejects.toThrow(ConflictException);
+      expect(stripe.refundsCreated).toEqual([]);
+    });
+
+    it('takes over a lock whose holder never let go (a server that died), and lets go of its own', async () => {
+      const id = appointment();
+      supabase.seedPayment({
+        appointmentId: id,
+        particulierId: CLIENT_ID,
+        coiffeurId: COIFFEUR_ID,
+        amount: 45,
+        lockedUntil: new Date(Date.now() - 60_000).toISOString(),
+      });
+
+      await expect(payments.refund(id, { reason: 'coiffeur_manual' })).resolves.toBe(45);
+      expect(supabase.paymentFor(id)?.locked_until).toBeNull();
+    });
   });
 
-  it("records a refund made from Stripe's dashboard", async () => {
-    const id = appointment();
-    supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 45, paymentIntentId: 'pi_x' });
+  describe('refundOwed', () => {
+    it('gives back what a cancelled or refused booking still owes: a refund that failed when it happened', async () => {
+      const cancelled = appointment({ status: 'cancelled' });
+      const refused = appointment({ status: 'refused' });
+      const alreadyRefunded = appointment({ status: 'cancelled' });
+      const confirmed = appointment({ status: 'confirmed' });
+      for (const id of [cancelled, refused, confirmed]) {
+        supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 40 });
+      }
+      supabase.seedPayment({ appointmentId: alreadyRefunded, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 40, refundedAmount: 40 });
 
-    await payments.syncRefund({ payment_intent: 'pi_x', amount_refunded: 1000 } as Stripe.Charge);
+      await expect(payments.refundOwed()).resolves.toBe(2);
 
-    expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 10 });
+      expect(supabase.paymentFor(cancelled)).toMatchObject({ refunded_amount: 40 });
+      expect(supabase.paymentFor(refused)).toMatchObject({ refunded_amount: 40 });
+      expect(supabase.paymentFor(confirmed)).toMatchObject({ refunded_amount: 0 });
+      await expect(payments.refundOwed()).resolves.toBe(0);
+    });
+
+    it('carries on past a refund Stripe refuses again, and makes it on a later run', async () => {
+      const first = appointment({ status: 'cancelled' });
+      const second = appointment({ status: 'cancelled' });
+      for (const id of [first, second]) {
+        supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 40 });
+      }
+      stripe.failNextRefund();
+
+      await expect(payments.refundOwed()).resolves.toBe(1);
+      expect(supabase.paymentFor(first)).toMatchObject({ refunded_amount: 0, locked_until: null });
+      expect(supabase.paymentFor(second)).toMatchObject({ refunded_amount: 40 });
+
+      await expect(payments.refundOwed()).resolves.toBe(1);
+      expect(supabase.paymentFor(first)).toMatchObject({ refunded_amount: 40 });
+    });
+  });
+
+  describe('syncRefund', () => {
+    it("records a refund made from Stripe's dashboard", async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 45, paymentIntentId: 'pi_x', chargeId: 'ch_x' });
+      stripe.putCharge({ id: 'ch_x', paymentIntent: 'pi_x', amountRefunded: 1000 });
+
+      await payments.syncRefund({ id: 'ch_x', payment_intent: 'pi_x', amount_refunded: 1000 } as Stripe.Charge);
+
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 10 });
+    });
+
+    it('never lowers what was refunded when Stripe delivers an older event late, and the next refund still moves money', async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, paymentIntentId: 'pi_1', chargeId: 'ch_1' });
+      stripe.putCharge({ id: 'ch_1', paymentIntent: 'pi_1' });
+      await payments.refund(id, { amount: 10, reason: 'coiffeur_manual' });
+      await payments.refund(id, { amount: 20, reason: 'coiffeur_manual' });
+
+      // Stripe retries the first refund's event after the second's.
+      await payments.syncRefund({ id: 'ch_1', payment_intent: 'pi_1', amount_refunded: 1000 } as Stripe.Charge);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 30 });
+
+      await payments.refund(id, { amount: 20, reason: 'coiffeur_manual' });
+      expect(stripe.refundsCreated.map((refund) => refund.params.amount)).toEqual([1000, 2000, 2000]);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 50 });
+    });
   });
 
   describe('transferDue', () => {
@@ -215,6 +350,85 @@ describe('PaymentsService', () => {
       supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100 });
 
       await expect(payments.transferDue()).resolves.toBe(0);
+    });
+
+    it('leaves a payment a refund is working on for the next run', async () => {
+      const id = appointment();
+      supabase.seedPayment({
+        appointmentId: id,
+        particulierId: CLIENT_ID,
+        coiffeurId: COIFFEUR_ID,
+        amount: 100,
+        lockedUntil: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+      await expect(payments.transferDue()).resolves.toBe(0);
+      expect(stripe.transfersCreated).toEqual([]);
+    });
+
+    it("records a transfer an earlier run sent but couldn't write down, instead of paying twice", async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, transferAttemptedAt: hoursAgo(1) });
+      stripe.putTransfer({ id: 'tr_earlier', amount: 9000, transferGroup: id });
+
+      await expect(payments.transferDue()).resolves.toBe(1);
+
+      expect(stripe.transfersCreated).toEqual([]);
+      expect(supabase.paymentFor(id)).toMatchObject({ transfer_id: 'tr_earlier', transfer_amount: 90, commission_amount: 10 });
+    });
+
+    it("counts a refund whose Stripe event hasn't arrived before paying the salon", async () => {
+      const id = appointment();
+      supabase.seedPayment({ appointmentId: id, particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100, paymentIntentId: 'pi_1', chargeId: 'ch_1' });
+      stripe.putCharge({ id: 'ch_1', paymentIntent: 'pi_1', amountRefunded: 2000 });
+
+      await payments.transferDue();
+
+      expect(stripe.transfersCreated[0].params.amount).toBe(7200);
+      expect(supabase.paymentFor(id)).toMatchObject({ refunded_amount: 20, transfer_amount: 72, commission_amount: 8 });
+    });
+
+    it('pays every salon due, however many bookings will never be paid out', async () => {
+      for (let count = 0; count < 1_100; count += 1) {
+        supabase.seedPayment({
+          appointmentId: appointment({ status: 'cancelled' }),
+          particulierId: CLIENT_ID,
+          coiffeurId: COIFFEUR_ID,
+          amount: 40,
+          refundedAmount: 40,
+        });
+      }
+      supabase.seedPayment({ appointmentId: appointment(), particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 100 });
+
+      await expect(payments.transferDue()).resolves.toBe(1);
+    });
+  });
+
+  describe('listForAdmin', () => {
+    it('lists every payment, however many', async () => {
+      for (let count = 0; count < 1_050; count += 1) {
+        supabase.seedPayment({ appointmentId: appointment(), particulierId: CLIENT_ID, coiffeurId: COIFFEUR_ID, amount: 40 });
+      }
+
+      await expect(payments.listForAdmin()).resolves.toHaveLength(1_050);
+    });
+
+    it('shows what the salon kept after WorldHair took part of its payout back', async () => {
+      const id = appointment();
+      supabase.seedPayment({
+        appointmentId: id,
+        particulierId: CLIENT_ID,
+        coiffeurId: COIFFEUR_ID,
+        amount: 100,
+        refundedAmount: 50,
+        commissionAmount: 5,
+        transferId: 'tr_1',
+        transferAmount: 90,
+        reversedAmount: 45,
+      });
+
+      const [row] = await payments.listForAdmin();
+      expect(row).toMatchObject({ transferAmount: 45, commissionAmount: 5 });
     });
   });
 });

@@ -351,6 +351,8 @@ export default function SalonDetail() {
                         service.id) as never,
                     )
                   }
+                  // Like "Réserver": booking means paying, only once the salon can be paid.
+                  disabled={!salon.onlineBooking}
                   accessibilityRole="button"
                   accessibilityLabel={
                     service.name + ", " + formatPrice(service.price)

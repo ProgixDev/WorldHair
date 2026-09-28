@@ -29,6 +29,15 @@ interface FakeSession {
   url: string;
 }
 
+interface FakeTransfer {
+  id: string;
+  /** Cents, like Stripe. */
+  amount: number;
+  amount_reversed: number;
+  transfer_group: string | null;
+  created: number;
+}
+
 /**
  * Stands in for the Stripe client in tests: the handful of calls
  * SubscriptionsService makes, in memory, no network. Webhook signatures
@@ -138,6 +147,7 @@ export class FakeStripe {
   // ─── Payments (TODO.md Phase 5) ─────────────────────────────────────────
 
   readonly paymentIntentsCreated: { params: Stripe.PaymentIntentCreateParams; idempotencyKey?: string }[] = [];
+  /** Refunds that moved money — a replayed idempotency key adds none, like Stripe. */
   readonly refundsCreated: { params: Stripe.RefundCreateParams; idempotencyKey?: string }[] = [];
   readonly transfersCreated: { params: Stripe.TransferCreateParams; idempotencyKey?: string }[] = [];
   readonly reversalsCreated: { transferId: string; params?: Stripe.TransferCreateReversalParams }[] = [];
@@ -147,6 +157,14 @@ export class FakeStripe {
   private readonly intentIdByKey = new Map<string, string>();
   private readonly accountsById = new Map<string, Record<string, unknown>>();
   private readonly accountIdByKey = new Map<string, string>();
+  private readonly refundIdByKey = new Map<string, { id: string; amount: number }>();
+  /** Cents refunded so far on each PaymentIntent: what its charge's `amount_refunded` says. */
+  private readonly refundedCents = new Map<string, number>();
+  private readonly intentIdByCharge = new Map<string, string>();
+  private nextRefundError: string | null = null;
+  private readonly transfersById = new Map<string, FakeTransfer>();
+  private readonly transferIdByKey = new Map<string, string>();
+  private readonly reversalIdByKey = new Map<string, string>();
 
   readonly paymentIntents = {
     create: async (params: Stripe.PaymentIntentCreateParams, options?: Stripe.RequestOptions) => {
@@ -191,6 +209,7 @@ export class FakeStripe {
     if (!intent) throw new Error(`No such payment_intent: '${id}'`);
     intent.status = 'succeeded';
     intent.latest_charge = `ch_${id}`;
+    this.intentIdByCharge.set(`ch_${id}`, id);
     return structuredClone(intent);
   }
 
@@ -199,22 +218,109 @@ export class FakeStripe {
   }
 
   readonly refunds = {
+    /** Like Stripe, a repeated idempotency key answers with the first refund: no money moves twice. */
     create: async (params: Stripe.RefundCreateParams, options?: Stripe.RequestOptions) => {
-      this.refundsCreated.push({ params, idempotencyKey: options?.idempotencyKey });
-      return { id: `re_test_${this.refundsCreated.length}`, amount: params.amount, status: 'succeeded' };
+      const key = options?.idempotencyKey;
+      const known = key ? this.refundIdByKey.get(key) : undefined;
+      if (known) return { ...known, status: 'succeeded' };
+      if (this.nextRefundError) {
+        const message = this.nextRefundError;
+        this.nextRefundError = null;
+        throw new Error(message);
+      }
+      this.refundsCreated.push({ params, idempotencyKey: key });
+      const intentId = params.payment_intent as string;
+      const refundedSoFar = this.refundedCents.get(intentId) ?? 0;
+      const amount = params.amount ?? Number(this.intents.get(intentId)?.amount ?? 0) - refundedSoFar;
+      this.refundedCents.set(intentId, refundedSoFar + amount);
+      const refund = { id: `re_test_${this.refundsCreated.length}`, amount };
+      if (key) this.refundIdByKey.set(key, refund);
+      return { ...refund, status: 'succeeded' };
     },
   };
 
-  readonly transfers = {
-    create: async (params: Stripe.TransferCreateParams, options?: Stripe.RequestOptions) => {
-      this.transfersCreated.push({ params, idempotencyKey: options?.idempotencyKey });
-      return { id: `tr_test_${this.transfersCreated.length}`, amount: params.amount };
-    },
-    createReversal: async (transferId: string, params?: Stripe.TransferCreateReversalParams) => {
-      this.reversalsCreated.push({ transferId, params });
-      return { id: `trr_test_${this.reversalsCreated.length}` };
+  /** Test convenience: the next refund fails, as when Stripe is down. */
+  failNextRefund(message = 'Stripe is unavailable'): void {
+    this.nextRefundError = message;
+  }
+
+  readonly charges = {
+    /** Every refund counts, those made from Stripe's dashboard included (see `putCharge`). */
+    retrieve: async (id: string) => {
+      const intentId = this.intentIdByCharge.get(id) ?? null;
+      return {
+        id,
+        object: 'charge',
+        payment_intent: intentId,
+        amount_refunded: intentId ? (this.refundedCents.get(intentId) ?? 0) : 0,
+      };
     },
   };
+
+  /** Test convenience: a charge Stripe knows, and what was already refunded on it (from Stripe's dashboard, say). */
+  putCharge(charge: { id: string; paymentIntent: string; amountRefunded?: number }): void {
+    this.intentIdByCharge.set(charge.id, charge.paymentIntent);
+    if (charge.amountRefunded !== undefined) this.refundedCents.set(charge.paymentIntent, charge.amountRefunded);
+  }
+
+  readonly transfers = {
+    /** Like Stripe, a repeated idempotency key answers with the first transfer. */
+    create: async (params: Stripe.TransferCreateParams, options?: Stripe.RequestOptions) => {
+      const key = options?.idempotencyKey;
+      const known = key ? this.transferIdByKey.get(key) : undefined;
+      if (known) return structuredClone(this.transfersById.get(known));
+      this.transfersCreated.push({ params, idempotencyKey: key });
+      const transfer: FakeTransfer = {
+        id: `tr_test_${this.transfersCreated.length}`,
+        amount: params.amount ?? 0,
+        amount_reversed: 0,
+        transfer_group: params.transfer_group ?? null,
+        created: nowSeconds(),
+      };
+      this.transfersById.set(transfer.id, transfer);
+      if (key) this.transferIdByKey.set(key, transfer.id);
+      return structuredClone(transfer);
+    },
+    list: async (params: Stripe.TransferListParams) => ({
+      data: [...this.transfersById.values()]
+        .filter((transfer) => !params.transfer_group || transfer.transfer_group === params.transfer_group)
+        .slice(0, params.limit ?? 10)
+        .map((transfer) => structuredClone(transfer)),
+    }),
+    /** Like Stripe: never more back than the transfer sent (checked on the transfers this fake knows). */
+    createReversal: async (
+      transferId: string,
+      params?: Stripe.TransferCreateReversalParams,
+      options?: Stripe.RequestOptions,
+    ) => {
+      const key = options?.idempotencyKey;
+      const known = key ? this.reversalIdByKey.get(key) : undefined;
+      if (known) return { id: known };
+      const transfer = this.transfersById.get(transferId);
+      if (transfer) {
+        const amount = params?.amount ?? transfer.amount - transfer.amount_reversed;
+        if (transfer.amount_reversed + amount > transfer.amount) {
+          throw new Error(`Amount ${amount} is more than the ${transfer.amount - transfer.amount_reversed} left on ${transferId}`);
+        }
+        transfer.amount_reversed += amount;
+      }
+      this.reversalsCreated.push({ transferId, params });
+      const id = `trr_test_${this.reversalsCreated.length}`;
+      if (key) this.reversalIdByKey.set(key, id);
+      return { id };
+    },
+  };
+
+  /** Test convenience: a transfer Stripe already holds — sent by an earlier run, say. */
+  putTransfer(transfer: { id: string; amount: number; transferGroup: string }): void {
+    this.transfersById.set(transfer.id, {
+      id: transfer.id,
+      amount: transfer.amount,
+      amount_reversed: 0,
+      transfer_group: transfer.transferGroup,
+      created: nowSeconds(),
+    });
+  }
 
   readonly accounts = {
     create: async (params: Stripe.AccountCreateParams, options?: Stripe.RequestOptions) => {

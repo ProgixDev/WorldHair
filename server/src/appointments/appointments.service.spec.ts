@@ -50,6 +50,7 @@ describe('AppointmentsService', () => {
   let salon: SalonService;
   let events: EventEmitter2;
   let stripe: FakeStripe;
+  let payments: PaymentsService;
   let serviceId: string;
 
   /** Books like the app: holds the slot, pays with Stripe's test card, then confirms. */
@@ -68,7 +69,7 @@ describe('AppointmentsService', () => {
     } as unknown as ConfigService<EnvironmentVariables, true>;
     const stripeService = new StripeService(stripe as unknown as Stripe, config);
     const payouts = new PayoutAccountsService(supabase as unknown as SupabaseService, stripeService, config);
-    const payments = new PaymentsService(
+    payments = new PaymentsService(
       supabase as unknown as SupabaseService,
       stripeService,
       new PlatformSettingsService(supabase as unknown as SupabaseService),
@@ -200,6 +201,43 @@ describe('AppointmentsService', () => {
       expect(supabase.paymentFor(appointment.id)).toBeUndefined();
     });
 
+    it('keeps one unpaid hold per client: starting another booking frees the first', async () => {
+      const { appointment: first } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      const { appointment: second } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: nextWeekday(3, 15).toISOString(),
+      });
+
+      expect(stripe.intentStatus('pi_test_1')).toBe('canceled');
+      expect(supabase.paymentFor(first.id)).toBeUndefined();
+      expect(supabase.paymentFor(second.id)).toMatchObject({ status: 'requires_payment' });
+    });
+
+    it('lets the client go back and pick a time overlapping their own unpaid hold', async () => {
+      await service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: nextWeekday(3, 10, 30).toISOString() }),
+      ).resolves.toMatchObject({ appointment: { status: 'awaiting_payment' } });
+    });
+
+    it("shows the client's own unpaid hold as free on the grid — picking again replaces it — and taken to everyone else", async () => {
+      await service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+      const paris = parisParts(WEDNESDAY_10AM());
+      const date = `${paris.year}-${String(paris.month).padStart(2, '0')}-${String(paris.day).padStart(2, '0')}`;
+
+      const mine = await service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, { date, serviceIds: [serviceId] });
+      const theirs = await service.slots('particulier-2', 'particulier', COIFFEUR_ID, { date, serviceIds: [serviceId] });
+
+      expect(mine.slots.find((slot) => slot.label === '10:00')?.available).toBe(true);
+      expect(theirs.slots.find((slot) => slot.label === '10:00')?.available).toBe(false);
+    });
+
     it('gives everything back when a payment lands after its hold was released', async () => {
       await service.handlePaymentEvent({
         type: 'payment_intent.succeeded',
@@ -238,7 +276,80 @@ describe('AppointmentsService', () => {
 
       const [expired] = await service.listForParticulier(PARTICULIER_ID);
       expect(expired).toMatchObject({ id: request.id, status: 'cancelled', payment: { refundedAmount: 40 } });
-      expect(heard).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: request.id, particulierId: PARTICULIER_ID }));
+      expect(heard).toHaveBeenCalledWith(
+        expect.objectContaining({ appointmentId: request.id, particulierId: PARTICULIER_ID, refunded: 40 }),
+      );
+    });
+
+    it("says nothing was refunded when an expired request wasn't paid in the app", async () => {
+      const id = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        startsAt: TEN_MINUTES_AGO(),
+        status: 'pending',
+      });
+      const heard = jest.fn();
+      events.on('appointment.expired', heard);
+
+      await service.expireUnansweredRequests();
+
+      expect(heard).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: id, refunded: 0 }));
+    });
+
+    it('carries on expiring requests past a refund Stripe refuses: the job gives that money back later', async () => {
+      const first = await book(PARTICULIER_ID, slot());
+      const second = await book(PARTICULIER_ID, { ...slot(), startsAt: nextWeekday(3, 15).toISOString() });
+      const heard = jest.fn();
+      events.on('appointment.expired', heard);
+      stripe.failNextRefund();
+
+      await service.expireUnansweredRequests(new Date(nextWeekday(3, 15).getTime() + 60_000));
+
+      expect(supabase.paymentFor(first.id)).toMatchObject({ refunded_amount: 0 });
+      expect(supabase.paymentFor(second.id)).toMatchObject({ refunded_amount: 40 });
+      expect(heard).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: first.id, refunded: 0 }));
+      expect(heard).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: second.id, refunded: 40 }));
+
+      await payments.refundOwed();
+      expect(supabase.paymentFor(first.id)).toMatchObject({ refunded_amount: 40 });
+    });
+
+    it("doesn't fail a cancellation or a refusal when Stripe can't refund right now: the job gives the money back later", async () => {
+      const cancelled = await book(PARTICULIER_ID, slot());
+      stripe.failNextRefund();
+      await expect(service.cancel(PARTICULIER_ID, cancelled.id)).resolves.toBeUndefined();
+
+      const refused = await book(PARTICULIER_ID, slot());
+      stripe.failNextRefund();
+      await expect(service.decide(COIFFEUR_ID, refused.id, 'refused')).resolves.toBeUndefined();
+
+      const mine = await service.listForParticulier(PARTICULIER_ID);
+      expect(mine.map((appointment) => [appointment.status, appointment.payment?.refundedAmount])).toEqual([
+        ['cancelled', 0],
+        ['refused', 0],
+      ]);
+
+      await payments.refundOwed();
+      const after = await service.listForParticulier(PARTICULIER_ID);
+      expect(after.map((appointment) => appointment.payment?.refundedAmount)).toEqual([40, 40]);
+    });
+
+    it("shows the salon what it keeps after WorldHair took part of its payout back", async () => {
+      const id = supabase.seedAppointment({ particulierId: PARTICULIER_ID, coiffeurId: COIFFEUR_ID, startsAt: YESTERDAY(), status: 'confirmed' });
+      supabase.seedPayment({
+        appointmentId: id,
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        amount: 100,
+        refundedAmount: 50,
+        commissionAmount: 5,
+        transferId: 'tr_1',
+        transferAmount: 90,
+        reversedAmount: 45,
+      });
+
+      const [forSalon] = await service.listForCoiffeur(COIFFEUR_ID);
+      expect(forSalon.payment).toMatchObject({ refundedAmount: 50, commissionAmount: 5, payoutAmount: 45 });
     });
 
     it('lets the coiffeur refund part of an accepted booking by hand, never more than was paid', async () => {
@@ -610,6 +721,26 @@ describe('AppointmentsService', () => {
       const byId = new Map(list.map((a) => [a.id, a]));
       expect(byId.get(first.id)).toMatchObject({ clientName: 'Camille Durand', isNewClient: true });
       expect(byId.get(second.id)).toMatchObject({ clientName: 'Camille Durand', isNewClient: false });
+    });
+
+    it("doesn't accept a request the client cancelled while the salon was answering", async () => {
+      const request = await book(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+      supabase.beforeNextAppointmentUpdate(() => supabase.setAppointmentStatus(request.id, 'cancelled'));
+
+      await expect(service.decide(COIFFEUR_ID, request.id, 'confirmed')).rejects.toThrow(/already been decided/);
+
+      const [mine] = await service.listForParticulier(PARTICULIER_ID);
+      expect(mine.status).toBe('cancelled');
+    });
+
+    it("doesn't turn a request the salon refused meanwhile into a cancellation", async () => {
+      const request = await book(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+      supabase.beforeNextAppointmentUpdate(() => supabase.setAppointmentStatus(request.id, 'refused'));
+
+      await expect(service.cancel(PARTICULIER_ID, request.id)).rejects.toThrow(/can no longer be modified/);
+
+      const [mine] = await service.listForParticulier(PARTICULIER_ID);
+      expect(mine.status).toBe('refused');
     });
 
     it('accepts a pending request', async () => {
