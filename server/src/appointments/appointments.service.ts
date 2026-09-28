@@ -9,7 +9,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { Role } from '../common/types/role';
 import { isAccountActive } from '../common/utils/account-status';
-import { isSalonListed } from '../common/utils/subscription-status';
+import { findSalonSubscription, isSalonListed } from '../common/utils/subscription-status';
+import { subscriptionEndsAt } from '../subscriptions/subscription-state';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonProfile, SalonService, SalonServiceItem } from '../salon/salon.service';
 import { BookingRules, BusyBooking, DaySlots, refusalFor, SlotRefusal, slotsForDay } from './booking-rules';
@@ -564,16 +565,21 @@ export class AppointmentsService {
     coiffeurId: string,
     options: { particulierId?: string; excludeAppointmentId?: string; bookingNoticeMinutes: number },
   ): Promise<BookingRules> {
-    const [availability, closures, salonRows, clientRows] = await Promise.all([
+    const [availability, closures, salonRows, clientRows, subscription] = await Promise.all([
       this.salon.getAvailability(coiffeurId),
       this.salon.listTimeOff(coiffeurId),
       this.activeRowsWhere('coiffeur_id', coiffeurId),
       options.particulierId ? this.activeRowsWhere('particulier_id', options.particulierId) : Promise.resolve([]),
+      findSalonSubscription(this.supabase, coiffeurId),
     ]);
     const counts = (row: AppointmentRow) => isActive(row) && row.id !== options.excludeAppointmentId;
+    // Past the end of a subscription on its way out (cancelled, or an offered one), the
+    // salon leaves WorldHair: no time after it can be booked or moved to.
+    const subscriptionEnd = subscriptionEndsAt(subscription);
+    const afterSubscription = subscriptionEnd ? [{ startsAt: subscriptionEnd, endsAt: '9999-12-31T00:00:00.000Z' }] : [];
     return {
       availability,
-      closures: closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
+      closures: [...closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })), ...afterSubscription],
       salonBookings: salonRows.filter(counts).map(toBusy),
       // The client's bookings at this same salon are already in salonBookings.
       clientBookings: clientRows.filter((row) => counts(row) && row.coiffeur_id !== coiffeurId).map(toBusy),

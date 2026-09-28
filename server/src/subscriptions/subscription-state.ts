@@ -46,6 +46,14 @@ export interface SubscriptionRow {
 
 const LIVE_STATUSES: StripeSubscriptionStatus[] = ['trialing', 'active', 'past_due'];
 
+/**
+ * Stripe moves the period on at every renewal, even a failing one, so a
+ * period over for longer than Stripe's 3 days of webhook retries means the
+ * news stopped coming (endpoint disabled, secret changed): the status is no
+ * longer trusted.
+ */
+export const STRIPE_SILENCE_GRACE_MS = 3 * 86_400_000;
+
 export function isLiveStatus(status: StripeSubscriptionStatus): boolean {
   return LIVE_STATUSES.includes(status);
 }
@@ -56,13 +64,14 @@ function isOffered(row: SubscriptionRow): boolean {
 
 /**
  * Visible in search and bookable. Mirrors search_salons()'s join in
- * schema.sql: Stripe keeps a live subscription's status current, an offered
- * one runs until its end date.
+ * schema.sql: Stripe keeps a live subscription's status current (while its
+ * period isn't long over), an offered one runs until its end date.
  */
 export function isListed(row: SubscriptionRow | null, now = new Date()): boolean {
   if (!row || !isLiveStatus(row.status)) return false;
-  if (!isOffered(row)) return true;
-  return row.current_period_end !== null && new Date(row.current_period_end).getTime() > now.getTime();
+  const periodEnd = row.current_period_end === null ? null : new Date(row.current_period_end).getTime();
+  if (!isOffered(row)) return periodEnd === null || periodEnd > now.getTime() - STRIPE_SILENCE_GRACE_MS;
+  return periodEnd !== null && periodEnd > now.getTime();
 }
 
 export function subscriptionState(row: SubscriptionRow | null, now = new Date()): SubscriptionState {

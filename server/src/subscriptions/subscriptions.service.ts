@@ -12,11 +12,10 @@ import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.s
 import { subscriptionPageUrl } from '../common/utils/web-links';
 import { EnvironmentVariables } from '../config/env.validation';
 import { SupabaseService } from '../database/supabase.service';
-import { MailService } from '../mail/mail.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { PlatformSettingsService } from '../settings/platform-settings.service';
 import { StripeService } from '../stripe/stripe.service';
 import { PLAN_LOOKUP_KEYS, PORTAL_CONFIGURATION_APP } from './stripe-catalog';
+import { SubscriptionNotifier } from './subscription-notifier';
 import {
   isListed,
   isLiveStatus,
@@ -46,7 +45,7 @@ export interface SubscriptionView {
   awaitingValidation: boolean;
   /** A Checkout can start: validated, and no live Stripe subscription yet. */
   canSubscribe: boolean;
-  /** Free days that Checkout would start with: only a first subscription gets them. */
+  /** Free days that Checkout would start with: only a first subscription gets them, and an offered period is kept whole. */
   trialDays: number;
 }
 
@@ -85,6 +84,11 @@ interface PriceBook {
 }
 
 const PRICE_CACHE_MS = 10 * 60_000;
+const DAY_MS = 86_400_000;
+/** Checkout refuses a `trial_end` closer than 48 hours. */
+const MIN_TRIAL_END_MS = 48 * 60 * 60_000;
+/** Stripe statuses that still bill or can bill again — a second subscription beside one of these is a double charge. */
+const OPEN_STRIPE_STATUSES: Stripe.Subscription.Status[] = ['trialing', 'active', 'past_due', 'unpaid', 'paused'];
 
 function idOf(value: string | { id: string }): string {
   return typeof value === 'string' ? value : value.id;
@@ -126,29 +130,33 @@ function planOf(price: Stripe.Price | undefined): SubscriptionPlan {
 export class SubscriptionsService {
   private readonly logger = new Logger(SubscriptionsService.name);
   private priceBookCache: PriceBook | null = null;
-  private portalConfigurationCache: { id: string | undefined } | null = null;
+  private portalConfigurationId_: string | null = null;
+  /** One sync at a time per Stripe subscription (see `serialized`). */
+  private readonly syncQueues = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly supabase: SupabaseService,
     private readonly applications: CoiffeurApplicationsService,
     private readonly stripe: StripeService,
     private readonly settings: PlatformSettingsService,
-    private readonly notifications: NotificationsService,
-    private readonly mail: MailService,
+    private readonly notifier: SubscriptionNotifier,
     private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {}
 
   async getMine(profileId: string): Promise<SubscriptionView> {
-    const [row, settings, validated] = await Promise.all([
+    const [row, settings, application] = await Promise.all([
       this.findRow(profileId),
       this.settings.get(),
-      this.isValidated(profileId),
+      this.applications.getMine(profileId),
     ]);
     const now = new Date();
+    const validated = application?.status === 'validated';
+    const trial = this.trialFor(row, settings.trialDays, now);
     return {
       state: subscriptionState(row, now),
       plan: row?.plan ?? 'monthly',
-      listed: isListed(row, now),
+      // What search shows: the subscription, and a salon page complete in the app.
+      listed: isListed(row, now) && validated && Boolean(application?.shopProfileComplete),
       offered: row !== null && row.status !== 'none' && row.stripe_subscription_id === null,
       trialEndsAt: row?.trial_ends_at ?? null,
       currentPeriodEnd: row?.current_period_end ?? null,
@@ -156,7 +164,9 @@ export class SubscriptionsService {
       canManage: Boolean(row?.stripe_customer_id && row.stripe_subscription_id),
       awaitingValidation: !validated,
       canSubscribe: validated && !this.hasLiveStripeSubscription(row),
-      trialDays: row?.stripe_subscription_id ? 0 : settings.trialDays,
+      trialDays:
+        trial.trial_period_days ??
+        (trial.trial_end ? Math.ceil((trial.trial_end * 1000 - now.getTime()) / DAY_MS) : 0),
     };
   }
 
@@ -176,8 +186,7 @@ export class SubscriptionsService {
     const pageUrl = this.pageUrl();
     const [book, settings] = await Promise.all([this.priceBook(), this.settings.get()]);
     const customer = await this.ensureCustomer(profileId, row);
-    // One free trial per coiffeur: a returning subscriber pays from day one.
-    const trialDays = row?.stripe_subscription_id ? 0 : settings.trialDays;
+    await this.assertNothingToBillYet(customer);
 
     const session = await this.stripe.client.checkout.sessions.create({
       mode: 'subscription',
@@ -186,7 +195,7 @@ export class SubscriptionsService {
       line_items: [{ price: book.ids[plan], quantity: 1 }],
       subscription_data: {
         metadata: { profile_id: profileId },
-        ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
+        ...this.trialFor(row, settings.trialDays, new Date()),
       },
       success_url: `${pageUrl}?checkout=success`,
       cancel_url: `${pageUrl}?checkout=cancel`,
@@ -197,6 +206,41 @@ export class SubscriptionsService {
       throw new InternalServerErrorException('Stripe returned no Checkout URL');
     }
     return { url: session.url };
+  }
+
+  /**
+   * The row lags Stripe by a webhook, so Stripe itself is asked: no second
+   * subscription beside one that still bills. Any other Checkout page left
+   * open (a second tab) is closed first — only one can ever be paid.
+   */
+  private async assertNothingToBillYet(customer: string): Promise<void> {
+    const { data: subscriptions } = await this.stripe.client.subscriptions.list({ customer, status: 'all', limit: 20 });
+    if (subscriptions.some((subscription) => OPEN_STRIPE_STATUSES.includes(subscription.status))) {
+      throw new BadRequestException('Already subscribed: change it from the customer portal');
+    }
+    const { data: sessions } = await this.stripe.client.checkout.sessions.list({ customer, status: 'open', limit: 20 });
+    for (const session of sessions) {
+      await this.stripe.client.checkout.sessions.expire(session.id);
+    }
+  }
+
+  /**
+   * One free trial per coiffeur: a returning subscriber pays from day one.
+   * An offered period still running is kept whole — the first charge waits
+   * for the later of its end and the admin's trial.
+   */
+  private trialFor(
+    row: SubscriptionRow | null,
+    trialDays: number,
+    now: Date,
+  ): { trial_period_days?: number; trial_end?: number } {
+    if (row?.stripe_subscription_id) return {};
+    const offeredEnd =
+      row && isListed(row, now) && row.current_period_end ? new Date(row.current_period_end).getTime() : null;
+    const byDays = trialDays > 0 ? { trial_period_days: trialDays } : {};
+    if (offeredEnd === null) return byDays;
+    const end = Math.max(offeredEnd, now.getTime() + trialDays * DAY_MS);
+    return end >= now.getTime() + MIN_TRIAL_END_MS ? { trial_end: Math.floor(end / 1000) } : byDays;
   }
 
   async createPortalSession(profileId: string): Promise<{ url: string }> {
@@ -224,7 +268,7 @@ export class SubscriptionsService {
       case 'checkout.session.completed': {
         const session = event.data.object;
         if (session.mode === 'subscription' && session.subscription) {
-          await this.syncSubscription(idOf(session.subscription), session.client_reference_id);
+          await this.syncSubscription(idOf(session.subscription));
         }
         return;
       }
@@ -238,18 +282,20 @@ export class SubscriptionsService {
       case 'customer.subscription.trial_will_end': {
         const synced = await this.syncSubscription(event.data.object.id);
         if (synced?.trial_ends_at) {
-          await this.notifyTrialEnding(synced.profile_id, synced.trial_ends_at);
+          await this.notifier.trialEnding(synced.profile_id, synced.trial_ends_at);
         }
         return;
       }
       case 'invoice.paid':
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
-        const subscription = invoice.parent?.subscription_details?.subscription;
+        // Endpoints on an API version before 2025-03-31 still send `invoice.subscription`.
+        const legacy = (invoice as unknown as { subscription?: string | { id: string } | null }).subscription;
+        const subscription = invoice.parent?.subscription_details?.subscription ?? legacy;
         if (!subscription) return;
         const synced = await this.syncSubscription(idOf(subscription));
         if (synced && event.type === 'invoice.payment_failed') {
-          await this.notifyPaymentFailed(synced.profile_id, `${invoice.id}:${invoice.attempt_count}`);
+          await this.notifier.paymentFailed(synced.profile_id, `${invoice.id}:${invoice.attempt_count}`);
         }
         return;
       }
@@ -296,11 +342,34 @@ export class SubscriptionsService {
 
   // ─── Stripe → coiffeur_subscriptions ────────────────────────────────────
 
-  private async syncSubscription(subscriptionId: string, profileIdHint?: string | null): Promise<SubscriptionRow | null> {
+  private syncSubscription(subscriptionId: string): Promise<SubscriptionRow | null> {
+    return this.serialized(subscriptionId, () => this.syncNow(subscriptionId));
+  }
+
+  /**
+   * Stripe may deliver two events about one subscription at once. Run
+   * alone, each sync reads Stripe after the previous one wrote, so an older
+   * snapshot can't be written last. (One server instance: an in-process
+   * queue is enough.)
+   */
+  private serialized<T>(key: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.syncQueues.get(key) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(task);
+    const tail = run.catch(() => undefined);
+    this.syncQueues.set(key, tail);
+    void tail.then(() => {
+      if (this.syncQueues.get(key) === tail) this.syncQueues.delete(key);
+    });
+    return run;
+  }
+
+  private async syncNow(subscriptionId: string): Promise<SubscriptionRow | null> {
     const subscription = await this.stripe.client.subscriptions.retrieve(subscriptionId);
     const customerId = idOf(subscription.customer);
-    const profileId =
-      subscription.metadata?.profile_id || profileIdHint || (await this.profileIdForCustomer(customerId));
+    // Only what WorldHair itself wrote into Stripe says whose it is: the metadata our
+    // Checkout sets, or the customer our server created. Never a client_reference_id,
+    // which anyone with a Payment Link could fill in.
+    const profileId = subscription.metadata?.profile_id || (await this.profileIdForCustomer(customerId));
     if (!profileId) {
       this.logger.warn(`Stripe subscription ${subscription.id} matches no coiffeur — ignored`);
       return null;
@@ -308,13 +377,13 @@ export class SubscriptionsService {
 
     const status = knownStatus(subscription.status);
     const before = await this.findRow(profileId);
-    // An abandoned attempt (an incomplete Checkout expiring, say) never overwrites the live subscription.
-    if (
-      before?.stripe_subscription_id &&
-      before.stripe_subscription_id !== subscription.id &&
-      isLiveStatus(before.status) &&
-      !isLiveStatus(status)
-    ) {
+    if (before?.stripe_subscription_id && before.stripe_subscription_id !== subscription.id && isLiveStatus(before.status)) {
+      // An abandoned attempt (an incomplete Checkout expiring, say) never overwrites the live subscription.
+      if (!isLiveStatus(status)) return before;
+      // Two live ones would bill twice: keep the first, flag the other for a refund from Stripe's dashboard.
+      this.logger.error(
+        `Coiffeur ${profileId} has a second live Stripe subscription ${subscription.id} beside ${before.stripe_subscription_id}: cancel and refund it in Stripe`,
+      );
       return before;
     }
 
@@ -333,46 +402,9 @@ export class SubscriptionsService {
     await this.upsertRow(next);
 
     if (isListed(before) && !isListed(next)) {
-      await this.notifyEnded(profileId, `${subscription.id}:${status}`);
+      await this.notifier.ended(profileId, `${subscription.id}:${status}`);
     }
     return next;
-  }
-
-  private async notifyEnded(profileId: string, dedupeKey: string): Promise<void> {
-    const firstTime = await this.notifications.notifyUser({
-      userId: profileId,
-      type: 'subscription_ended',
-      dedupeKey,
-      title: 'Votre salon n’est plus visible',
-      body: 'Votre abonnement a pris fin : les clients ne trouvent plus votre salon. Nous vous avons envoyé par email la marche à suivre.',
-      data: { screen: 'subscription' },
-    });
-    if (firstTime) {
-      const email = await this.emailOf(profileId);
-      if (email) await this.mail.sendSubscriptionEndedEmail(email);
-    }
-  }
-
-  private async notifyPaymentFailed(profileId: string, dedupeKey: string): Promise<void> {
-    await this.notifications.notifyUser({
-      userId: profileId,
-      type: 'subscription_payment_failed',
-      dedupeKey,
-      title: 'Paiement de l’abonnement refusé',
-      body: 'Le prélèvement de votre abonnement a échoué. Stripe réessaiera dans les prochains jours : vérifiez votre carte bancaire.',
-      data: { screen: 'subscription' },
-    });
-  }
-
-  private async notifyTrialEnding(profileId: string, trialEndsAt: string): Promise<void> {
-    await this.notifications.notifyUser({
-      userId: profileId,
-      type: 'subscription_trial_ending',
-      dedupeKey: `${profileId}:${trialEndsAt}`,
-      title: 'Fin de votre essai gratuit',
-      body: 'Votre essai se termine dans quelques jours : le premier prélèvement aura lieu ce jour-là.',
-      data: { screen: 'subscription' },
-    });
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -420,27 +452,32 @@ export class SubscriptionsService {
     return this.priceBookCache;
   }
 
-  /** The portal settings the setup script created; Stripe's default ones otherwise. */
+  /**
+   * The portal settings the setup script created; Stripe's default ones
+   * otherwise. Only a hit is remembered: the script may run after boot.
+   */
   private async portalConfigurationId(): Promise<string | undefined> {
-    if (!this.portalConfigurationCache) {
-      const { data } = await this.stripe.client.billingPortal.configurations.list({ active: true, limit: 100 });
-      this.portalConfigurationCache = {
-        id: data.find((configuration) => configuration.metadata?.app === PORTAL_CONFIGURATION_APP)?.id,
-      };
-    }
-    return this.portalConfigurationCache.id;
+    if (this.portalConfigurationId_) return this.portalConfigurationId_;
+    const { data } = await this.stripe.client.billingPortal.configurations.list({ active: true, limit: 100 });
+    const found = data.find((configuration) => configuration.metadata?.app === PORTAL_CONFIGURATION_APP)?.id;
+    if (found) this.portalConfigurationId_ = found;
+    return found;
   }
 
   private async ensureCustomer(profileId: string, row: SubscriptionRow | null): Promise<string> {
     if (row?.stripe_customer_id) return row.stripe_customer_id;
 
     const [email, salonName] = await Promise.all([this.emailOf(profileId), this.salonNameOf(profileId)]);
-    const customer = await this.stripe.client.customers.create({
-      ...(email ? { email } : {}),
-      ...(salonName ? { name: salonName } : {}),
-      preferred_locales: ['fr'],
-      metadata: { profile_id: profileId },
-    });
+    // Two clicks racing get the same customer back: Stripe replays a repeated idempotency key.
+    const customer = await this.stripe.client.customers.create(
+      {
+        ...(email ? { email } : {}),
+        ...(salonName ? { name: salonName } : {}),
+        preferred_locales: ['fr'],
+        metadata: { profile_id: profileId },
+      },
+      { idempotencyKey: `worldhair-customer-${profileId}` },
+    );
     await this.upsertRow({ profile_id: profileId, stripe_customer_id: customer.id });
     return customer.id;
   }

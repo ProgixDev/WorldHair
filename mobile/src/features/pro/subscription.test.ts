@@ -1,10 +1,11 @@
 import {
+  countBookingsAfterEnd,
   daysRemaining,
   describeSubscription,
   isNearingExpiry,
   isSubscriptionExpired,
 } from "./subscription";
-import type { Subscription } from "./types";
+import type { ProAppointment, Subscription } from "./types";
 
 const NOW = new Date("2026-10-01T10:00:00.000Z");
 const inDays = (days: number) => new Date(NOW.getTime() + days * 86_400_000).toISOString();
@@ -37,6 +38,21 @@ describe("subscription", () => {
   it("blocks the pro area once the subscription has ended, not before the first one", () => {
     expect(isSubscriptionExpired(subscription({ state: "expired", listed: false }))).toBe(true);
     expect(isSubscriptionExpired(subscription({ state: "none", listed: false }))).toBe(false);
+  });
+
+  it("counts the bookings still set after the end date", () => {
+    const booking = (startsAt: string, status: ProAppointment["status"]) =>
+      ({ id: startsAt + status, startsAt, status }) as ProAppointment;
+    const ending = subscription({ state: "ending", endsAt: inDays(10) });
+    const appointments = [
+      booking(inDays(5), "confirmed"),
+      booking(inDays(12), "confirmed"),
+      booking(inDays(15), "pending"),
+      booking(inDays(20), "cancelled"),
+    ];
+
+    expect(countBookingsAfterEnd(ending, appointments)).toBe(2);
+    expect(countBookingsAfterEnd(subscription({ state: "active" }), appointments)).toBe(0);
   });
 
   describe("describeSubscription", () => {
@@ -73,6 +89,21 @@ describe("subscription", () => {
         title: "Abonnement résilié",
         tone: "warning",
       });
+    });
+
+    it("warns about bookings left after a scheduled end", () => {
+      const ending = subscription({ state: "ending", endsAt: inDays(30) });
+      expect(describeSubscription(ending, NOW, { bookingsAfterEnd: 2 }).detail).toMatch(
+        /2 rendez-vous sont prévus après cette date/,
+      );
+      expect(describeSubscription(ending, NOW, { bookingsAfterEnd: 0 }).detail).not.toMatch(/rendez-vous/);
+    });
+
+    it("never points to paying outside the app (App Store rule 3.1.3)", () => {
+      for (const state of ["none", "trialing", "active", "ending", "past_due", "incomplete", "expired"] as const) {
+        const { detail } = describeSubscription(subscription({ state, endsAt: inDays(3) }), NOW);
+        expect(detail).not.toMatch(/email|site|lien|carte/i);
+      }
     });
 
     it("flags a refused payment and an ended subscription", () => {

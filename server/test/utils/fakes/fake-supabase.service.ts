@@ -209,13 +209,12 @@ function defaultPlatformSettings(): PlatformSettingsRow {
   return { id: true, trial_days: 30, updated_at: new Date().toISOString() };
 }
 
-/** Mirrors search_salons()'s subscription join: Stripe's live statuses, or an offered one until its end date. */
+/** Mirrors search_salons()'s subscription join: Stripe's live statuses (period not over by 3+ days), or an offered one until its end date. */
 function isListedSubscription(row: SubscriptionRow | undefined): boolean {
   if (!row || !['trialing', 'active', 'past_due'].includes(row.status)) return false;
-  return (
-    row.stripe_subscription_id !== null ||
-    (row.current_period_end !== null && new Date(row.current_period_end).getTime() > Date.now())
-  );
+  const periodEnd = row.current_period_end === null ? null : new Date(row.current_period_end).getTime();
+  if (row.stripe_subscription_id !== null) return periodEnd === null || periodEnd > Date.now() - 3 * 86_400_000;
+  return periodEnd !== null && periodEnd > Date.now();
 }
 
 interface AdSlotRow {

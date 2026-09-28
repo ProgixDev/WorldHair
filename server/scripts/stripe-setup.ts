@@ -131,12 +131,19 @@ async function ensureWebhook(stripe: Stripe, url: string): Promise<void> {
     await stripe.webhookEndpoints.update(existing.id, { enabled_events: WEBHOOK_EVENTS, disabled: false });
     console.log(`Webhook      ${existing.id} (already there, events updated)`);
     console.log("             Its signing secret is on that endpoint's page in Stripe's dashboard.");
+    if (existing.api_version !== Stripe.API_VERSION) {
+      // An endpoint's API version is fixed at creation; the server reads events in this one.
+      console.log(`             Its API version is ${existing.api_version ?? "the account's default"}, not ${Stripe.API_VERSION}:`);
+      console.log("             delete it in the dashboard and run this again to recreate it.");
+    }
     return;
   }
   const endpoint = await stripe.webhookEndpoints.create({
     url,
     enabled_events: WEBHOOK_EVENTS,
     description: "WorldHair server — coiffeur subscriptions",
+    // Events shaped like the SDK the server reads them with, whatever the account's default.
+    api_version: Stripe.API_VERSION,
   });
   console.log(`Webhook      ${endpoint.id} (created)`);
   console.log(`\nSTRIPE_WEBHOOK_SECRET=${endpoint.secret}`);

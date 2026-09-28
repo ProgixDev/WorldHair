@@ -25,7 +25,7 @@ import {
   servicesLabel,
   weeklySeries,
 } from "../../features/pro/stats";
-import { describeSubscription } from "../../features/pro/subscription";
+import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
 import {
   avatarFor,
   coverFor,
@@ -80,7 +80,11 @@ export default function ProDashboard() {
       </View>
     );
 
-  const subscriptionSummary = subscription ? describeSubscription(subscription) : null;
+  const subscriptionSummary = subscription
+    ? describeSubscription(subscription, new Date(), {
+        bookingsAfterEnd: countBookingsAfterEnd(subscription, appointments),
+      })
+    : null;
   const toneColor =
     subscriptionSummary?.tone === "danger"
       ? theme.danger

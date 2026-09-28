@@ -10,9 +10,9 @@ import { Button } from "../ui/Button";
 
 /**
  * Full-screen block once the subscription has ended (issue #8): a
- * translucent cover over the whole pro area, message centered. Renewing
- * happens on the website (the email tells how); the button reads the
- * status again once that's done.
+ * translucent cover over the whole pro area, message centered. It states
+ * the fact only — renewing happens outside the app (App Store rule
+ * 3.1.3(f)); the button reads the status again once it has.
  */
 export function SubscriptionExpiredOverlay() {
   const { theme } = useTheme();
@@ -94,9 +94,8 @@ export function SubscriptionExpiredOverlay() {
               { color: theme.foreground.gray, textAlign: "center" },
             ]}
           >
-            Votre fiche n&apos;est plus visible par les clients. Nous vous
-            avons envoyé par email la marche à suivre pour la remettre en
-            ligne et retrouver votre agenda.
+            Votre fiche n&apos;est plus visible par les clients et votre
+            espace pro est en pause.
           </Text>
           {stillExpired ? (
             <Text
@@ -105,14 +104,13 @@ export function SubscriptionExpiredOverlay() {
                 { color: theme.danger, textAlign: "center" },
               ]}
             >
-              Toujours pas d&apos;abonnement actif. Réessayez dans un instant
-              si vous venez de le renouveler.
+              Toujours aucun abonnement actif.
             </Text>
           ) : null}
         </View>
 
         <Button
-          label="J'ai renouvelé — actualiser"
+          label="Actualiser"
           onPress={() => void handleRefresh()}
           loading={busy}
           background={theme.primary.main}

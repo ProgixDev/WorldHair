@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PushService } from '../notifications/push.service';
 import { PushTokensService } from '../notifications/push-tokens.service';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
+import { SubscriptionNotifier } from './subscription-notifier';
 import { SubscriptionRemindersJob } from './subscription-reminders.job';
 
 const COIFFEUR_ID = 'coiffeur-1';
@@ -44,7 +45,10 @@ describe('SubscriptionRemindersJob', () => {
       new FakePushService() as unknown as PushService,
     );
     mail = new MailService(testConfig());
-    job = new SubscriptionRemindersJob(supabase as unknown as SupabaseService, notifications, mail);
+    job = new SubscriptionRemindersJob(
+      supabase as unknown as SupabaseService,
+      new SubscriptionNotifier(supabase as unknown as SupabaseService, notifications, mail),
+    );
   });
 
   it('warns a coiffeur a week before a scheduled end, once, by push and email', async () => {
@@ -72,6 +76,17 @@ describe('SubscriptionRemindersJob', () => {
     await job.run();
 
     expect(supabase.notifyLogFor(COIFFEUR_ID).map((n) => n.type)).toEqual(['subscription_ending_soon']);
+  });
+
+  it('tells a salon whose offered period just ran out, once, by push and email', async () => {
+    const sendEnded = jest.spyOn(mail, 'sendSubscriptionEndedEmail');
+    supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', currentPeriodEnd: inDays(-0.05) });
+
+    await job.run();
+    await job.run();
+
+    expect(supabase.notifyLogFor(COIFFEUR_ID).map((n) => n.type)).toEqual(['subscription_ended']);
+    expect(sendEnded).toHaveBeenCalledTimes(1);
   });
 
   it('leaves alone a subscription that renews on its own, or ends later', async () => {

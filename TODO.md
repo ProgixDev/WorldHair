@@ -260,9 +260,14 @@ Stripe account: that needs the keys (see TESTING.md, "Stripe").
   - Done in code and tests. A scheduled cancellation is stored as `cancel_at`
     rather than a `cancel_at_period_end` flag, and `renews_at` became
     `current_period_end`. Each webhook fetches the subscription fresh from
-    Stripe before writing, so late or repeated events can't leave an old
-    state. `GET /subscriptions/prices` feeds the website. The "done when"
-    walk-through needs the Stripe keys.
+    Stripe, one at a time per subscription, so late, repeated or racing
+    events can't leave an old state; a Stripe subscription whose period is
+    over by 3+ days without news stops listing the salon. Checkout asks
+    Stripe itself before selling a second subscription and closes any other
+    open Checkout page, so a coiffeur can't pay twice; a salon on an offered
+    period keeps it whole (first charge at its end). No booking can be
+    placed after a scheduled end. `GET /subscriptions/prices` feeds the
+    website. The "done when" walk-through needs the Stripe keys.
 - [x] **Subscription page on the website**: `web/src/app/(pro)/abonnement`. The
       coiffeur signs in, sees status and dates, subscribes, and manages
       everything through the Customer Portal (plan, card, cancellation,
@@ -409,7 +414,9 @@ for a no-show.
       backups, no pausing) with the schema applied and only the admin seeded
       (no demo, no catalogue); the current project stays as staging. Render
       paid instance (no sleep) with `TZ=Europe/Paris` and a custom domain.
-      Stripe live keys, live webhook endpoint and live Connect. Leaked-password
+      Stripe live keys, live webhook endpoint and live Connect — on the new
+      project only: the dev database's subscriptions hold test-mode Stripe
+      ids that live keys can't read. Leaked-password
       protection turned on in Supabase Auth (paid plans only). Error tracking
       (Sentry or similar) on server, app and web. A strong admin password
       instead of `admin123`, a strong Android keystore password, backups of the

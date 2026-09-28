@@ -6,6 +6,8 @@ const PRICES = [
   { id: 'price_yearly', lookup_key: 'worldhair_pro_yearly', unit_amount: 18200, currency: 'eur', recurring: { interval: 'year' } },
 ];
 
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
 export interface FakeSubscriptionInput {
   id: string;
   customer: string;
@@ -14,9 +16,17 @@ export interface FakeSubscriptionInput {
   plan?: 'monthly' | 'yearly';
   /** Unix seconds, like Stripe. */
   trialEnd?: number | null;
+  /** Unix seconds; a month ahead by default, as a running subscription has. */
   currentPeriodEnd?: number;
   cancelAt?: number | null;
   cancelAtPeriodEnd?: boolean;
+}
+
+interface FakeSession {
+  id: string;
+  customer: string;
+  status: 'open' | 'complete' | 'expired';
+  url: string;
 }
 
 /**
@@ -26,18 +36,29 @@ export interface FakeSubscriptionInput {
  * StripeService checks them with the real code.
  */
 export class FakeStripe {
-  readonly customersCreated: Stripe.CustomerCreateParams[] = [];
+  readonly customersCreated: { params: Stripe.CustomerCreateParams; idempotencyKey?: string }[] = [];
   readonly checkoutSessionsCreated: Stripe.Checkout.SessionCreateParams[] = [];
   readonly portalSessionsCreated: Stripe.BillingPortal.SessionCreateParams[] = [];
   /** Set to [] to play a Stripe account where the setup script was never run. */
   prices_: typeof PRICES = PRICES;
   portalConfigurations: { id: string; metadata: Record<string, string> }[] = [];
-  private readonly subscriptionsById = new Map<string, unknown>();
+  /** Milliseconds each coming `subscriptions.retrieve` waits before answering, in call order. */
+  retrieveDelays: number[] = [];
+  private readonly subscriptionsById = new Map<string, Record<string, unknown>>();
+  private readonly customerIdByKey = new Map<string, string>();
+  private readonly sessions: FakeSession[] = [];
+  private customerCount = 0;
 
   readonly customers = {
-    create: async (params: Stripe.CustomerCreateParams) => {
-      this.customersCreated.push(params);
-      return { id: `cus_test_${this.customersCreated.length}` };
+    /** Like Stripe, a repeated idempotency key answers with the customer the first call made. */
+    create: async (params: Stripe.CustomerCreateParams, options?: Stripe.RequestOptions) => {
+      const key = options?.idempotencyKey;
+      const known = key ? this.customerIdByKey.get(key) : undefined;
+      if (known) return { id: known };
+      this.customersCreated.push({ params, idempotencyKey: key });
+      const id = `cus_test_${++this.customerCount}`;
+      if (key) this.customerIdByKey.set(key, id);
+      return { id };
     },
   };
 
@@ -46,7 +67,25 @@ export class FakeStripe {
       create: async (params: Stripe.Checkout.SessionCreateParams) => {
         this.checkoutSessionsCreated.push(params);
         const id = `cs_test_${this.checkoutSessionsCreated.length}`;
-        return { id, url: `https://checkout.stripe.test/${id}` };
+        const session: FakeSession = {
+          id,
+          customer: params.customer as string,
+          status: 'open',
+          url: `https://checkout.stripe.test/${id}`,
+        };
+        this.sessions.push(session);
+        return session;
+      },
+      list: async (params: Stripe.Checkout.SessionListParams) => ({
+        data: this.sessions.filter(
+          (session) => session.customer === params.customer && (!params.status || session.status === params.status),
+        ),
+      }),
+      expire: async (id: string) => {
+        const session = this.sessions.find((candidate) => candidate.id === id);
+        if (!session || session.status !== 'open') throw new Error(`Session ${id} is not open`);
+        session.status = 'expired';
+        return session;
       },
     },
   };
@@ -70,11 +109,18 @@ export class FakeStripe {
   };
 
   readonly subscriptions = {
+    /** Answers with the subscription as it stood when asked, after any delay queued in `retrieveDelays`. */
     retrieve: async (id: string) => {
       const subscription = this.subscriptionsById.get(id);
       if (!subscription) throw new Error(`No such subscription: '${id}'`);
-      return subscription;
+      const snapshot = structuredClone(subscription);
+      const delay = this.retrieveDelays.shift() ?? 0;
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      return snapshot;
     },
+    list: async (params: Stripe.SubscriptionListParams) => ({
+      data: [...this.subscriptionsById.values()].filter((subscription) => subscription.customer === params.customer),
+    }),
   };
 
   /** Test convenience: the subscription as `subscriptions.retrieve` returns it from now on. */
@@ -91,10 +137,27 @@ export class FakeStripe {
       cancel_at_period_end: input.cancelAtPeriodEnd ?? false,
       items: {
         object: 'list',
-        data: [{ id: `si_${input.id}`, current_period_end: input.currentPeriodEnd ?? 0, price }],
+        data: [
+          {
+            id: `si_${input.id}`,
+            current_period_end: input.currentPeriodEnd ?? nowSeconds() + 30 * 86_400,
+            price,
+          },
+        ],
       },
     };
     this.subscriptionsById.set(input.id, subscription);
     return subscription as unknown as Stripe.Subscription;
+  }
+
+  /** Test convenience: an unfinished Checkout page, as a coiffeur who opened a second tab leaves behind. */
+  openSessionFor(customer: string): string {
+    const id = `cs_open_${this.sessions.length + 1}`;
+    this.sessions.push({ id, customer, status: 'open', url: `https://checkout.stripe.test/${id}` });
+    return id;
+  }
+
+  sessionStatus(id: string): FakeSession['status'] | undefined {
+    return this.sessions.find((session) => session.id === id)?.status;
   }
 }

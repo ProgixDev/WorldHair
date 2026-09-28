@@ -26,7 +26,8 @@ export function TrialSettingsCard() {
 
   const save = async () => {
     const value = Number(days);
-    if (!Number.isInteger(value) || value < 0 || value > 365) {
+    // An emptied field reads as 0 to Number(): it must never switch trials off by accident.
+    if (days.trim() === "" || !Number.isInteger(value) || value < 0 || value > 365) {
       setError("Entre 0 et 365 jours.");
       return;
     }

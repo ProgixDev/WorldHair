@@ -40,11 +40,15 @@ function formatPrice(price: PlanPrice): string {
 }
 
 function messageFor(error: unknown): string {
-  if (isAxiosError(error) && error.response?.status === 503) {
-    return "Le paiement en ligne n'est pas encore disponible. Réessayez plus tard.";
-  }
+  const status = isAxiosError(error) ? error.response?.status : undefined;
+  if (status === 503) return "Le paiement en ligne n'est pas encore disponible. Réessayez plus tard.";
+  if (status === 400) return "Vous avez déjà un abonnement en cours : gérez-le depuis cette page.";
+  if (status === 403) return "Votre dossier doit d'abord être validé par l'équipe WorldHair.";
   return "Une erreur est survenue. Réessayez.";
 }
+
+/** How long to wait for Stripe's webhook after Checkout before saying so. */
+const ACTIVATION_POLLS = 15;
 
 /**
  * "Mon abonnement" (TODO.md Phase 4): where a coiffeur subscribes and
@@ -62,6 +66,7 @@ export default function AbonnementPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const [checkout, setCheckout] = useState<"success" | "cancel" | null>(null);
+  const [activationSlow, setActivationSlow] = useState(false);
 
   const load = useCallback(
     () =>
@@ -84,20 +89,25 @@ export default function AbonnementPage() {
     });
   }, [load]);
 
-  // Back from Checkout, Stripe's webhook can land a few seconds after the coiffeur does.
-  const listed = subscription?.listed ?? false;
+  // Back from Checkout, Stripe's webhook can land a few seconds after the coiffeur does:
+  // until the Stripe subscription shows up, the page waits — and offers no second payment.
+  const managed = subscription?.canManage ?? false;
+  const activating = checkout === "success" && !managed;
   useEffect(() => {
-    if (checkout !== "success" || listed) return;
+    if (!activating) return;
     let tries = 0;
     const timer = setInterval(() => {
       tries += 1;
       void getMySubscription()
         .then(setSubscription)
         .catch(() => undefined);
-      if (tries >= 10) clearInterval(timer);
+      if (tries >= ACTIVATION_POLLS) {
+        clearInterval(timer);
+        setActivationSlow(true);
+      }
     }, 2000);
     return () => clearInterval(timer);
-  }, [checkout, listed]);
+  }, [activating]);
 
   const goTo = async (getUrl: () => Promise<string>) => {
     setActionError(null);
@@ -144,9 +154,11 @@ export default function AbonnementPage() {
         <main className="flex flex-col gap-4 rounded-3xl bg-[#080f1a] p-5 sm:p-8">
           <h1 className="text-xl font-medium text-[#f2f6fb]">Mon abonnement</h1>
 
-          {checkout === "success" && !listed && (
+          {activating && (
             <p className="rounded-2xl bg-[#1f9d55]/15 p-4 text-sm text-[#1f9d55]">
-              Merci ! Votre paiement est enregistré : votre abonnement s&apos;active dans quelques secondes.
+              {activationSlow
+                ? "Paiement enregistré. L'activation prend plus de temps que prévu : rechargez cette page dans une minute."
+                : "Merci ! Votre paiement est enregistré : votre abonnement s'active dans quelques secondes."}
             </p>
           )}
           {checkout === "cancel" && (
@@ -177,7 +189,7 @@ export default function AbonnementPage() {
                 </p>
               </section>
 
-              {subscription.canSubscribe && (
+              {subscription.canSubscribe && !activating && (
                 <section className="flex flex-col gap-3">
                   <p className="text-sm font-medium text-[#f2f6fb]">Choisissez votre formule</p>
                   {!prices && !actionError && <p className="text-sm text-[#93a6bc]">Chargement des tarifs…</p>}

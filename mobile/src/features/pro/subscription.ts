@@ -1,10 +1,11 @@
 import { fullDate } from "../../utils/date";
-import type { Subscription } from "./types";
+import type { ProAppointment, Subscription } from "./types";
 
 /**
  * Pure reads of the coiffeur's subscription for the J-7 banner, the account
- * tab and the end-of-subscription block (issue #8). The app only shows it:
- * subscribing, paying and cancelling happen on the website.
+ * tab and the end-of-subscription block (issue #8). The app only states
+ * facts: subscribing and paying happen outside it, and App Store rule
+ * 3.1.3(f) forbids pointing there from inside (the emails do that).
  */
 
 /** Whole days before the salon leaves search; `null` while it renews on its own. */
@@ -27,6 +28,17 @@ export function isSubscriptionExpired(subscription: Subscription): boolean {
   return subscription.state === "expired";
 }
 
+/** Bookings and requests still set after the end date: they'd outlive the salon's listing. */
+export function countBookingsAfterEnd(subscription: Subscription, appointments: ProAppointment[]): number {
+  if (!subscription.endsAt) return 0;
+  const end = new Date(subscription.endsAt).getTime();
+  return appointments.filter(
+    (appointment) =>
+      (appointment.status === "confirmed" || appointment.status === "pending") &&
+      new Date(appointment.startsAt).getTime() >= end,
+  ).length;
+}
+
 export interface SubscriptionSummary {
   title: string;
   detail: string;
@@ -38,12 +50,28 @@ function on(iso: string | null): string {
 }
 
 /** The status line shared by the dashboard strip and the account tab. */
-export function describeSubscription(subscription: Subscription, now = new Date()): SubscriptionSummary {
+export function describeSubscription(
+  subscription: Subscription,
+  now = new Date(),
+  /** Bookings still set after `endsAt`: the coiffeur should cancel or move them before then. */
+  context: { bookingsAfterEnd?: number } = {},
+): SubscriptionSummary {
+  const summary = summarize(subscription, now);
+  const after = context.bookingsAfterEnd ?? 0;
+  if (subscription.endsAt && after > 0) {
+    summary.detail +=
+      " " + after + (after > 1 ? " rendez-vous sont prévus" : " rendez-vous est prévu") +
+      " après cette date : pensez à les annuler ou à les déplacer.";
+  }
+  return summary;
+}
+
+function summarize(subscription: Subscription, now: Date): SubscriptionSummary {
   const days = daysRemaining(subscription, now);
   if (days !== null && isNearingExpiry(subscription, now)) {
     return {
       title: "Il vous reste " + days + (days > 1 ? " jours" : " jour") + " d'abonnement",
-      detail: "Votre fiche sera masquée le " + on(subscription.endsAt) + ". Nous vous avons envoyé par email la marche à suivre pour la garder.",
+      detail: "Votre fiche sera masquée le " + on(subscription.endsAt) + ".",
       tone: "danger",
     };
   }
@@ -52,7 +80,7 @@ export function describeSubscription(subscription: Subscription, now = new Date(
     case "none":
       return {
         title: "Fiche pas encore en ligne",
-        detail: "Votre salon apparaîtra dans la recherche dès que votre abonnement sera actif. Nous vous avons envoyé par email la marche à suivre.",
+        detail: "Aucun abonnement actif : votre salon n'apparaît pas encore dans la recherche.",
         tone: "warning",
       };
     case "trialing":
@@ -82,19 +110,19 @@ export function describeSubscription(subscription: Subscription, now = new Date(
     case "past_due":
       return {
         title: "Paiement refusé",
-        detail: "Le prélèvement de votre abonnement a échoué et sera retenté. Vérifiez votre carte bancaire : nous vous avons envoyé un email.",
+        detail: "Le prélèvement de votre abonnement a échoué ; il sera retenté dans les prochains jours. Votre fiche reste visible en attendant.",
         tone: "danger",
       };
     case "incomplete":
       return {
         title: "Paiement en attente",
-        detail: "Votre premier paiement attend votre confirmation. Votre fiche sera visible dès qu'il sera validé.",
+        detail: "Le premier paiement n'est pas encore confirmé : votre fiche n'est pas encore visible.",
         tone: "warning",
       };
     case "expired":
       return {
         title: "Abonnement terminé",
-        detail: "Votre fiche n'est plus visible par les clients. Nous vous avons envoyé par email la marche à suivre pour la remettre en ligne.",
+        detail: "Votre fiche n'est plus visible par les clients.",
         tone: "danger",
       };
   }

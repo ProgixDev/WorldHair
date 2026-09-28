@@ -922,13 +922,19 @@ as $$
       on p.id = cp.profile_id
       and p.account_status = 'active'
     -- So do salons without a live subscription (TODO.md Phase 4): Stripe's
-    -- trialing, active, or past_due while it retries a failed payment; an
-    -- offered subscription (no Stripe one) until its end date. Mirrored by
+    -- trialing, active, or past_due while it retries a failed payment —
+    -- unless its period is over by more than Stripe's 3 days of webhook
+    -- retries, meaning the news stopped coming; an offered subscription (no
+    -- Stripe one) until its end date. Mirrored by
     -- server/src/subscriptions/subscription-state.ts's isListed().
     join public.coiffeur_subscriptions s
       on s.profile_id = cp.profile_id
       and s.status in ('trialing', 'active', 'past_due')
-      and (s.stripe_subscription_id is not null or s.current_period_end > now())
+      and (
+        (s.stripe_subscription_id is not null
+          and (s.current_period_end is null or s.current_period_end > now() - interval '3 days'))
+        or (s.stripe_subscription_id is null and s.current_period_end > now())
+      )
     where
       (p_specialty is null or p_specialty = any (cp.specialties))
       and (p_city is null or cp.city ilike p_city)

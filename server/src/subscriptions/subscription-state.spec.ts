@@ -36,6 +36,13 @@ describe('subscription state', () => {
       expect(isListed(row({ status: 'paused' }), NOW)).toBe(false);
     });
 
+    it('stops listing a Stripe subscription whose period ended days ago without news from Stripe', () => {
+      const daysAgo = (days: number) => new Date(NOW.getTime() - days * 86_400_000).toISOString();
+      expect(isListed(row({ status: 'active', current_period_end: daysAgo(1) }), NOW)).toBe(true);
+      expect(isListed(row({ status: 'active', current_period_end: daysAgo(4) }), NOW)).toBe(false);
+      expect(isListed(row({ status: 'past_due', current_period_end: daysAgo(4) }), NOW)).toBe(false);
+    });
+
     it('lists an offered subscription (no Stripe subscription) until its end date', () => {
       const offered = { stripe_customer_id: null, stripe_subscription_id: null };
       expect(isListed(row({ ...offered, current_period_end: LATER }), NOW)).toBe(true);

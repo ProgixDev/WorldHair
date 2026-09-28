@@ -13,7 +13,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
-import { describeSubscription } from "../../features/pro/subscription";
+import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
 import type { Subscription } from "../../features/pro/types";
 import { fullDate } from "../../utils/date";
 
@@ -56,7 +56,7 @@ export default function ProAccount() {
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
   const { session, signOut } = useAuth();
-  const { profile, subscription, isLoading, refreshSubscription } = usePro();
+  const { profile, subscription, appointments, isLoading, refreshSubscription } = usePro();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -74,7 +74,9 @@ export default function ProAccount() {
       </View>
     );
 
-  const summary = describeSubscription(subscription);
+  const summary = describeSubscription(subscription, new Date(), {
+    bookingsAfterEnd: countBookingsAfterEnd(subscription, appointments),
+  });
   const toneColor =
     summary.tone === "danger"
       ? theme.danger
@@ -191,9 +193,7 @@ export default function ProAccount() {
       </Group>
       <View style={{ gap: spacing.md }}>
         <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-          Formule, carte bancaire, factures et résiliation se gèrent depuis
-          votre espace abonnement WorldHair ; nous vous en envoyons le lien
-          par email. Aucune donnée bancaire ne passe par l&apos;application.
+          Aucun paiement ne se fait dans l&apos;application.
         </Text>
         <Button
           label="Actualiser le statut"

@@ -133,6 +133,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Pending requests + today's appointments show
 - [x] Subscription strip shows correct status
 - [ ] Strip reads the new states: « Fiche pas encore en ligne » (never subscribed), « Essai gratuit », « Abonnement actif » / « Abonnement offert », « Abonnement résilié », « Paiement refusé », « Il vous reste N jours d'abonnement » in the last week; a tap opens the account tab
+- [ ] Subscription cancelled with bookings after its end date: the strip adds « N rendez-vous sont prévus après cette date : pensez à les annuler ou à les déplacer », and clients can't book any time after it (those days read « Fermé »)
 
 ### `/pro/agenda`
 - [x] Pending requests in red at top, Accept / Refuse both work
@@ -168,7 +169,8 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] No "Développement" section any more (the J-7 / expired simulators wrote the subscription directly, which the database now refuses)
 - [ ] Status only: state card, « Fiche visible par les clients » Oui/Non, formule, the next date (premier prélèvement / prochain prélèvement / fiche visible jusqu'au). No price, no plan to pick, no cancel or reactivate button, no link to pay
 - [ ] « Actualiser le statut » picks up a subscription just made on the website
-- [ ] Ended subscription (Stripe says canceled or unpaid): the « Abonnement terminé » veil covers the pro area; « J'ai renouvelé — actualiser » lifts it once the website subscription is active, and says so if it's still not
+- [ ] Ended subscription (Stripe says canceled or unpaid): the « Abonnement terminé » veil covers the pro area; « Actualiser » lifts it once the website subscription is active, and says « Toujours aucun abonnement actif » otherwise
+- [ ] No text in the app tells where or how to pay (no email, website or link mentioned): App Store rule 3.1.3
 - [ ] A salon that never subscribed is **not** veiled (it must still set up its page), but it's absent from search and its page 404s
 
 ---
@@ -217,9 +219,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 ### `/admin/abonnements`
 - [ ] Read-only list with the state (Pas d'abonnement / Essai / Actif / Résilié (fin prévue) / Paiement refusé / Paiement en attente / Terminé), the plan or « Offert », and the date that matters
 - [ ] The arrow opens the coiffeur's customer in Stripe (test dashboard while in test mode)
+- [ ] ⚠️ Suspending or banning a coiffeur doesn't stop Stripe: their subscription keeps billing until cancelled from that Stripe link
 
 ### `/admin/parametres`
-- [ ] « Période d'essai des coiffeurs »: shows 30, save 14 → the next Checkout offers 14 days; 0 → no trial; 400 refused
+- [ ] « Période d'essai des coiffeurs »: shows 30, save 14 → the next Checkout offers 14 days; 0 → no trial; 400 or an empty field refused
 - [ ] Email change
 - [ ] Password change
 - [ ] Admin management works for `admin` tier
@@ -229,7 +232,9 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Signed out → `/pro/abonnement` sends to `/login`, and back to the page after signing in; a client account is refused on `/login`
 - [ ] Coiffeur not validated yet → « Dossier en cours de validation », no plan to pick
 - [ ] Validated, never subscribed → « Votre salon n'est pas encore en ligne », both prices read from Stripe (19 € / 182 €, « 2 mois offerts »), « 30 jours d'essai gratuit, puis … »
-- [ ] « Continuer vers le paiement » → Stripe Checkout (French) → card `4242 4242 4242 4242`, any future date, any CVC → back on the page with « Merci ! … » → within seconds « Essai gratuit en cours », visible: oui → the salon is back in the app's search
+- [ ] « Continuer vers le paiement » → Stripe Checkout (French) → card `4242 4242 4242 4242`, any future date, any CVC → back on the page with « Merci ! … » and no pay button while Stripe confirms → within seconds « Essai gratuit en cours », visible: oui → the salon is back in the app's search
+- [ ] A seeded salon (« Abonnement offert ») that subscribes keeps its offered year: Checkout shows the first charge at the end of it
+- [ ] Two tabs on Checkout: paying in one closes the other; « Continuer vers le paiement » again after paying → « Vous avez déjà un abonnement en cours »
 - [ ] « Annuler » on Checkout → « Paiement annulé : rien n'a été débité. »
 - [ ] « Ouvrir la gestion de l'abonnement » → Stripe's portal: switch monthly ↔ yearly, change card, see invoices, cancel → back: « Abonnement résilié », still visible until the date shown; « Renouveler » in the portal undoes it
 - [ ] A second subscription after one ended gets no free trial
@@ -274,10 +279,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 266 ✅ (runs in UTC, like Render) |
-| `cd server && bun run test:e2e` | 56 ✅ |
+| `cd server && bun run test` | 306 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 63 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
-| `cd mobile && bun run test` | 69 ✅ |
-| `cd web && bun run test` | 11 ✅ |
+| `cd mobile && bun run test` | 81 ✅ |
+| `cd web && bun run test` | 21 ✅ |
 
 `typecheck` + `lint` green on all three packages.

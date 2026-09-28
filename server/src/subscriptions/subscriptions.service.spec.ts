@@ -13,6 +13,7 @@ import { PlatformSettingsService } from '../settings/platform-settings.service';
 import { StripeService } from '../stripe/stripe.service';
 import { FakeStripe } from '../../test/utils/fakes/fake-stripe';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
+import { SubscriptionNotifier } from './subscription-notifier';
 import { SubscriptionsService } from './subscriptions.service';
 
 const COIFFEUR_ID = 'coiffeur-1';
@@ -73,8 +74,7 @@ describe('SubscriptionsService', () => {
       new CoiffeurApplicationsService(supabase as unknown as SupabaseService, new EventEmitter2()),
       new StripeService(stripe as unknown as Stripe, config),
       new PlatformSettingsService(supabase as unknown as SupabaseService),
-      notifications,
-      mail,
+      new SubscriptionNotifier(supabase as unknown as SupabaseService, notifications, mail),
       config,
     );
   });
@@ -98,6 +98,13 @@ describe('SubscriptionsService', () => {
         awaitingValidation: true,
         canSubscribe: false,
       });
+    });
+
+    it("doesn't call the salon visible before its page is complete in the app", async () => {
+      supabase.seedApplication({ profileId: COIFFEUR_ID, status: 'validated', shopProfileComplete: false });
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' });
+
+      await expect(service.getMine(COIFFEUR_ID)).resolves.toMatchObject({ state: 'active', listed: false });
     });
 
     it("follows the row Stripe's webhooks keep, and offers no second trial", async () => {
@@ -144,7 +151,9 @@ describe('SubscriptionsService', () => {
 
       expect(url).toBe('https://checkout.stripe.test/cs_test_1');
       expect(stripe.customersCreated).toHaveLength(1);
-      expect(stripe.customersCreated[0]).toMatchObject({ email: 'sofia@example.com', metadata: { profile_id: COIFFEUR_ID } });
+      expect(stripe.customersCreated[0].params).toMatchObject({ email: 'sofia@example.com', metadata: { profile_id: COIFFEUR_ID } });
+      // Two clicks racing still make one customer: Stripe answers a repeated key with the first one.
+      expect(stripe.customersCreated[0].idempotencyKey).toBe(`worldhair-customer-${COIFFEUR_ID}`);
       expect(stripe.checkoutSessionsCreated[0]).toMatchObject({
         mode: 'subscription',
         customer: 'cus_test_1',
@@ -177,6 +186,36 @@ describe('SubscriptionsService', () => {
       expect(stripe.customersCreated).toHaveLength(0);
       expect(stripe.checkoutSessionsCreated[0].customer).toBe('cus_9');
       expect(stripe.checkoutSessionsCreated[0].subscription_data?.trial_period_days).toBeUndefined();
+    });
+
+    it('refuses a second Checkout once Stripe holds a live subscription, even before its webhook arrived', async () => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'none', stripeCustomerId: 'cus_1' });
+      stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'trialing' });
+
+      await expect(service.createCheckoutSession(COIFFEUR_ID, 'monthly')).rejects.toThrow(BadRequestException);
+      expect(stripe.checkoutSessionsCreated).toHaveLength(0);
+    });
+
+    it("closes the coiffeur's other open Checkout pages, so only one can ever be paid", async () => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'none', stripeCustomerId: 'cus_1' });
+      const otherTab = stripe.openSessionFor('cus_1');
+
+      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+
+      expect(stripe.sessionStatus(otherTab)).toBe('expired');
+    });
+
+    it("keeps what's left of an offered period: the first charge waits for its end", async () => {
+      const offeredEnd = new Date(Date.now() + 200 * DAY_SECONDS * 1000);
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', currentPeriodEnd: offeredEnd.toISOString() });
+
+      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+
+      expect(stripe.checkoutSessionsCreated[0].subscription_data).toMatchObject({
+        trial_end: Math.floor(offeredEnd.getTime() / 1000),
+      });
+      expect(stripe.checkoutSessionsCreated[0].subscription_data?.trial_period_days).toBeUndefined();
+      await expect(service.getMine(COIFFEUR_ID)).resolves.toMatchObject({ trialDays: 200 });
     });
 
     it("refuses while a Stripe subscription is live: that's the portal's job", async () => {
@@ -294,6 +333,48 @@ describe('SubscriptionsService', () => {
 
       await expect(service.getMine(COIFFEUR_ID)).resolves.toMatchObject({ state: 'past_due', listed: true });
       expect(supabase.notifyLogFor(COIFFEUR_ID).map((n) => n.type)).toEqual(['subscription_payment_failed']);
+    });
+
+    it('keeps the live subscription when a second live one turns up for the same coiffeur', async () => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_a' });
+      stripe.putSubscription({ id: 'sub_b', customer: 'cus_1', status: 'active', profileId: COIFFEUR_ID });
+
+      await service.handleStripeEvent(stripeEvent('customer.subscription.created', { id: 'sub_b' }));
+
+      expect(supabase.subscriptionFor(COIFFEUR_ID)).toMatchObject({ stripe_subscription_id: 'sub_a' });
+    });
+
+    it('writes the newest state when two deliveries for one subscription race', async () => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' });
+      stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'active', profileId: COIFFEUR_ID });
+      stripe.retrieveDelays = [30];
+
+      const first = service.handleStripeEvent(stripeEvent('customer.subscription.updated', { id: 'sub_1' }));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'canceled', profileId: COIFFEUR_ID });
+      const second = service.handleStripeEvent(stripeEvent('customer.subscription.deleted', { id: 'sub_1' }));
+      await Promise.all([first, second]);
+
+      expect(supabase.subscriptionFor(COIFFEUR_ID)).toMatchObject({ status: 'canceled' });
+    });
+
+    it("reads an invoice's subscription the way older API versions send it", async () => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' });
+      stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'past_due', profileId: COIFFEUR_ID });
+
+      await service.handleStripeEvent(stripeEvent('invoice.payment_failed', { id: 'in_1', attempt_count: 1, subscription: 'sub_1' }));
+
+      expect(supabase.notifyLogFor(COIFFEUR_ID).map((n) => n.type)).toEqual(['subscription_payment_failed']);
+    });
+
+    it("never trusts a Checkout's client_reference_id alone to pick the coiffeur", async () => {
+      stripe.putSubscription({ id: 'sub_x', customer: 'cus_unknown', status: 'active' });
+
+      await service.handleStripeEvent(
+        stripeEvent('checkout.session.completed', { mode: 'subscription', subscription: 'sub_x', client_reference_id: COIFFEUR_ID }),
+      );
+
+      expect(supabase.subscriptionFor(COIFFEUR_ID)).toBeUndefined();
     });
 
     it('never lets an abandoned attempt overwrite the live subscription', async () => {

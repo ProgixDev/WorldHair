@@ -116,6 +116,24 @@ describe('AppointmentsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it("doesn't take bookings for after the salon's subscription ends", async () => {
+      supabase.seedSubscription({
+        profileId: COIFFEUR_ID,
+        status: 'active',
+        stripeSubscriptionId: 'sub_1',
+        cancelAt: WEDNESDAY_9AM().toISOString(),
+      });
+
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(/closed/);
+      const day = parisParts(WEDNESDAY_10AM());
+      const date = `${day.year}-${String(day.month).padStart(2, '0')}-${String(day.day).padStart(2, '0')}`;
+      await expect(
+        service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, { date, serviceIds: [serviceId] }),
+      ).resolves.toMatchObject({ closed: true });
+    });
+
     it('404s an unknown or unvalidated coiffeur', async () => {
       await expect(
         service.create(PARTICULIER_ID, {

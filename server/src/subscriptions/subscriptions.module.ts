@@ -5,6 +5,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
 import { AdminSubscriptionsController } from './admin-subscriptions.controller';
 import { StripeWebhookController } from './stripe-webhook.controller';
+import { SubscriptionNotifier } from './subscription-notifier';
 import { SubscriptionRemindersJob } from './subscription-reminders.job';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
@@ -13,6 +14,6 @@ import { SubscriptionsService } from './subscriptions.service';
 @Module({
   imports: [CoiffeurModule, MailModule, NotificationsModule, SettingsModule],
   controllers: [SubscriptionsController, AdminSubscriptionsController, StripeWebhookController],
-  providers: [SubscriptionsService, SubscriptionRemindersJob],
+  providers: [SubscriptionsService, SubscriptionNotifier, SubscriptionRemindersJob],
 })
 export class SubscriptionsModule {}

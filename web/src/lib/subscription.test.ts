@@ -46,6 +46,20 @@ describe("describeMySubscription", () => {
     expect(ending.detail).toContain("15 novembre 2026");
   });
 
+  it("tells an offered salon that subscribing now keeps its free period", () => {
+    const offered = describeMySubscription(
+      subscription({ state: "active", offered: true, listed: true, endsAt: "2027-09-30T10:00:00.000Z" }),
+    );
+    expect(offered.title).toBe("Abonnement offert");
+    expect(offered.detail).toContain("30 septembre 2027");
+    expect(offered.detail).toMatch(/conservée/);
+  });
+
+  it("says when a paid-up salon still isn't visible because its page isn't finished", () => {
+    const detail = describeMySubscription(subscription({ state: "active", listed: false, currentPeriodEnd: "2026-11-01T10:00:00.000Z" })).detail;
+    expect(detail).toMatch(/pas encore visible/);
+  });
+
   it("flags a refused payment and an ended subscription", () => {
     expect(describeMySubscription(subscription({ state: "past_due", listed: true })).tone).toBe("danger");
     expect(describeMySubscription(subscription({ state: "expired" }))).toMatchObject({
@@ -75,5 +89,11 @@ describe("landingAfterSignIn", () => {
     );
     expect(landingAfterSignIn("coiffeur", "https://evil.example")).toBe("/pro/abonnement");
     expect(landingAfterSignIn("coiffeur", "/admin")).toBe("/pro/abonnement");
+  });
+
+  it("can't be walked out of the pro area with dot segments", () => {
+    expect(landingAfterSignIn("coiffeur", "/pro/..//evil.example")).toBe("/pro/abonnement");
+    expect(landingAfterSignIn("coiffeur", "/pro/%2e%2e//evil.example")).toBe("/pro/abonnement");
+    expect(landingAfterSignIn("coiffeur", "//evil.example/pro/x")).toBe("/pro/abonnement");
   });
 });
