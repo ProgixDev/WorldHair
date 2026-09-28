@@ -10,6 +10,7 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
+import { cancellationNote, cancelledLabel } from "../../features/appointments/cancellation";
 import { useSalonSummary } from "../../features/salons/api";
 import {
   BookingError,
@@ -310,7 +311,7 @@ function TimelineItem({
             </Text>
             {inactive ? (
               <Text style={[typography.caption, { color: theme.danger }]}>
-                {cancelled ? "Annulé" : "Refusé"}
+                {cancelled ? cancelledLabel(appointment.cancelledBy, "client") : "Refusé"}
               </Text>
             ) : null}
           </View>
@@ -358,6 +359,10 @@ function TimelineItem({
             </Text>
           ) : null}
         </View>
+
+        {cancellationNote(appointment) ? (
+          <Text style={[typography.caption, { color: theme.danger }]}>{cancellationNote(appointment)}</Text>
+        ) : null}
 
         {upcoming && appointment.movedBySalon ? (
           <Text style={[typography.caption, { color: theme.accent.warm }]}>

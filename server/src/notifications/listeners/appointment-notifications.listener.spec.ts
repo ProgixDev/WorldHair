@@ -123,6 +123,44 @@ describe('AppointmentNotificationsListener', () => {
     expect(supabase.notifyLogFor('coiffeur-1')).toEqual([]);
   });
 
+  it('tells both sides when WorldHair cancels, with the reason — and the client that they are refunded', async () => {
+    await listener.onCancelledByAdmin({
+      appointmentId: 'apt-1',
+      coiffeurId: 'coiffeur-1',
+      particulierId: 'particulier-1',
+      serviceName: 'Coupe & brushing',
+      startsAt: '2026-09-30T08:00:00Z',
+      reason: 'Salon fermé ce jour-là.',
+      refunded: 40,
+    });
+
+    const client = supabase.notifyLogFor('particulier-1');
+    const salon = supabase.notifyLogFor('coiffeur-1');
+    expect(client).toMatchObject([{ type: 'appointment_cancelled_admin', dedupe_key: 'apt-1', title: 'Rendez-vous annulé par WorldHair' }]);
+    expect(salon).toMatchObject([{ type: 'appointment_cancelled_admin', dedupe_key: 'apt-1', title: 'Rendez-vous annulé par WorldHair' }]);
+    for (const [row] of [client, salon]) {
+      expect(row.body).toContain('mer. 30 sept. à 10:00');
+      expect(row.body).toContain('Coupe & brushing');
+      expect(row.body).toContain('Motif : Salon fermé ce jour-là.');
+    }
+    expect(client[0].body).toContain('intégralement remboursé');
+    expect(salon[0].body).not.toContain('remboursé');
+  });
+
+  it('promises the client no refund when none was made (unpaid, or Stripe down)', async () => {
+    await listener.onCancelledByAdmin({
+      appointmentId: 'apt-1',
+      coiffeurId: 'coiffeur-1',
+      particulierId: 'particulier-1',
+      serviceName: 'Coupe & brushing',
+      startsAt: '2026-09-30T08:00:00Z',
+      reason: 'Litige',
+      refunded: 0,
+    });
+
+    expect(supabase.notifyLogFor('particulier-1')[0].body).not.toContain('remboursé');
+  });
+
   it("tells the particulier their request expired unanswered, and that they're refunded", async () => {
     await listener.onExpired({
       appointmentId: 'apt-1',

@@ -119,6 +119,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Lengthening the cancellation deadline in `/pro/salon` doesn't move an accepted booking's "Modifiable ou annulable jusqu'à …" time (only bookings made afterwards follow the new setting)
 - [ ] A request the salon hasn't accepted yet can be withdrawn until it starts, whatever the deadline
 - [ ] Push when the salon refuses the request or cancels the appointment (needs push working, see "Mocked")
+- [ ] Cancelled cards say who: « Annulé par vous », « Annulé par le salon », « Sans réponse du salon »; one WorldHair cancelled reads « Annulé par WorldHair » and « Motif : … » (after `seed:demo`: J-9)
 
 ### Review
 - [x] 5-star rating required, submit blocked without it
@@ -205,6 +206,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 ### Booking sheet (agenda → tap a paid booking)
 - [ ] « PAIEMENT » shows paid / refunded / your share / commission
+- [ ] A cancelled booking says who (« Annulé par le client », « Annulé par vous », « Annulé par WorldHair » with « Motif : … »)
 - [ ] Refund part of it (e.g. 15) → confirm → the client is refunded, the sheet updates; more than what's left is refused; after the payout the refund is refused (« Le montant vous a déjà été versé… »)
 
 ### `/pro/account`
@@ -247,9 +249,20 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Suspend a stylist → their salon disappears from `/discover` and `/search`, its page and booking return "not found"; reactivate → back
 
 ### `/admin/avis`
-- [ ] Reported reviews list
-- [ ] Hide → gone from public salon page, still visible to stylist
-- [ ] Restore → back on public page
+- [ ] « Signalés »: each review with its salon, its author's full name and every report — reason (the app's words), who (a client by name, a salon by its name) and when, their words in quotes (after `seed:demo`: Studio W's latest review, 2 reports)
+- [ ] Hide → gone from public salon page, still visible to stylist, now under « Masqués »
+- [ ] « Marquer comme sûr » → off the list, still on the public page
+- [ ] « Masqués » → « Remettre en ligne » → back on the public page and in the salon's average
+
+### `/admin/rendez-vous`
+- [ ] Every booking, the latest first: client → salon, date, prestations, price, status (Demande en attente / Confirmé / Terminé / Client absent / Refusé par le salon / Annulé par le client / le salon / WorldHair / Expiré sans réponse) and payment (Payé / Versé au salon / Remboursé… / Sans paiement en ligne)
+- [ ] Filters: status, salon, client (« coupe carre » finds « Coupe Carré »), from / to days — 20 per page with the total; « Effacer les filtres »; back from a booking returns to the same filtered list
+- [ ] A booking: date, prestations, the client (email) and the salon (city, phone, email) linking to their accounts, the payment (paid, refunded, commission, paid out, Stripe reference)
+- [ ] « Annuler le rendez-vous (litige) » → reason (3 characters at least) → confirm → « Rendez-vous annulé, 40,00 € remboursés au client. »; the client and the salon each get « Rendez-vous annulé par WorldHair » with the reason (see `notifications_log`), and the app shows it on the booking
+- [ ] Cancelling after the payout: the salon's share comes back first (a transfer reversal in Stripe), then the client gets everything left
+- [ ] Stripe down during a cancel → « Rendez-vous annulé, mais Stripe n'a pas pu rembourser… » → « Rembourser le reste » refunds it
+- [ ] A cancelled or refused booking has no « Annuler »; `admin_limited` can cancel too
+- [ ] `/admin/paiements` → « Voir le rendez-vous » opens the booking
 
 ### `/admin/publicites`
 - [ ] All 3 placements editable (home / search / confirmation)
@@ -332,10 +345,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 399 ✅ (runs in UTC, like Render) |
-| `cd server && bun run test:e2e` | 75 ✅ |
-| `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
-| `cd mobile && bun run test` | 98 ✅ |
-| `cd web && bun run test` | 25 ✅ |
+| `cd server && bun run test` | 412 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 78 ✅ |
+| `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API, nor list every booking (live dev database) |
+| `cd mobile && bun run test` | 101 ✅ |
+| `cd web && bun run test` | 34 ✅ |
 
 `typecheck` + `lint` green on all three packages.

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { AppointmentRow, derivedStatus } from '../appointments/appointments.service';
 import { Role } from '../common/types/role';
+import { allPages } from '../common/utils/pages';
 import { slices } from '../common/utils/slices';
 import { SupabaseService } from '../database/supabase.service';
 
@@ -28,6 +29,29 @@ export interface ReviewDto {
   status: 'visible' | 'reported' | 'hidden';
   /** The reader already reported it: the app shows « Signalé » instead of the button. */
   reportedByMe: boolean;
+}
+
+/** One person's report on a review, for the admins. */
+export interface ReviewReportDto {
+  reporterId: string;
+  /** A client's full name; a salon by its name. */
+  reporterName: string;
+  reporterRole: Role;
+  reason: ReportReason;
+  details: string | null;
+  createdAt: string;
+}
+
+/** A review in the admins' moderation queue: whose salon, whose words, and every report on it. */
+export interface ModeratedReviewDto extends ReviewDto {
+  salonName: string;
+  /** Unabridged — the public byline keeps the last name's initial only. */
+  authorFullName: string;
+  /** Oldest first. */
+  reports: ReviewReportDto[];
+  /** The latest report's reason, as the review keeps it — the only one for reviews reported before each report was kept. */
+  reportReason: string | null;
+  reportedAt: string | null;
 }
 
 export interface CreateReviewInput {
@@ -57,6 +81,15 @@ interface ProfileNameRow {
   id: string;
   first_name: string;
   last_name: string;
+  role?: Role;
+}
+
+interface ReviewReportRow {
+  review_id: string;
+  reporter_id: string;
+  reason: ReportReason;
+  details: string | null;
+  created_at: string;
 }
 
 /**
@@ -192,8 +225,14 @@ export class ReviewsService {
 
   // ─── Admin — "Signalement / modération avis" ─────────────────────────────
 
-  async listReported(): Promise<ReviewDto[]> {
-    return this.mapAll(await this.select({ status: 'reported' }));
+  /** The queue: reviews reported and not decided on yet. */
+  async listReported(): Promise<ModeratedReviewDto[]> {
+    return this.forModeration(await this.selectAll('reported'));
+  }
+
+  /** Reviews the admins hid — one can be put back. */
+  async listHidden(): Promise<ModeratedReviewDto[]> {
+    return this.forModeration(await this.selectAll('hidden'));
   }
 
   async moderate(reviewId: string, decision: 'hide' | 'restore'): Promise<void> {
@@ -213,6 +252,104 @@ export class ReviewsService {
       throw new InternalServerErrorException(error.message);
     }
     return data as ReviewRow[];
+  }
+
+  /** Every review with this status, however many. */
+  private async selectAll(status: 'reported' | 'hidden'): Promise<ReviewRow[]> {
+    return allPages<ReviewRow>((from, to) =>
+      this.supabase.client
+        .from('reviews')
+        .select()
+        .eq('status', status)
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to),
+    );
+  }
+
+  private async forModeration(rows: ReviewRow[]): Promise<ModeratedReviewDto[]> {
+    const reports = await this.reportsOn(rows.map((row) => row.id));
+    const people = await this.profilesFor([
+      ...new Set([...rows.map((row) => row.particulier_id), ...reports.map((report) => report.reporter_id)]),
+    ]);
+    const salons = await this.salonNamesFor([
+      ...new Set([...rows.map((row) => row.coiffeur_id), ...reports.map((report) => report.reporter_id)]),
+    ]);
+    const nameOf = (id: string) => {
+      const person = people.get(id);
+      return `${person?.first_name ?? ''} ${person?.last_name ?? ''}`.trim();
+    };
+
+    return (await this.mapAll(rows)).map((review) => {
+      const row = rows.find((candidate) => candidate.id === review.id)!;
+      return {
+        ...review,
+        salonName: salons.get(row.coiffeur_id) || nameOf(row.coiffeur_id) || 'Salon',
+        authorFullName: nameOf(row.particulier_id) || 'Client',
+        reports: reports
+          .filter((report) => report.review_id === row.id)
+          .map((report) => {
+            const role = people.get(report.reporter_id)?.role ?? 'particulier';
+            return {
+              reporterId: report.reporter_id,
+              reporterName:
+                (role === 'coiffeur' ? salons.get(report.reporter_id) : undefined) ||
+                nameOf(report.reporter_id) ||
+                (role === 'coiffeur' ? 'Salon' : 'Client'),
+              reporterRole: role,
+              reason: report.reason,
+              details: report.details,
+              createdAt: report.created_at,
+            };
+          }),
+        reportReason: row.report_reason,
+        reportedAt: row.reported_at,
+      };
+    });
+  }
+
+  /** Every report on these reviews, oldest first. */
+  private async reportsOn(reviewIds: string[]): Promise<ReviewReportRow[]> {
+    const reports: ReviewReportRow[] = [];
+    for (const slice of slices(reviewIds)) {
+      reports.push(
+        ...(await allPages<ReviewReportRow>((from, to) =>
+          this.supabase.client
+            .from('review_reports')
+            .select()
+            .in('review_id', slice)
+            .order('created_at')
+            .order('reporter_id')
+            .range(from, to),
+        )),
+      );
+    }
+    return reports.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  private async profilesFor(ids: string[]): Promise<Map<string, ProfileNameRow>> {
+    const profiles = new Map<string, ProfileNameRow>();
+    for (const slice of slices(ids)) {
+      const { data, error } = await this.supabase.client.from('profiles').select().in('id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as ProfileNameRow[]) profiles.set(row.id, row);
+    }
+    return profiles;
+  }
+
+  /** Salons by their shop name — coiffeurs' own profile names are blank (see coiffeur_applications). */
+  private async salonNamesFor(ids: string[]): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    for (const slice of slices(ids)) {
+      const { data, error } = await this.supabase.client.from('coiffeur_profiles').select().in('profile_id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as { profile_id: string; salon_name: string }[]) names.set(row.profile_id, row.salon_name);
+    }
+    return names;
   }
 
   private async appointmentOrThrow(id: string): Promise<AppointmentRow> {

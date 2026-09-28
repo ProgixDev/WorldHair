@@ -4,6 +4,7 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { cancellationNote, cancelledLabel } from "../../features/appointments/cancellation";
 import type { Attendance, ProAppointment } from "../../features/pro/types";
 import { proErrorMessage } from "../../services/pro";
 import { formatDuration, formatPrice, fullDate, relativeDay, timeOfDay } from "../../utils/date";
@@ -242,13 +243,18 @@ export function AppointmentSheet({
               formatDuration(appointment.durationMin)}
           </Text>
           <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-            {STATUS_LABELS[appointment.status] +
+            {(appointment.status === "cancelled"
+              ? cancelledLabel(appointment.cancelledBy, "salon")
+              : STATUS_LABELS[appointment.status]) +
               (appointment.attendance === "attended"
                 ? " · honoré"
                 : appointment.attendance === "no_show"
                   ? " · absent"
                   : "")}
           </Text>
+          {cancellationNote(appointment) ? (
+            <Text style={[typography.caption, { color: theme.danger }]}>{cancellationNote(appointment)}</Text>
+          ) : null}
 
           <View
             style={{

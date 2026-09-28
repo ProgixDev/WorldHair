@@ -1,5 +1,6 @@
 import {
   Banknote,
+  CalendarDays,
   CreditCard,
   FileCheck2,
   Flag,
@@ -41,9 +42,9 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   },
   {
     href: "/admin/avis",
-    label: "Avis signalés",
+    label: "Avis",
     icon: Flag,
-    keywords: ["modération", "masquer un avis", "signalement", "commentaires"],
+    keywords: ["avis signalés", "modération", "masquer un avis", "signalement", "commentaires", "avis masqués"],
   },
   {
     href: "/admin/comptes",
@@ -68,6 +69,12 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     label: "Abonnements",
     icon: CreditCard,
     keywords: ["coiffeur pro", "facturation", "plan", "essai"],
+  },
+  {
+    href: "/admin/rendez-vous",
+    label: "Rendez-vous",
+    icon: CalendarDays,
+    keywords: ["réservations", "litiges", "annuler un rendez-vous", "agenda", "clients", "salons"],
   },
   {
     href: "/admin/paiements",

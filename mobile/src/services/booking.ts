@@ -1,4 +1,5 @@
 import { isAxiosError } from "axios";
+import type { CancelledBy } from "../features/appointments/cancellation";
 import { apiClient } from "../lib/apiClient";
 
 /**
@@ -44,6 +45,10 @@ export interface Appointment {
   movedBySalon: boolean;
   /** What was paid in the app, and refunded since; `null` for a booking made before payments. */
   payment: { amount: number; refundedAmount: number } | null;
+  /** Who cancelled it; `null` unless cancelled. */
+  cancelledBy?: CancelledBy | null;
+  /** WorldHair's reason, when it cancelled (a dispute). */
+  cancellationReason?: string | null;
   createdAt: string;
 }
 

@@ -84,8 +84,39 @@ export interface Review {
   reportedByMe: boolean;
 }
 
-export async function listReportedReviews(): Promise<Review[]> {
-  const { data } = await apiClient.get<Review[]>("/admin/reviews/reported");
+/** Why a review was reported — the app's picker (mobile/src/features/reviews/report.ts). */
+export type ReportReason = "offensive" | "fake" | "personal_info" | "spam" | "other";
+
+/** Mirrors server/src/reviews/reviews.service.ts's ReviewReportDto. */
+export interface ReviewReport {
+  reporterId: string;
+  /** A client's full name; a salon by its name. */
+  reporterName: string;
+  reporterRole: "particulier" | "coiffeur" | "admin" | "admin_limited";
+  reason: ReportReason;
+  details: string | null;
+  createdAt: string;
+}
+
+/** Mirrors server/src/reviews/reviews.service.ts's ModeratedReviewDto. */
+export interface ModeratedReview extends Review {
+  salonName: string;
+  authorFullName: string;
+  /** Oldest first. */
+  reports: ReviewReport[];
+  /** The latest report's reason as the review keeps it — the only one for reviews reported before each report was kept. */
+  reportReason: string | null;
+  reportedAt: string | null;
+}
+
+export async function listReportedReviews(): Promise<ModeratedReview[]> {
+  const { data } = await apiClient.get<ModeratedReview[]>("/admin/reviews/reported");
+  return data;
+}
+
+/** The reviews the admins hid — one can be put back. */
+export async function listHiddenReviews(): Promise<ModeratedReview[]> {
+  const { data } = await apiClient.get<ModeratedReview[]>("/admin/reviews/hidden");
   return data;
 }
 
@@ -301,6 +332,86 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
 
 export async function updatePlatformSettings(patch: Partial<PlatformSettings>): Promise<PlatformSettings> {
   const { data } = await apiClient.patch<PlatformSettings>("/admin/settings", patch);
+  return data;
+}
+
+/** The list's status filter: `upcoming` is accepted and not over yet, `done` accepted and over. */
+export type AdminAppointmentStatusFilter = "pending" | "upcoming" | "done" | "refused" | "cancelled";
+
+/** Mirrors server/src/appointments/admin-appointments.service.ts's AdminAppointmentPayment. */
+export interface AdminAppointmentPayment {
+  status: AdminPayment["status"];
+  amount: number;
+  refundedAmount: number;
+  commissionAmount: number;
+  /** What the salon kept of its payout; `null` until paid out. */
+  transferAmount: number | null;
+  transferredAt: string | null;
+}
+
+/** Mirrors server/src/appointments/admin-appointments.service.ts's AdminAppointmentSummary. */
+export interface AdminAppointment {
+  id: string;
+  startsAt: string;
+  durationMin: number;
+  serviceName: string;
+  price: number;
+  status: "pending" | "confirmed" | "done" | "refused" | "cancelled";
+  attendance: "attended" | "no_show" | null;
+  /** `null` unless cancelled — and on bookings cancelled before it was kept. */
+  cancelledBy: "client" | "salon" | "admin" | "system" | null;
+  salon: { id: string; name: string };
+  client: { id: string; name: string };
+  /** `null` for a booking made before payments. */
+  payment: AdminAppointmentPayment | null;
+  createdAt: string;
+}
+
+/** Mirrors server/src/appointments/admin-appointments.service.ts's AdminAppointmentDetail. */
+export interface AdminAppointmentDetail extends AdminAppointment {
+  services: { serviceId: string | null; name: string; price: number; durationMin: number }[];
+  note: string | null;
+  cancellationReason: string | null;
+  client: { id: string; name: string; email: string | null };
+  salon: { id: string; name: string; phone: string; city: string; email: string | null };
+  payment: (AdminAppointmentPayment & { paymentIntentId: string | null }) | null;
+}
+
+export interface AdminAppointmentFilters {
+  status?: AdminAppointmentStatusFilter;
+  /** Words of the salon's name. */
+  salon?: string;
+  /** Words of the client's name. */
+  client?: string;
+  /** Paris days (YYYY-MM-DD), both included. */
+  from?: string;
+  to?: string;
+}
+
+/** One page of the bookings: `query` from lib/appointments.ts's appointmentQuery. */
+export async function listAdminAppointments(
+  query: Record<string, string | number>,
+): Promise<{ items: AdminAppointment[]; total: number }> {
+  const { data } = await apiClient.get<{ items: AdminAppointment[]; total: number }>("/admin/appointments", {
+    params: query,
+  });
+  return data;
+}
+
+export async function getAdminAppointment(id: string): Promise<AdminAppointmentDetail> {
+  const { data } = await apiClient.get<AdminAppointmentDetail>(`/admin/appointments/${id}`);
+  return data;
+}
+
+/** Cancels to settle a dispute: both sides are told `reason`, the client refunded all that's left. */
+export async function cancelAdminAppointment(
+  id: string,
+  reason: string,
+): Promise<{ refunded: number; refundFailed: boolean }> {
+  const { data } = await apiClient.patch<{ refunded: number; refundFailed: boolean }>(
+    `/admin/appointments/${id}/cancel`,
+    { reason },
+  );
   return data;
 }
 

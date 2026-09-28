@@ -136,6 +136,10 @@ interface AppointmentRow {
   attendance: string | null;
   cancellation_notice_minutes: number | null;
   moved_by_salon: boolean;
+  /** Who cancelled: 'client' | 'salon' | 'admin' | 'system'; null unless cancelled. */
+  cancelled_by: string | null;
+  /** An admin's cancellation only: why, as both sides were told. */
+  cancellation_reason: string | null;
   created_at: string;
 }
 
@@ -321,6 +325,25 @@ function defaultAppContent(): [string, AppContentRow][] {
 
 /** PostgREST's default max-rows (Supabase → API settings): no select returns more, whatever range it asks for. */
 const MAX_ROWS = 1000;
+
+/** Like `extensions.unaccent(lower(...))`: accents off, the œ/æ ligatures spelt out, lower case. */
+function folded(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/œ/g, 'oe')
+    .replace(/Œ/g, 'OE')
+    .replace(/æ/g, 'ae')
+    .replace(/Æ/g, 'AE')
+    .toLowerCase();
+}
+
+/** Every word of `query` (split on spaces, like the SQL's regexp_split_to_table) is in `haystack`, accents aside. */
+function hasEveryWord(haystack: string, query: string | null): boolean {
+  const words = folded(query?.trim() ?? '').split(/\s+/).filter(Boolean);
+  const text = folded(haystack);
+  return words.every((word) => text.includes(word));
+}
 
 function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknown][]): boolean {
   return filters.every(([column, value]) => row[column] === value);
@@ -663,6 +686,9 @@ export class FakeSupabaseService {
       if (fn === 'refunds_owed') {
         return this.refundsOwedRpc(params);
       }
+      if (fn === 'admin_appointments') {
+        return this.adminAppointmentsRpc(params);
+      }
       throw new Error(`FakeSupabaseService: unsupported rpc "${fn}"`);
     },
     storage: {
@@ -739,6 +765,15 @@ export class FakeSupabaseService {
     });
   }
 
+  /** Test convenience: a review flagged before each report was kept — its reason on the review itself, no report rows. */
+  seedLegacyReport(reviewId: string, reason: string): void {
+    const existing = this.reviews.get(reviewId);
+    if (!existing) {
+      throw new Error(`FakeSupabaseService: no review "${reviewId}"`);
+    }
+    this.reviews.set(reviewId, { ...existing, status: 'reported', report_reason: reason, reported_at: new Date().toISOString() });
+  }
+
   /** Test convenience: a review's reports, in the order they came. */
   reportsOf(reviewId: string): ReviewReportRow[] {
     return this.reviewReports.filter((report) => report.review_id === reviewId);
@@ -766,6 +801,7 @@ export class FakeSupabaseService {
     startsAt: string;
     status?: string;
     attendance?: string | null;
+    cancelledBy?: string | null;
     createdAt?: string;
   }): string {
     const id = params.id ?? randomUUID();
@@ -783,9 +819,16 @@ export class FakeSupabaseService {
       attendance: params.attendance ?? null,
       cancellation_notice_minutes: null,
       moved_by_salon: false,
+      cancelled_by: params.cancelledBy ?? null,
+      cancellation_reason: null,
       created_at: params.createdAt ?? new Date().toISOString(),
     });
     return id;
+  }
+
+  /** Test convenience: an appointment's row as it stands, for assertions. */
+  appointmentFor(id: string): AppointmentRow | undefined {
+    return this.appointments.get(id);
   }
 
   /**
@@ -1165,6 +1208,80 @@ export class FakeSupabaseService {
     return { data: owed.slice(0, params.p_limit as number), error: null };
   }
 
+  /**
+   * Mirrors admin_appointments() (schema.sql): every booking but a slot held
+   * while its client pays, with its salon, client and payment — filtered,
+   * the latest first, a page at a time.
+   */
+  private adminAppointmentsRpc(params: Record<string, unknown>): QueryResult {
+    const param = <T>(key: string): T | null => (params[key] ?? null) as T | null;
+    const status = param<string>('p_status');
+    const salon = param<string>('p_salon');
+    const client = param<string>('p_client');
+    const from = param<string>('p_from');
+    const to = param<string>('p_to');
+    const now = new Date(param<string>('p_now') ?? Date.now()).getTime();
+    const limit = (params.p_limit as number | undefined) ?? 20;
+    const offset = (params.p_offset as number | undefined) ?? 0;
+
+    const rows = [...this.appointments.values()]
+      .filter((row) => row.status !== 'awaiting_payment')
+      .filter((row) => {
+        if (status == null) return true;
+        const ended = new Date(row.starts_at).getTime() + row.duration_min * 60_000 < now;
+        if (status === 'upcoming') return row.status === 'confirmed' && !ended;
+        if (status === 'done') return row.status === 'confirmed' && ended;
+        return row.status === status;
+      })
+      .filter((row) => from == null || new Date(row.starts_at).getTime() >= new Date(from).getTime())
+      .filter((row) => to == null || new Date(row.starts_at).getTime() < new Date(to).getTime())
+      .map((row) => ({
+        row,
+        profile: this.salonProfiles.get(row.coiffeur_id),
+        application: [...this.coiffeurApplications.values()].find((app) => app.profile_id === row.coiffeur_id),
+        clientProfile: this.profiles.get(row.particulier_id),
+        payment: [...this.payments.values()].find((payment) => payment.appointment_id === row.id),
+      }))
+      .filter(({ profile, application }) =>
+        hasEveryWord([profile?.salon_name, application?.first_name, application?.last_name].join(' '), salon),
+      )
+      .filter(({ clientProfile }) => hasEveryWord([clientProfile?.first_name, clientProfile?.last_name].join(' '), client))
+      // id last: equal starts keep one order, so pages never repeat or skip a booking.
+      .sort(
+        (a, b) =>
+          new Date(b.row.starts_at).getTime() - new Date(a.row.starts_at).getTime() ||
+          (a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0),
+      );
+
+    const page = rows.slice(offset, offset + limit).map(({ row, profile, application, clientProfile, payment }) => ({
+      id: row.id,
+      particulier_id: row.particulier_id,
+      coiffeur_id: row.coiffeur_id,
+      service_name: row.service_name,
+      price: row.price,
+      duration_min: row.duration_min,
+      starts_at: row.starts_at,
+      status: row.status,
+      attendance: row.attendance,
+      cancelled_by: row.cancelled_by,
+      created_at: row.created_at,
+      salon_name: profile?.salon_name ?? null,
+      stylist_first_name: application?.first_name ?? null,
+      stylist_last_name: application?.last_name ?? null,
+      client_first_name: clientProfile?.first_name ?? null,
+      client_last_name: clientProfile?.last_name ?? null,
+      payment_status: payment?.status ?? null,
+      payment_amount: payment?.amount ?? null,
+      refunded_amount: payment?.refunded_amount ?? null,
+      commission_amount: payment?.commission_amount ?? null,
+      transfer_amount: payment?.transfer_amount ?? null,
+      reversed_amount: payment?.reversed_amount ?? null,
+      transferred_at: payment?.transferred_at ?? null,
+      total_count: rows.length,
+    }));
+    return { data: page, error: null };
+  }
+
   /** Mirrors search_salons() (schema.sql): visibility, every filter, the sorts and a stable order for pages. */
   private searchSalonsRpc(params: Record<string, unknown>): QueryResult {
     const param = <T>(key: string): T | null => (params[key] ?? null) as T | null;
@@ -1188,16 +1305,6 @@ export class FakeSupabaseService {
     const offset = (params.p_offset as number | undefined) ?? 0;
     const origin = lat != null && lng != null ? { lat, lng } : null;
 
-    // Like unaccent: accents off, and the œ/æ ligatures spelt out.
-    const normalize = (text: string) =>
-      text
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/œ/g, 'oe')
-        .replace(/Œ/g, 'OE')
-        .replace(/æ/g, 'ae')
-        .replace(/Æ/g, 'AE')
-        .toLowerCase();
     const activeServices = (profileId: string) =>
       [...this.services.values()].filter((service) => service.profile_id === profileId && service.is_active);
     // Each salon's week: its own hours, or the default a new salon starts with.
@@ -1257,9 +1364,8 @@ export class FakeSupabaseService {
       .filter(({ profile }) => specialties == null || specialties.length === 0 || profile.specialties.some((s) => specialties.includes(s)))
       .filter(({ profile }) => city == null || profile.city.toLowerCase() === city.toLowerCase())
       .filter(({ profile }) => practiceZone == null || profile.practice_zone === practiceZone)
-      .filter(({ profile, application }) => {
-        const words = normalize(query?.trim() ?? '').split(/\s+/).filter(Boolean);
-        const haystack = normalize(
+      .filter(({ profile, application }) =>
+        hasEveryWord(
           [
             profile.salon_name,
             application?.first_name,
@@ -1270,9 +1376,9 @@ export class FakeSupabaseService {
             profile.address_line,
             ...activeServices(profile.profile_id).map((service) => service.name),
           ].join(' '),
-        );
-        return words.every((word) => haystack.includes(word));
-      })
+          query,
+        ),
+      )
       .filter(
         ({ profile }) =>
           (priceMin == null && priceMax == null) ||
@@ -1660,6 +1766,8 @@ export class FakeSupabaseService {
               attendance: null,
               cancellation_notice_minutes: null,
               moved_by_salon: false,
+              cancelled_by: null,
+              cancellation_reason: null,
               ...row,
               id,
               created_at: new Date().toISOString(),

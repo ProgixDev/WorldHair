@@ -2,22 +2,14 @@
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { Pagination, pageSlice } from "@/components/admin/Pagination";
-import { paymentState, paymentTotals, refundErrorMessage } from "@/lib/payments";
+import { PAYMENT_STATE_STYLES, paymentState, paymentTotals, refundErrorMessage } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 import { type AdminPayment, listPayments, refundPayment } from "@/services/adminApi";
 import { isAxiosError } from "axios";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 const euros = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
-
-const STATE_STYLES: Record<string, string> = {
-  "En attente de paiement": "bg-white/10 text-[#93a6bc]",
-  Abandonné: "bg-white/10 text-[#93a6bc]",
-  Remboursé: "bg-[#ff7a70]/15 text-[#ff7a70]",
-  "Remboursé en partie": "bg-[#e4b980]/15 text-[#e4b980]",
-  "Versé au salon": "bg-[#1f9d55]/15 text-[#1f9d55]",
-  Payé: "bg-[#2a93d5]/15 text-[#2a93d5]",
-};
 
 /**
  * Every payment made in the app (TODO.md Phase 5): what came in, what went
@@ -128,9 +120,15 @@ export default function AdminPaiementsPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="text-sm font-medium text-[#f2f6fb]">{euros.format(payment.amount)}</span>
-                        <span className={cn("rounded-full px-3 py-1 text-xs font-medium", STATE_STYLES[state])}>
+                        <span className={cn("rounded-full px-3 py-1 text-xs font-medium", PAYMENT_STATE_STYLES[state])}>
                           {state}
                         </span>
+                        <Link
+                          href={`/admin/rendez-vous/${payment.appointmentId}`}
+                          className="text-xs text-[#2a93d5] hover:text-white"
+                        >
+                          Voir le rendez-vous
+                        </Link>
                         {payment.status === "succeeded" && left > 0 ? (
                           <button
                             type="button"

@@ -297,6 +297,7 @@ describe('AppointmentsService', () => {
 
       const [expired] = await service.listForParticulier(PARTICULIER_ID);
       expect(expired).toMatchObject({ id: request.id, status: 'cancelled', payment: { refundedAmount: 40 } });
+      expect(supabase.appointmentFor(request.id)?.cancelled_by).toBe('system');
       expect(heard).toHaveBeenCalledWith(
         expect.objectContaining({ appointmentId: request.id, particulierId: PARTICULIER_ID, refunded: 40 }),
       );
@@ -659,6 +660,8 @@ describe('AppointmentsService', () => {
       await service.cancel(PARTICULIER_ID, created.id);
       const [mine] = await service.listForParticulier(PARTICULIER_ID);
       expect(mine.status).toBe('cancelled');
+      // For the admins' list: who cancelled.
+      expect(supabase.appointmentFor(created.id)).toMatchObject({ cancelled_by: 'client', cancellation_reason: null });
     });
 
     it('lets the coiffeur cancel a confirmed booking', async () => {
@@ -671,6 +674,7 @@ describe('AppointmentsService', () => {
       await service.cancel(COIFFEUR_ID, created.id);
       const [mine] = await service.listForParticulier(PARTICULIER_ID);
       expect(mine.status).toBe('cancelled');
+      expect(supabase.appointmentFor(created.id)?.cancelled_by).toBe('salon');
     });
 
     it('403s a bystander', async () => {

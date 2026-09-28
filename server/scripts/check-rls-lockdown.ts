@@ -75,6 +75,16 @@ async function insertIncompleteRow(
   return error?.code === "42501" ? "blocked" : "allowed";
 }
 
+/** Calls a database function the API alone may call: only "permission denied" (42501) means it's closed. */
+async function callFunction(
+  client: SupabaseClient,
+  fn: string,
+  args: Record<string, unknown>,
+): Promise<"blocked" | "allowed"> {
+  const { error } = await client.rpc(fn, args);
+  return error?.code === "42501" ? "blocked" : "allowed";
+}
+
 async function main(): Promise<void> {
   const particulier = await signIn("demo.particulier@worldhair.app");
   const coiffeur = await signIn("demo.coiffeur.active@worldhair.app");
@@ -157,6 +167,11 @@ async function main(): Promise<void> {
       name: "coiffeur writes platform_settings (the trial length) directly",
       expect: "blocked",
       run: () => insertIncompleteRow(coiffeur.client, "platform_settings", { trial_days: "365" }),
+    },
+    {
+      name: "particulier lists every booking with names and payments (admin_appointments) directly",
+      expect: "blocked",
+      run: () => callFunction(particulier.client, "admin_appointments", { p_limit: 1 }),
     },
   ];
 

@@ -32,6 +32,18 @@ export interface AppointmentCancelledEvent {
   startsAt: string;
 }
 
+/** WorldHair cancelled a booking to settle a dispute (admin → Rendez-vous): both sides are told why. */
+export interface AppointmentCancelledByAdminEvent {
+  appointmentId: string;
+  coiffeurId: string;
+  particulierId: string;
+  serviceName: string;
+  startsAt: string;
+  reason: string;
+  /** Euros given back now: 0 when nothing was paid in the app, or Stripe couldn't refund yet. */
+  refunded: number;
+}
+
 export interface AppointmentRescheduledEvent {
   appointmentId: string;
   coiffeurId: string;
@@ -75,7 +87,7 @@ export interface AppointmentMovedEvent {
 /**
  * Every booking event the other side needs to hear about: new request →
  * coiffeur, confirmation or refusal → particulier, cancellation → whichever
- * side didn't cancel, move → coiffeur. All non-désactivable, so no
+ * side didn't cancel (both, when WorldHair did), move → coiffeur. All non-désactivable, so no
  * preference check here, unlike the reminder job. Lives in notifications/
  * rather than appointments/ so AppointmentsService has zero import
  * dependency on notifications — same separation as the WhaleTime project's
@@ -154,6 +166,24 @@ export class AppointmentNotificationsListener {
               data: { appointmentId: event.appointmentId },
             },
       ),
+    );
+  }
+
+  @OnEvent('appointment.cancelled_by_admin')
+  async onCancelledByAdmin(event: AppointmentCancelledByAdminEvent): Promise<void> {
+    const reason = /[.!?…]$/.test(event.reason) ? event.reason : `${event.reason}.`;
+    const about = `Votre rendez-vous du ${formatParisDateTime(event.startsAt)} pour ${event.serviceName} est annulé par l'équipe WorldHair. Motif : ${reason}`;
+    const notice = { type: 'appointment_cancelled_admin', dedupeKey: event.appointmentId, title: 'Rendez-vous annulé par WorldHair' };
+    await this.safe(() =>
+      this.notifications.notifyUser({
+        ...notice,
+        userId: event.particulierId,
+        body: about + (event.refunded > 0 ? ' Vous êtes intégralement remboursé.' : ''),
+        data: { appointmentId: event.appointmentId },
+      }),
+    );
+    await this.safe(() =>
+      this.notifications.notifyUser({ ...notice, userId: event.coiffeurId, body: about, data: { appointmentId: event.appointmentId } }),
     );
   }
 

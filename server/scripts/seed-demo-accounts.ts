@@ -202,6 +202,9 @@ interface AppointmentSeed {
   status: "pending" | "confirmed" | "refused" | "cancelled";
   note?: string;
   attendance?: "attended" | "no_show";
+  /** Who cancelled it (TODO.md Phase 7), and WorldHair's reason when it did. */
+  cancelledBy?: "client" | "salon" | "admin";
+  cancellationReason?: string;
 }
 
 const APPOINTMENT_SEEDS: AppointmentSeed[] = [
@@ -219,7 +222,17 @@ const APPOINTMENT_SEEDS: AppointmentSeed[] = [
   // Left unmarked, so demo.particulier can still review it by hand.
   { serviceIndexes: [2], dayOffset: -6, hour: 11, minute: 0, status: "confirmed" },
   { serviceIndexes: [3], dayOffset: -13, hour: 16, minute: 0, status: "confirmed", attendance: "attended" },
-  { serviceIndexes: [0], dayOffset: -20, hour: 9, minute: 30, status: "cancelled" },
+  { serviceIndexes: [0], dayOffset: -20, hour: 9, minute: 30, status: "cancelled", cancelledBy: "client" },
+  // A dispute WorldHair settled from the back office (admin → Rendez-vous): both sides read the reason.
+  {
+    serviceIndexes: [1],
+    dayOffset: -9,
+    hour: 15,
+    minute: 0,
+    status: "cancelled",
+    cancelledBy: "admin",
+    cancellationReason: "Le salon était fermé à l'heure du rendez-vous. La cliente est intégralement remboursée.",
+  },
 ];
 
 interface ChartAppointmentSeed {
@@ -318,6 +331,8 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
         client_note: seed.note ?? null,
         attendance: seed.attendance ?? null,
         cancellation_notice_minutes: salonProfile.cancellation_notice_minutes,
+        cancelled_by: seed.cancelledBy ?? null,
+        cancellation_reason: seed.cancellationReason ?? null,
       })
       .select("id")
       .single();
@@ -351,6 +366,7 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
       duration_min: service.duration_min,
       starts_at: at,
       status: seed.status,
+      cancelled_by: seed.status === "cancelled" ? "client" : null,
       client_note: null,
       created_at: at,
     };
@@ -470,6 +486,41 @@ async function seedSalonWorkspace(
   console.log(`  ${userId}: salon workspace seeded (${salon.services.length} services + 1 hidden, offered subscription)`);
 }
 
+/**
+ * One of Studio W's reviews reported by two readers (TODO.md Phase 7), so the
+ * admins' « Avis » queue shows who reported it and why. Reseeded with the
+ * reviews: they're recreated on every run, their reports with them.
+ */
+async function seedDemoReports(particulierId: string, coiffeurId: string, reviewerIds: string[]): Promise<number> {
+  const { data, error } = await supabase
+    .from("reviews")
+    .select("id, particulier_id")
+    .eq("coiffeur_id", coiffeurId)
+    .in("particulier_id", reviewerIds)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const review = (data as { id: string; particulier_id: string }[])[0];
+  const otherReader = reviewerIds.find((id) => id !== review?.particulier_id);
+  if (!review || !otherReader) return 0;
+
+  const reports = [
+    { review_id: review.id, reporter_id: particulierId, reason: "fake", details: "Trop élogieux pour être vrai, sans doute écrit par le salon." },
+    { review_id: review.id, reporter_id: otherReader, reason: "spam", details: null },
+  ];
+  const { error: reportsError } = await supabase
+    .from("review_reports")
+    .upsert(reports, { onConflict: "review_id,reporter_id", ignoreDuplicates: true });
+  if (reportsError) throw reportsError;
+  // As POST /reviews/:id/report leaves it: in the admins' queue, still shown to everyone.
+  const { error: flagError } = await supabase
+    .from("reviews")
+    .update({ status: "reported", report_reason: "spam", reported_at: new Date().toISOString() })
+    .eq("id", review.id);
+  if (flagError) throw flagError;
+  return reports.length;
+}
+
 /** Hearts on Studio W and two catalogue salons, when `seed:catalogue` has run (TODO.md Phase 6). */
 async function seedDemoFavorites(particulierId: string, coiffeurId: string): Promise<number> {
   const { data, error } = await supabase
@@ -502,13 +553,15 @@ async function main(): Promise<void> {
     await seedDemoClosures(coiffeurId);
     // Written by the six client.* accounts, never demo.particulier — its own
     // past appointments stay free to review by hand.
+    const reviewerIds = await upsertReviewers(supabase);
     const reviews = await seedSalonReviews(supabase, {
       coiffeurId,
       salonKey: "studio-w-demo",
       targetRating: 4.9,
-      reviewerIds: await upsertReviewers(supabase),
+      reviewerIds,
     });
     console.log(`  demo salon reviews seeded (${reviews})`);
+    console.log(`  demo review reports seeded (${await seedDemoReports(particulierId, coiffeurId, reviewerIds)})`);
     console.log(`  demo client favorites seeded (${await seedDemoFavorites(particulierId, coiffeurId)})`);
   }
 

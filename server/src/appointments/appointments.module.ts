@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { CoiffeurModule } from '../coiffeur/coiffeur.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SalonModule } from '../salon/salon.module';
+import { AdminAppointmentsController } from './admin-appointments.controller';
+import { AdminAppointmentsService } from './admin-appointments.service';
 import { AdminStatsController } from './admin-stats.controller';
 import { AdminStatsService } from './admin-stats.service';
 import { AppointmentPaymentsJob } from './appointment-payments.job';
@@ -11,8 +13,8 @@ import { NextSlotService } from './next-slot.service';
 
 @Module({
   imports: [CoiffeurModule, SalonModule, PaymentsModule],
-  controllers: [AppointmentsController, AdminStatsController],
-  providers: [AppointmentsService, AdminStatsService, AppointmentPaymentsJob, NextSlotService],
+  controllers: [AppointmentsController, AdminStatsController, AdminAppointmentsController],
+  providers: [AppointmentsService, AdminStatsService, AdminAppointmentsService, AppointmentPaymentsJob, NextSlotService],
   exports: [AppointmentsService, NextSlotService],
 })
 export class AppointmentsModule {}

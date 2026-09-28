@@ -476,15 +476,25 @@ and offers « Réessayer ».
 
 ## Phase 7 — Back-office completion
 
-- [ ] **Rendez-vous page** `/admin/rendez-vous`: list and filters (status,
+- [x] **Rendez-vous page** `/admin/rendez-vous`: list and filters (status,
       salon, dates, client), detail with payment status, admin cancellation
       with a reason that notifies both sides and refunds, for disputes (devis:
       traitement des litiges). API `GET /admin/appointments`, `PATCH
       /admin/appointments/:id/cancel`.
-- [ ] **Reported reviews**: show the reason and the reporter; keep hide and
+      Done: filtered and paged by the database (`admin_appointments()`,
+      accents folded), filters kept in the address; each booking opens in
+      full (both sides' contacts, prestations, payment, Stripe reference).
+      The cancellation refunds all that's left — after the payout, the
+      salon's share comes back first — and both sides get the reason by
+      push and on the booking in the app. « Rembourser le reste » when
+      Stripe was down. Bookings now keep who cancelled them.
+- [x] **Reported reviews**: show the reason and the reporter; keep hide and
       restore.
-- [ ] **Platform settings**: trial days and commission rate in
+      Done: every report with its reason, the reporter (a salon by its
+      name) and their words; a « Masqués » tab to put a hidden review back.
+- [x] **Platform settings**: trial days and commission rate in
       `/admin/parametres`.
+      Done in Phases 4 and 5 (« Période d'essai » and « Commission »).
 
 ## Phase 8 — GDPR, legal texts and production setup
 

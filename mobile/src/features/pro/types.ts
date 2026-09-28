@@ -1,3 +1,4 @@
+import type { CancelledBy } from "../appointments/cancellation";
 import type { ConfirmationMode, Service, SpecialtyId } from "../salons/types";
 
 /** The coiffeur's own presentation page, editable from the pro area. */
@@ -105,6 +106,10 @@ export interface ProAppointment {
   isNewClient: boolean;
   /** Paid in the app (TODO.md Phase 5); `null` for a booking made before payments. */
   payment: ProPayment | null;
+  /** Who cancelled it; `null` unless cancelled. */
+  cancelledBy?: CancelledBy | null;
+  /** WorldHair's reason, when it cancelled (a dispute). */
+  cancellationReason?: string | null;
 }
 
 /** The salon's side of a booking's payment. */

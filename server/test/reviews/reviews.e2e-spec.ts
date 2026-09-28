@@ -129,7 +129,9 @@ describe('reviews (e2e)', () => {
       .get('/admin/reviews/reported')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    expect(reported.body).toHaveLength(1);
+    expect(reported.body).toMatchObject([
+      { id: created.body.id, reports: [{ reporterRole: 'coiffeur', reason: 'fake', details: "Cette cliente n'est jamais venue." }] },
+    ]);
 
     await request(server)
       .patch(`/admin/reviews/${created.body.id}/moderate`)
@@ -142,6 +144,12 @@ describe('reviews (e2e)', () => {
       .set('Authorization', `Bearer ${particulierToken}`)
       .expect(200);
     expect(publicList.body).toHaveLength(0);
+    await request(server)
+      .get('/admin/reviews/hidden')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((res) => expect(res.body).toMatchObject([{ id: created.body.id, status: 'hidden' }]));
+    await request(server).get('/admin/reviews/hidden').set('Authorization', `Bearer ${coiffeurToken}`).expect(403);
   });
 
   it('rejects a malformed rating', async () => {

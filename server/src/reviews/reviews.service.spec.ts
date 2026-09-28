@@ -216,6 +216,50 @@ describe('ReviewsService', () => {
       expect(await service.listForSalon(COIFFEUR_ID)).toEqual([]);
     });
 
+    it('shows the admins the salon, and who reported the review and why — a salon by its name', async () => {
+      supabase.seedValidatedSalon({ profileId: COIFFEUR_ID, firstName: 'Sofia', lastName: 'Benali', salonName: 'Studio Élégance' });
+      supabase.addUser('reader-token', { id: 'another-client', email: 'a@example.com', email_confirmed_at: null }, 'particulier', {
+        firstName: 'Awa',
+        lastName: 'Diallo',
+      });
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
+      await service.report(review.id, SALON, { reason: 'fake', details: "Cette cliente n'est jamais venue." });
+      await service.report(review.id, CLIENT, { reason: 'offensive' });
+
+      const [reported] = await service.listReported();
+
+      expect(reported).toMatchObject({
+        id: review.id,
+        salonName: 'Studio Élégance',
+        authorFullName: 'Camille Durand',
+        reportReason: 'offensive',
+        reports: [
+          { reporterId: COIFFEUR_ID, reporterName: 'Studio Élégance', reporterRole: 'coiffeur', reason: 'fake', details: "Cette cliente n'est jamais venue." },
+          { reporterId: 'another-client', reporterName: 'Awa Diallo', reporterRole: 'particulier', reason: 'offensive', details: null },
+        ],
+      });
+    });
+
+    it('still shows the reason of a review reported before each report was kept', async () => {
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
+      supabase.seedLegacyReport(review.id, 'Langage inapproprié');
+
+      await expect(service.listReported()).resolves.toMatchObject([{ id: review.id, reports: [], reportReason: 'Langage inapproprié' }]);
+    });
+
+    it('lists the hidden reviews too, so the admins can put one back', async () => {
+      const hidden = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
+      await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 5 });
+      await service.report(hidden.id, CLIENT, { reason: 'spam' });
+      await service.moderate(hidden.id, 'hide');
+
+      const list = await service.listHidden();
+      expect(list).toMatchObject([{ id: hidden.id, status: 'hidden', reports: [{ reason: 'spam' }] }]);
+
+      await service.moderate(hidden.id, 'restore');
+      await expect(service.listHidden()).resolves.toEqual([]);
+    });
+
     it('reports a review, then an admin can hide and restore it', async () => {
       const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
       await service.report(review.id, CLIENT, { reason: 'offensive', details: 'Langage inapproprié' });

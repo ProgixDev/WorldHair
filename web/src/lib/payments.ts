@@ -35,8 +35,18 @@ export function refundErrorMessage(status: number | undefined, message: string):
   return "Remboursement impossible. Réessayez.";
 }
 
-/** Where a payment stands, in the admin's words. */
-export function paymentState(payment: AdminPayment): string {
+/** The badge of each `paymentState`. */
+export const PAYMENT_STATE_STYLES: Record<string, string> = {
+  "En attente de paiement": "bg-white/10 text-[#93a6bc]",
+  Abandonné: "bg-white/10 text-[#93a6bc]",
+  Remboursé: "bg-[#ff7a70]/15 text-[#ff7a70]",
+  "Remboursé en partie": "bg-[#e4b980]/15 text-[#e4b980]",
+  "Versé au salon": "bg-[#1f9d55]/15 text-[#1f9d55]",
+  Payé: "bg-[#2a93d5]/15 text-[#2a93d5]",
+};
+
+/** Where a payment stands, in the admin's words — a payment of the list, or a booking's. */
+export function paymentState(payment: Pick<AdminPayment, "status" | "amount" | "refundedAmount" | "transferredAt">): string {
   if (payment.status === "requires_payment") return "En attente de paiement";
   if (payment.status === "canceled") return "Abandonné";
   if (payment.refundedAmount >= payment.amount) return "Remboursé";

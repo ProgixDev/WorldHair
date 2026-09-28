@@ -31,6 +31,9 @@ export type AppointmentStatus = 'awaiting_payment' | 'pending' | 'confirmed' | '
 /** Set by the coiffeur once an accepted appointment has started; `null` until then. */
 export type Attendance = 'attended' | 'no_show';
 
+/** Who cancelled a booking: its client, its salon, WorldHair (a dispute), or the job expiring an unanswered request. */
+export type CancelledBy = 'client' | 'salon' | 'admin' | 'system';
+
 /** One prestation of a booking — a snapshot, so editing or deleting the service later never changes what was booked. */
 export interface AppointmentLine {
   serviceId: string | null;
@@ -61,6 +64,10 @@ export interface ParticulierAppointment {
   movedBySalon: boolean;
   /** What the client paid in the app, and got back; `null` for a booking made before payments. */
   payment: { amount: number; refundedAmount: number } | null;
+  /** Who cancelled it; `null` unless cancelled (and on bookings cancelled before it was kept). */
+  cancelledBy: CancelledBy | null;
+  /** WorldHair's reason, when it cancelled — both sides are also sent it. */
+  cancellationReason: string | null;
   createdAt: string;
 }
 
@@ -97,6 +104,8 @@ export interface CoiffeurAppointment {
   /** First-ever booking from this client at this salon. */
   isNewClient: boolean;
   payment: CoiffeurPayment | null;
+  cancelledBy: CancelledBy | null;
+  cancellationReason: string | null;
 }
 
 export interface CreateAppointmentInput {
@@ -141,6 +150,10 @@ export interface AppointmentRow {
   /** The salon's cancellation notice when the client booked; `null` on bookings made before it was kept. */
   cancellation_notice_minutes?: number | null;
   moved_by_salon?: boolean;
+  /** Set on a cancellation (see CancelledBy); `null` otherwise, and on bookings cancelled before it was kept. */
+  cancelled_by?: CancelledBy | null;
+  /** An admin's cancellation only: why, as both sides were told. */
+  cancellation_reason?: string | null;
   created_at: string;
   /** Embedded by `select(WITH_LINES)`. */
   appointment_services?: AppointmentServiceRow[];
@@ -149,7 +162,7 @@ export interface AppointmentRow {
 }
 
 /** An appointment row with its prestations and its payment embedded — one round-trip, whatever the number of bookings. */
-const WITH_LINES = '*, appointment_services(*), payments(*)';
+export const WITH_LINES = '*, appointment_services(*), payments(*)';
 
 /** How long a slot stays held for a client paying (TODO.md Phase 5). */
 export const PAYMENT_HOLD_MS = 15 * 60_000;
@@ -174,7 +187,10 @@ function endTimeMs(row: { starts_at: string; duration_min: number }): number {
 }
 
 /** Exported for ReviewsService — a review may only be left once its appointment shows as "done". */
-export function derivedStatus(row: AppointmentRow, now: Date = new Date()): AppointmentStatus {
+export function derivedStatus(
+  row: Pick<AppointmentRow, 'status' | 'starts_at' | 'duration_min'>,
+  now: Date = new Date(),
+): AppointmentStatus {
   if (row.status === 'confirmed' && endTimeMs(row) < now.getTime()) return 'done';
   return row.status as AppointmentStatus;
 }
@@ -190,7 +206,7 @@ function holdsSlot(row: AppointmentRow): boolean {
 
 const round2 = (euros: number) => Math.round(euros * 100) / 100;
 
-function paymentOf(row: AppointmentRow): PaymentRow | null {
+export function paymentOf(row: AppointmentRow): PaymentRow | null {
   const embedded = row.payments;
   return Array.isArray(embedded) ? (embedded[0] ?? null) : (embedded ?? null);
 }
@@ -226,7 +242,7 @@ function toLine(service: SalonServiceItem): AppointmentLine {
 }
 
 /** Bookings made before several prestations were possible have no lines: their own snapshot is the one line. */
-function linesOf(row: AppointmentRow): AppointmentLine[] {
+export function linesOf(row: AppointmentRow): AppointmentLine[] {
   const lines = row.appointment_services ?? [];
   if (lines.length === 0) {
     return [{ serviceId: row.service_id, name: row.service_name, price: Number(row.price), durationMin: row.duration_min }];
@@ -441,7 +457,7 @@ export class AppointmentsService {
     for (const row of data as AppointmentRow[]) {
       const { data: expired, error: updateError } = await this.supabase.client
         .from('appointments')
-        .update({ status: 'cancelled' })
+        .update({ status: 'cancelled', cancelled_by: 'system' })
         .eq('id', row.id)
         .eq('status', 'pending')
         .select()
@@ -645,7 +661,12 @@ export class AppointmentsService {
       this.assertBeforeDeadline(row, profile.cancellationNoticeMinutes);
     }
     // Only while still active: the salon may have refused it, or the job expired it, meanwhile.
-    await this.updateWhileStatus(id, ['pending', 'confirmed'], { status: 'cancelled' }, 'This appointment can no longer be modified');
+    await this.updateWhileStatus(
+      id,
+      ['pending', 'confirmed'],
+      { status: 'cancelled', cancelled_by: currentUserId === row.particulier_id ? 'client' : 'salon' },
+      'This appointment can no longer be modified',
+    );
     // In time (the client) or not their fault (the salon): the client gets everything back.
     await this.refundAfter(id, currentUserId === row.particulier_id ? 'client_cancelled' : 'salon_cancelled');
     this.events.emit('appointment.cancelled', {
@@ -656,6 +677,46 @@ export class AppointmentsService {
       serviceName: row.service_name,
       startsAt: row.starts_at,
     });
+  }
+
+  // ─── Admin: disputes ─────────────────────────────────────────────────────
+
+  /**
+   * WorldHair cancels a booking to settle a dispute (TODO.md Phase 7): a
+   * request or an accepted booking, even one already over, with a reason
+   * both sides are told. Everything the client paid and hasn't had back
+   * goes back — once the salon was paid, its share is taken back from its
+   * transfer first. The cancellation stands even when Stripe can't refund
+   * right now: `refundFailed` says so, and the admin refunds from the
+   * booking's page (the job also would, before the payout).
+   */
+  async cancelByAdmin(id: string, reason: string): Promise<{ refunded: number; refundFailed: boolean }> {
+    const row = await this.rowOrThrow(id);
+    const why = reason.trim();
+    await this.updateWhileStatus(
+      id,
+      ['pending', 'confirmed'],
+      { status: 'cancelled', cancelled_by: 'admin', cancellation_reason: why },
+      'Only a request or an accepted booking can be cancelled',
+    );
+    let refunded = 0;
+    let refundFailed = false;
+    try {
+      refunded = await this.payments.refund(id, { reason: 'admin' });
+    } catch (err) {
+      refundFailed = true;
+      this.logger.error(`Refund for appointment ${id}, cancelled by an admin, failed`, err as Error);
+    }
+    this.events.emit('appointment.cancelled_by_admin', {
+      appointmentId: id,
+      particulierId: row.particulier_id,
+      coiffeurId: row.coiffeur_id,
+      serviceName: row.service_name,
+      startsAt: row.starts_at,
+      reason: why,
+      refunded,
+    });
+    return { refunded, refundFailed };
   }
 
   // ─── Slots ───────────────────────────────────────────────────────────────
@@ -1065,6 +1126,8 @@ export class AppointmentsService {
       modifiableUntil: modifiableUntil(row, cancellationNoticeMinutes),
       movedBySalon: row.moved_by_salon ?? false,
       payment: clientPayment(row),
+      cancelledBy: row.cancelled_by ?? null,
+      cancellationReason: row.cancellation_reason ?? null,
       createdAt: row.created_at,
     };
   }
@@ -1089,6 +1152,8 @@ export class AppointmentsService {
       note: row.client_note ?? undefined,
       isNewClient,
       payment: salonPayment(row),
+      cancelledBy: row.cancelled_by ?? null,
+      cancellationReason: row.cancellation_reason ?? null,
     };
   }
 }

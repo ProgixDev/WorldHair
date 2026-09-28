@@ -456,11 +456,20 @@ create table public.appointments (
   -- The salon moved it ("déplacer"): the client never chose that time, so
   -- they may cancel or change it until it starts, whatever the notice.
   moved_by_salon boolean not null default false,
+  -- Who cancelled it: its client, its salon, WorldHair settling a dispute
+  -- (admin → Rendez-vous), or the job expiring a request the salon never
+  -- answered. Null unless cancelled, and on bookings cancelled before it
+  -- was kept.
+  cancelled_by text check (cancelled_by in ('client', 'salon', 'admin', 'system')),
+  -- An admin's cancellation only: why, as both sides were told.
+  cancellation_reason text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index appointments_coiffeur_id_starts_at_idx on public.appointments (coiffeur_id, starts_at);
+-- The admins' list: every salon's bookings, the latest first.
+create index appointments_starts_at_idx on public.appointments (starts_at);
 create index appointments_particulier_id_idx on public.appointments (particulier_id);
 create index appointments_service_id_idx on public.appointments (service_id);
 
@@ -649,6 +658,120 @@ $$;
 
 revoke execute on function public.payouts_due (timestamptz, integer) from public, anon, authenticated;
 revoke execute on function public.refunds_owed (integer) from public, anon, authenticated;
+
+-- The admins' « Rendez-vous » (TODO.md Phase 7): every booking — never a
+-- slot held while its client pays — with its salon, its client and its
+-- payment, filtered here so the pages stay right, the latest first. The
+-- status as the apps read it: 'upcoming' is accepted and not over yet,
+-- 'done' accepted and over (AppointmentsService's derivedStatus). Salon and
+-- client match every word, accents aside, like search_salons()'s p_query.
+-- Mirrored by FakeSupabaseService's adminAppointmentsRpc. The API's service
+-- role only: it reads every client's name.
+create function public.admin_appointments (
+  p_status text default null,
+  p_salon text default null,
+  p_client text default null,
+  -- When it starts: from p_from, before p_to.
+  p_from timestamptz default null,
+  p_to timestamptz default null,
+  p_now timestamptz default now(),
+  p_limit integer default 20,
+  p_offset integer default 0
+)
+returns table (
+  id uuid,
+  particulier_id uuid,
+  coiffeur_id uuid,
+  service_name text,
+  price numeric,
+  duration_min integer,
+  starts_at timestamptz,
+  status text,
+  attendance text,
+  cancelled_by text,
+  created_at timestamptz,
+  salon_name text,
+  stylist_first_name text,
+  stylist_last_name text,
+  client_first_name text,
+  client_last_name text,
+  payment_status text,
+  payment_amount numeric,
+  refunded_amount numeric,
+  commission_amount numeric,
+  transfer_amount numeric,
+  reversed_amount numeric,
+  transferred_at timestamptz,
+  total_count bigint
+)
+language sql
+stable
+set search_path = ''
+as $$
+  select
+    a.id,
+    a.particulier_id,
+    a.coiffeur_id,
+    a.service_name,
+    a.price,
+    a.duration_min,
+    a.starts_at,
+    a.status,
+    a.attendance,
+    a.cancelled_by,
+    a.created_at,
+    cp.salon_name,
+    ca.first_name,
+    ca.last_name,
+    c.first_name,
+    c.last_name,
+    p.status,
+    p.amount,
+    p.refunded_amount,
+    p.commission_amount,
+    p.transfer_amount,
+    p.reversed_amount,
+    p.transferred_at,
+    count(*) over ()
+  from public.appointments a
+  left join public.coiffeur_profiles cp on cp.profile_id = a.coiffeur_id
+  left join public.coiffeur_applications ca on ca.profile_id = a.coiffeur_id
+  left join public.profiles c on c.id = a.particulier_id
+  left join public.payments p on p.appointment_id = a.id
+  where a.status <> 'awaiting_payment'
+    and (
+      p_status is null
+      or (p_status = 'upcoming' and a.status = 'confirmed' and a.starts_at + make_interval(mins => a.duration_min) >= p_now)
+      or (p_status = 'done' and a.status = 'confirmed' and a.starts_at + make_interval(mins => a.duration_min) < p_now)
+      or (p_status in ('pending', 'refused', 'cancelled') and a.status = p_status)
+    )
+    and (p_from is null or a.starts_at >= p_from)
+    and (p_to is null or a.starts_at < p_to)
+    and (
+      p_salon is null
+      or not exists (
+        select 1
+        from regexp_split_to_table(extensions.unaccent(lower(btrim(p_salon))), '\s+') as w (word)
+        where w.word <> ''
+          and position(w.word in extensions.unaccent(lower(concat_ws(' ', cp.salon_name, ca.first_name, ca.last_name)))) = 0
+      )
+    )
+    and (
+      p_client is null
+      or not exists (
+        select 1
+        from regexp_split_to_table(extensions.unaccent(lower(btrim(p_client))), '\s+') as w (word)
+        where w.word <> ''
+          and position(w.word in extensions.unaccent(lower(concat_ws(' ', c.first_name, c.last_name)))) = 0
+      )
+    )
+  -- id last: equal starts keep one order, so pages never repeat or skip a booking.
+  order by a.starts_at desc, a.id
+  limit p_limit offset p_offset
+$$;
+
+revoke execute on function public.admin_appointments (text, text, text, timestamptz, timestamptz, timestamptz, integer, integer)
+  from public, anon, authenticated;
 
 -- "Avis" (TODO.md). One row per appointment (unique), so "Création avis" is
 -- naturally capped at one review per booking. Every change feeds
