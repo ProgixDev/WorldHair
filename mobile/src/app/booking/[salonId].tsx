@@ -477,7 +477,8 @@ export default function BookingFlow() {
                         ? theme.primary.soft
                         : theme.surface.raised,
                     },
-                    elevation(1, theme.shadow),
+                    // No shadow under the see-through selected tint: Android would show it through the card.
+                    selected ? null : elevation(1, theme.shadow),
                   ]}
                 >
                   <View

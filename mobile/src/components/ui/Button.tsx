@@ -107,6 +107,17 @@ export function Button({
           ) : null}
           {loading ? (
             <ActivityIndicator color={labelColor} />
+          ) : !icon ? (
+            // Full width rather than shrink-wrapped: Android can measure a
+            // label a hair too narrow and push its last letter to a new line.
+            <Text
+              style={[
+                typography.button,
+                { color: labelColor, textAlign: "center", alignSelf: "stretch" },
+              ]}
+            >
+              {label}
+            </Text>
           ) : (
             <View
               style={{
