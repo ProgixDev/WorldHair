@@ -1,4 +1,4 @@
-import type { Service, SpecialtyId } from "../salons/types";
+import type { ConfirmationMode, Service, SpecialtyId } from "../salons/types";
 
 /** The coiffeur's own presentation page, editable from the pro area. */
 export interface ProProfile {
@@ -21,6 +21,30 @@ export interface ProProfile {
   /** Set when the coiffeur picks their city via CityField — feeds the particulier map/radius search. Null until then. */
   latitude: number | null;
   longitude: number | null;
+  /** `instant`: a new booking is confirmed straight away; `manual`: the coiffeur accepts or refuses it. */
+  confirmationMode: ConfirmationMode;
+  /** How late before its start a client can still book (0 = up to the start). */
+  bookingNoticeMinutes: number;
+  /** How late before its start a client can still cancel or move an accepted booking (0 = anytime). */
+  cancellationNoticeMinutes: number;
+}
+
+/** A congé or exceptional closure: whole days, or a few hours of one day. */
+export interface TimeOff {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  /** The coiffeur's own note ("Congés", "Formation"); never shown to clients. */
+  label: string;
+}
+
+/** A booking that falls inside a closure just added — listed so the coiffeur moves or cancels it. */
+export interface TimeOffConflict {
+  appointmentId: string;
+  startsAt: string;
+  durationMin: number;
+  serviceName: string;
+  status: string;
 }
 
 /** One weekday of the agenda. Minutes from midnight, `null` when closed. */
@@ -41,16 +65,32 @@ export type ProAppointmentStatus =
   | "cancelled" // cancelled by either side
   | "done";
 
+/** One prestation of a booking — several run back to back as one appointment. */
+export interface ProAppointmentLine {
+  serviceId: string | null;
+  name: string;
+  price: number;
+  durationMin: number;
+}
+
+/** Set by the coiffeur once an accepted appointment has started. */
+export type Attendance = "attended" | "no_show";
+
 export interface ProAppointment {
   id: string;
+  /** First prestation (see `services` for all of them). */
   serviceId: string;
   clientName: string;
   /** Seed for the generated avatar. */
   clientId: string;
   startsAt: string;
+  /** Total of every prestation. */
   durationMin: number;
+  /** Total of every prestation. */
   price: number;
+  services: ProAppointmentLine[];
   status: ProAppointmentStatus;
+  attendance: Attendance | null;
   /** Free-text request from the client. */
   note?: string;
   /** New client vs regular — shown as a tag on the request card. */

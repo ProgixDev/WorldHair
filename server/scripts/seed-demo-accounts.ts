@@ -192,29 +192,33 @@ async function seedAccount(account: DemoAccount): Promise<string> {
  * this on first demo login; deleted once appointments moved server-side).
  */
 interface AppointmentSeed {
-  serviceIndex: number;
+  /** Prestations in booking order — several run back to back as one appointment. */
+  serviceIndexes: number[];
   /** Days from today; negative is in the past. */
   dayOffset: number;
   hour: number;
   minute: number;
   status: "pending" | "confirmed" | "refused" | "cancelled";
   note?: string;
+  attendance?: "attended" | "no_show";
 }
 
 const APPOINTMENT_SEEDS: AppointmentSeed[] = [
   {
-    serviceIndex: 0,
+    serviceIndexes: [0],
     dayOffset: 2,
     hour: 10,
     minute: 0,
     status: "pending",
     note: "Première fois chez vous, on m'a beaucoup recommandé le salon.",
   },
-  { serviceIndex: 1, dayOffset: 5, hour: 14, minute: 30, status: "confirmed" },
+  // Two prestations in one booking: Coloration complète + Soin fondant, 120 min.
+  { serviceIndexes: [2, 3], dayOffset: 5, hour: 14, minute: 30, status: "confirmed" },
   // In the past — the API derives "confirmed and past" as "done" at read time.
-  { serviceIndex: 2, dayOffset: -6, hour: 11, minute: 0, status: "confirmed" },
-  { serviceIndex: 3, dayOffset: -13, hour: 16, minute: 0, status: "confirmed" },
-  { serviceIndex: 0, dayOffset: -20, hour: 9, minute: 30, status: "cancelled" },
+  // Left unmarked, so demo.particulier can still review it by hand.
+  { serviceIndexes: [2], dayOffset: -6, hour: 11, minute: 0, status: "confirmed" },
+  { serviceIndexes: [3], dayOffset: -13, hour: 16, minute: 0, status: "confirmed", attendance: "attended" },
+  { serviceIndexes: [0], dayOffset: -20, hour: 9, minute: 30, status: "cancelled" },
 ];
 
 interface ChartAppointmentSeed {
@@ -286,32 +290,57 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
     .eq("coiffeur_id", coiffeurId);
   if (deleteError) throw deleteError;
 
+  // Like POST /appointments: a booking keeps the salon's cancellation notice as it stood when booked.
+  const { data: salonProfile, error: salonProfileError } = await supabase
+    .from("coiffeur_profiles")
+    .select("cancellation_notice_minutes")
+    .eq("profile_id", coiffeurId)
+    .single();
+  if (salonProfileError) throw salonProfileError;
+
   // Hours are Paris wall-clock times, whatever timezone the seeding machine is in.
   const today = parisParts(new Date());
-  const agendaRows = APPOINTMENT_SEEDS.map((seed) => {
-    const service = services[seed.serviceIndex % services.length];
+  for (const seed of APPOINTMENT_SEEDS) {
+    const picked = seed.serviceIndexes.map((index) => services[index % services.length]);
     const startsAt = parisTime(today.year, today.month, today.day + seed.dayOffset, seed.hour, seed.minute);
-    return {
-      particulier_id: particulierId,
-      coiffeur_id: coiffeurId,
-      service_id: service.id as string,
-      service_name: service.name as string,
-      price: service.price,
-      duration_min: service.duration_min,
-      starts_at: startsAt.toISOString(),
-      status: seed.status,
-      client_note: seed.note ?? null,
-      // A bulk insert's column list is the union of every row's keys — a row
-      // that omits `created_at` gets an explicit NULL, not `now()`'s default,
-      // once any row in the same batch (chartRows, below) sets it.
-      created_at: new Date().toISOString(),
-    };
-  });
+    const { data: appointment, error: appointmentError } = await supabase
+      .from("appointments")
+      .insert({
+        particulier_id: particulierId,
+        coiffeur_id: coiffeurId,
+        service_id: picked[0].id as string,
+        service_name: picked.map((service) => service.name as string).join(" + "),
+        price: picked.reduce((sum, service) => sum + Number(service.price), 0),
+        duration_min: picked.reduce((sum, service) => sum + (service.duration_min as number), 0),
+        starts_at: startsAt.toISOString(),
+        status: seed.status,
+        client_note: seed.note ?? null,
+        attendance: seed.attendance ?? null,
+        cancellation_notice_minutes: salonProfile.cancellation_notice_minutes,
+      })
+      .select("id")
+      .single();
+    if (appointmentError) throw appointmentError;
 
+    const { error: linesError } = await supabase.from("appointment_services").insert(
+      picked.map((service, position) => ({
+        appointment_id: appointment.id,
+        service_id: service.id,
+        service_name: service.name,
+        price: service.price,
+        duration_min: service.duration_min,
+        position,
+      })),
+    );
+    if (linesError) throw linesError;
+  }
+
+  // 06:00 UTC is before any salon opens, so these chart-only rows can never
+  // overlap an agenda booking above (the database refuses overlapping bookings).
   const year = new Date().getUTCFullYear();
   const chartRows = CHART_APPOINTMENT_SEEDS.map((seed) => {
     const service = services[seed.serviceIndex % services.length];
-    const at = new Date(Date.UTC(year, seed.month, seed.day, 11, 0, 0)).toISOString();
+    const at = new Date(Date.UTC(year, seed.month, seed.day, 6, 0, 0)).toISOString();
     return {
       particulier_id: particulierId,
       coiffeur_id: coiffeurId,
@@ -326,14 +355,39 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
     };
   });
 
-  const { error: insertError } = await supabase
-    .from("appointments")
-    .insert([...agendaRows, ...chartRows]);
+  const { error: insertError } = await supabase.from("appointments").insert(chartRows);
   if (insertError) throw insertError;
 
   console.log(
-    `  demo appointments seeded (${agendaRows.length} agenda + ${chartRows.length} chart-only)`,
+    `  demo appointments seeded (${APPOINTMENT_SEEDS.length} agenda + ${chartRows.length} chart-only)`,
   );
+}
+
+/**
+ * Two upcoming closures so "Congés et fermetures" isn't empty: a few hours
+ * one afternoon, and two whole days. Neither overlaps the agenda above.
+ */
+async function seedDemoClosures(coiffeurId: string): Promise<void> {
+  const { error: deleteError } = await supabase.from("coiffeur_time_off").delete().eq("profile_id", coiffeurId);
+  if (deleteError) throw deleteError;
+
+  const today = parisParts(new Date());
+  const { error } = await supabase.from("coiffeur_time_off").insert([
+    {
+      profile_id: coiffeurId,
+      starts_at: parisTime(today.year, today.month, today.day + 8, 14, 0).toISOString(),
+      ends_at: parisTime(today.year, today.month, today.day + 8, 19, 0).toISOString(),
+      label: "Formation",
+    },
+    {
+      profile_id: coiffeurId,
+      starts_at: parisTime(today.year, today.month, today.day + 15).toISOString(),
+      ends_at: parisTime(today.year, today.month, today.day + 17).toISOString(),
+      label: "Congés",
+    },
+  ]);
+  if (error) throw error;
+  console.log("  demo closures seeded (1 afternoon + 2 days)");
 }
 
 async function seedSalonWorkspace(
@@ -409,6 +463,7 @@ async function main(): Promise<void> {
   const coiffeurId = userIds.get("demo.coiffeur.active@worldhair.app");
   if (particulierId && coiffeurId) {
     await seedDemoAppointments(particulierId, coiffeurId);
+    await seedDemoClosures(coiffeurId);
     // Written by the six client.* accounts, never demo.particulier — its own
     // past appointments stay free to review by hand.
     const reviews = await seedSalonReviews(supabase, {

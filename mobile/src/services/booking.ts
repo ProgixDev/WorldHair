@@ -9,17 +9,38 @@ import { apiClient } from "../lib/apiClient";
 
 export type AppointmentStatus = "pending" | "confirmed" | "refused" | "cancelled" | "done";
 
+/** Set by the salon once the appointment has started. */
+export type Attendance = "attended" | "no_show";
+
+/** One prestation of a booking — several run back to back as one appointment. */
+export interface AppointmentLine {
+  serviceId: string | null;
+  name: string;
+  price: number;
+  durationMin: number;
+}
+
 export interface Appointment {
   id: string;
   salonId: string;
   salonName: string;
+  /** First prestation (see `services` for all of them). */
   serviceId: string | null;
+  /** Every prestation's name, joined: "Couleur + Coupe & brushing". */
   serviceName: string;
   /** ISO start. */
   startsAt: string;
+  /** Total of every prestation. */
   durationMin: number;
+  /** Total of every prestation. */
   price: number;
+  services: AppointmentLine[];
   status: AppointmentStatus;
+  attendance: Attendance | null;
+  /** Until when it can still be cancelled or moved: the salon's deadline, never later than the start. */
+  modifiableUntil: string | null;
+  /** The salon moved it: it stays changeable until it starts, whatever the salon's deadline. */
+  movedBySalon: boolean;
   createdAt: string;
 }
 
@@ -37,6 +58,7 @@ export type BookingErrorCode =
   | "UNKNOWN_SERVICE"
   | "SLOT_TAKEN"
   | "ALREADY_INACTIVE"
+  | "TOO_LATE"
   | "NOT_FOUND";
 
 export class BookingError extends Error {
@@ -82,6 +104,33 @@ function mapBookingError(err: unknown): never {
           "Ce rendez-vous a déjà été annulé, refusé ou modifié.",
         );
       }
+      if (message.includes("already taken place")) {
+        throw new BookingError("ALREADY_INACTIVE", "Ce rendez-vous est déjà passé.");
+      }
+      if (message.includes("Too late")) {
+        throw new BookingError(
+          "TOO_LATE",
+          "Il est trop tard pour annuler ou modifier ce rendez-vous : le délai fixé par le salon est passé.",
+        );
+      }
+      if (message.includes("more notice")) {
+        throw new BookingError(
+          "SLOT_TAKEN",
+          "Ce créneau est trop proche : ce salon demande de réserver un peu plus tôt.",
+        );
+      }
+      if (message.includes("closed at that time")) {
+        throw new BookingError("SLOT_TAKEN", "Le salon est fermé à ce moment-là.");
+      }
+      if (message.includes("already have an appointment")) {
+        throw new BookingError(
+          "SLOT_TAKEN",
+          "Vous avez déjà un rendez-vous à ce moment-là.",
+        );
+      }
+      if (message.includes("at least one service")) {
+        throw new BookingError("UNKNOWN_SERVICE", "Choisissez au moins une prestation.");
+      }
       if (message.includes("opening hours")) {
         throw new BookingError(
           "SLOT_TAKEN",
@@ -121,16 +170,17 @@ export async function listAppointments(): Promise<Appointment[]> {
   return data;
 }
 
+/** Books one or several prestations back to back, starting at `startsAt`. */
 export async function bookAppointment(params: {
   salonId: string;
-  serviceId: string;
+  serviceIds: string[];
   startsAt: Date;
   note?: string;
 }): Promise<Appointment> {
   try {
     const { data } = await apiClient.post<Appointment>("/appointments", {
       coiffeurId: params.salonId,
-      serviceId: params.serviceId,
+      serviceIds: params.serviceIds,
       startsAt: params.startsAt.toISOString(),
       note: params.note,
     });
@@ -166,6 +216,15 @@ export async function rescheduleAppointment(id: string, startsAt: Date): Promise
 /** A still-active request/booking — the server already resolves "confirmed and past" to "done" (see AppointmentsService), so no date math is needed here. */
 export function isUpcoming(appointment: Appointment): boolean {
   return appointment.status === "pending" || appointment.status === "confirmed";
+}
+
+/** Still active and before the salon's cancellation deadline — "Modifier" and "Annuler" are offered. */
+export function canStillChange(appointment: Appointment, now = new Date()): boolean {
+  if (!isUpcoming(appointment)) return false;
+  return (
+    appointment.modifiableUntil === null ||
+    now.getTime() <= new Date(appointment.modifiableUntil).getTime()
+  );
 }
 
 // ─── Payment ─────────────────────────────────────────────────────────────────

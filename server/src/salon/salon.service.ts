@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, InternalServerErrorException, NotFound
 import { SupabaseService } from '../database/supabase.service';
 import { AvailabilityDayDto } from './dto/availability-day.dto';
 import { AddGalleryPhotoDto } from './dto/gallery-photo.dto';
-import { Specialty } from './dto/update-salon-profile.dto';
+import { ConfirmationMode, Specialty } from './dto/update-salon-profile.dto';
 
 /** Horizontal strip on the salon page — a handful of curated shots, not an unbounded album. */
 const GALLERY_MAX_PHOTOS = 12;
@@ -21,8 +21,15 @@ export interface SalonProfile {
   coverUrl: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** `instant`: a new booking is confirmed straight away; `manual`: the coiffeur accepts or refuses it. */
+  confirmationMode: ConfirmationMode;
+  /** How late before its start a client can still book (0 = up to the start). */
+  bookingNoticeMinutes: number;
+  /** How late before its start a client can still cancel or move an accepted booking (0 = anytime). */
+  cancellationNoticeMinutes: number;
 }
 
+/** Same defaults as schema.sql's coiffeur_profiles columns. */
 const EMPTY_PROFILE: SalonProfile = {
   salonName: '',
   tagline: '',
@@ -36,7 +43,39 @@ const EMPTY_PROFILE: SalonProfile = {
   coverUrl: null,
   latitude: null,
   longitude: null,
+  confirmationMode: 'manual',
+  bookingNoticeMinutes: 60,
+  cancellationNoticeMinutes: 1440,
 };
+
+/** A congé or exceptional closure: whole days, or a few hours of one day. */
+export interface TimeOff {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  label: string;
+}
+
+/** An active booking that falls inside a closure the coiffeur just added — listed so they can move or cancel it. */
+export interface TimeOffConflict {
+  appointmentId: string;
+  startsAt: string;
+  durationMin: number;
+  serviceName: string;
+  status: string;
+}
+
+interface TimeOffRow {
+  id: string;
+  profile_id: string;
+  starts_at: string;
+  ends_at: string;
+  label: string;
+}
+
+function mapTimeOff(row: TimeOffRow): TimeOff {
+  return { id: row.id, startsAt: row.starts_at, endsAt: row.ends_at, label: row.label };
+}
 
 export interface AvailabilityDay {
   weekday: number;
@@ -89,6 +128,9 @@ interface ProfileRow {
   cover_url: string | null;
   latitude: number | null;
   longitude: number | null;
+  confirmation_mode: string;
+  booking_notice_minutes: number;
+  cancellation_notice_minutes: number;
 }
 
 interface AvailabilityRow {
@@ -141,6 +183,9 @@ function mapProfile(row: ProfileRow): SalonProfile {
     coverUrl: row.cover_url,
     latitude: row.latitude,
     longitude: row.longitude,
+    confirmationMode: row.confirmation_mode as ConfirmationMode,
+    bookingNoticeMinutes: row.booking_notice_minutes,
+    cancellationNoticeMinutes: row.cancellation_notice_minutes,
   };
 }
 
@@ -248,6 +293,9 @@ export class SalonService {
     if (patch.coverUrl !== undefined) row.cover_url = patch.coverUrl;
     if (patch.latitude !== undefined) row.latitude = patch.latitude;
     if (patch.longitude !== undefined) row.longitude = patch.longitude;
+    if (patch.confirmationMode !== undefined) row.confirmation_mode = patch.confirmationMode;
+    if (patch.bookingNoticeMinutes !== undefined) row.booking_notice_minutes = patch.bookingNoticeMinutes;
+    if (patch.cancellationNoticeMinutes !== undefined) row.cancellation_notice_minutes = patch.cancellationNoticeMinutes;
 
     const { data, error } = await this.supabase.client
       .from('coiffeur_profiles')
@@ -422,5 +470,98 @@ export class SalonService {
       throw new NotFoundException('Photo not found');
     }
     return this.listGalleryPhotos(userId);
+  }
+
+  // ─── Closures (congés, fermetures exceptionnelles) ───────────────────────
+
+  /** Closures not over yet at `from` (now by default), soonest first. Also read by booking and the public salon page. */
+  async listTimeOff(userId: string, from: Date = new Date()): Promise<TimeOff[]> {
+    const { data, error } = await this.supabase.client
+      .from('coiffeur_time_off')
+      .select()
+      .eq('profile_id', userId)
+      .gte('ends_at', from.toISOString())
+      .order('starts_at', { ascending: true });
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return (data as TimeOffRow[])
+      .map(mapTimeOff)
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  }
+
+  /**
+   * Adds a closure. Bookings already inside it are NOT cancelled: they come
+   * back as `conflicts` so the coiffeur decides, booking by booking, whether
+   * to move or cancel them (and the client is notified either way).
+   */
+  async addTimeOff(
+    userId: string,
+    input: { startsAt: string; endsAt: string; label?: string },
+  ): Promise<{ timeOff: TimeOff; conflicts: TimeOffConflict[] }> {
+    const startsMs = new Date(input.startsAt).getTime();
+    const endsMs = new Date(input.endsAt).getTime();
+    if (Number.isNaN(startsMs) || Number.isNaN(endsMs) || endsMs <= startsMs) {
+      throw new BadRequestException('A closure must end after it starts');
+    }
+    if (endsMs <= Date.now()) {
+      throw new BadRequestException('This closure is already over');
+    }
+
+    const { data, error } = await this.supabase.client
+      .from('coiffeur_time_off')
+      .insert({
+        profile_id: userId,
+        starts_at: new Date(startsMs).toISOString(),
+        ends_at: new Date(endsMs).toISOString(),
+        label: input.label?.trim() ?? '',
+      })
+      .select()
+      .single();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    const { data: bookings, error: bookingsError } = await this.supabase.client
+      .from('appointments')
+      .select()
+      .eq('coiffeur_id', userId)
+      .in('status', ['pending', 'confirmed']);
+    if (bookingsError) {
+      throw new InternalServerErrorException(bookingsError.message);
+    }
+    const conflicts = (
+      bookings as { id: string; starts_at: string; duration_min: number; service_name: string; status: string }[]
+    )
+      .filter((booking) => {
+        const bookingStart = new Date(booking.starts_at).getTime();
+        const bookingEnd = bookingStart + booking.duration_min * 60_000;
+        // One already over needs nothing from the coiffeur.
+        return bookingStart < endsMs && startsMs < bookingEnd && bookingEnd > Date.now();
+      })
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+      .map((booking) => ({
+        appointmentId: booking.id,
+        startsAt: booking.starts_at,
+        durationMin: booking.duration_min,
+        serviceName: booking.service_name,
+        status: booking.status,
+      }));
+
+    return { timeOff: mapTimeOff(data as TimeOffRow), conflicts };
+  }
+
+  async deleteTimeOff(userId: string, id: string): Promise<void> {
+    const { error, count } = await this.supabase.client
+      .from('coiffeur_time_off')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+      .eq('profile_id', userId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!count) {
+      throw new NotFoundException('Closure not found');
+    }
   }
 }

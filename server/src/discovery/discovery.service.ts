@@ -2,7 +2,7 @@ import { Injectable, InternalServerErrorException, NotFoundException } from '@ne
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { isAccountActive } from '../common/utils/account-status';
 import { SupabaseService } from '../database/supabase.service';
-import { Specialty } from '../salon/dto/update-salon-profile.dto';
+import { ConfirmationMode, Specialty } from '../salon/dto/update-salon-profile.dto';
 import { AvailabilityDay, SalonService, SalonServiceItem } from '../salon/salon.service';
 
 export interface SalonSummary {
@@ -30,6 +30,12 @@ export interface SalonDetail extends SalonSummary {
   services: SalonServiceItem[];
   availability: AvailabilityDay[];
   gallery: string[];
+  /** The salon's booking rules, shown to the client before and while booking. */
+  confirmationMode: ConfirmationMode;
+  bookingNoticeMinutes: number;
+  cancellationNoticeMinutes: number;
+  /** Upcoming closures (just the times — their labels are the coiffeur's own notes). */
+  closures: { startsAt: string; endsAt: string }[];
 }
 
 export interface SalonSearchResult {
@@ -86,6 +92,9 @@ interface ProfileRow {
   rating: number | string;
   review_count: number;
   badges: string[];
+  confirmation_mode: string;
+  booking_notice_minutes: number;
+  cancellation_notice_minutes: number;
 }
 
 function mapSearchRow(row: SearchSalonRow): SalonSummary {
@@ -173,10 +182,11 @@ export class DiscoveryService {
     }
     const row = data as ProfileRow;
 
-    const [services, availability, gallery] = await Promise.all([
+    const [services, availability, gallery, closures] = await Promise.all([
       this.salon.listServices(profileId),
       this.salon.getAvailability(profileId),
       this.salon.listGalleryPhotos(profileId),
+      this.salon.listTimeOff(profileId),
     ]);
 
     return {
@@ -201,6 +211,10 @@ export class DiscoveryService {
       services,
       availability,
       gallery: gallery.map((photo) => photo.url),
+      confirmationMode: (row.confirmation_mode ?? 'manual') as ConfirmationMode,
+      bookingNoticeMinutes: row.booking_notice_minutes ?? 0,
+      cancellationNoticeMinutes: row.cancellation_notice_minutes ?? 0,
+      closures: closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
     };
   }
 }

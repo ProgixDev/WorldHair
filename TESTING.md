@@ -17,6 +17,7 @@ Review authors: 6 clients, `client.<name>@worldhair.app` / `Demo1234!` — they 
 
 Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:catalogue`
 ⚠️ `seed:demo` resets the 4 demo accounts to the states above and replaces every appointment between demo.particulier and demo.coiffeur.active.
+After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2 10:00, a 2-prestation booking at J+5 14:30 (Coloration complète + Soin fondant), two past bookings (J-6 unmarked, J-13 marked « Honoré »), a « Formation » closure on J+8 from 14:00 to 19:00 and « Congés » on J+15 and J+16 (J = the day you ran the seed).
 
 ---
 
@@ -58,6 +59,8 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Services, opening hours, map, reviews all render
 - [x] Your own review is signed "Vous"
 - [ ] A salon with no review shows « Nouveau » in the header and "Pas encore d'avis…" instead of the rating summary
+- [ ] "Réservation" block lists the salon's 3 rules — for Studio W with default settings: "Réservable jusqu'à 1 h avant", "Annulation ou modification jusqu'à 1 jour avant", "Le salon confirme chaque demande"
+- [ ] Change the rules in `/pro/salon` → the block follows ("Réservable jusqu'au dernier moment", "Confirmation immédiate"…)
 
 ### Booking (4 steps)
 - [x] Service → Slot → Payment → Confirmation, all 4 steps reachable
@@ -65,8 +68,15 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [ ] No random busy slots: on an empty day every slot is free
 - [ ] Every start that would overlap an existing booking is struck through (not only its start time), and so is the lunch break
 - [ ] First slot of the day (e.g. 9:00) can be booked — the server reads hours on a Paris clock
+- [ ] Several prestations: tick 2 → the bar shows the summed price and duration; the grid only offers starts where the whole block fits before closing / the break / the next booking
+- [ ] The 2-prestation booking is one block of the summed duration, at the summed price, in "Mes rendez-vous" and in the coiffeur agenda ("Coloration complète + Soin fondant")
+- [ ] Booking notice: with 1 h, no slot starting less than 1 h from now is offered (today's first free slot is at least 1 h away)
+- [ ] Closures: the « Congés » days (J+15, J+16) are greyed and read « Fermé » in the day strip; on J+8 no slot overlaps 14:00–19:00 (« Formation »)
+- [ ] Two phones on the same slot: the second one gets "Ce créneau n'est plus disponible. Choisissez un autre horaire." and the grid reloads with that slot struck through
+- [ ] Recap step shows the salon's cancellation rule and confirmation mode
 - [x] Payment step: simulated (⚠️ 900ms, always succeeds), card `•••• 4242`
 - [x] Ends on "Demande envoyée." — status is *pending*, not confirmed
+- [ ] Salon set to « Confirmées d'office »: ends on "C'est réservé." + "Le salon a confirmé votre rendez-vous.", the booking is confirmed straight away (no request in the coiffeur's red list)
 - [x] Ad pop-up appears when `booking_confirmation` is enabled
 
 ### `/appointments`
@@ -74,6 +84,13 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] Upcoming tab: "Annuler" cancels
 - [x] History tab: "Laisser un avis" → then shows "Avis envoyé"
 - [x] Cancelled/refused appointments greyed out, no action buttons
+- [ ] Upcoming card reads "Modifiable ou annulable jusqu'à …" (the salon's cancellation deadline)
+- [ ] Past that deadline, "Modifier" and "Annuler" are gone and the card reads "Le délai fixé par le salon pour modifier ou annuler est passé." (accepted bookings only — with 1 jour, the J+5 14:30 booking after J+4 14:30)
+- [ ] "Modifier" offers no slot inside the booking notice either
+- [ ] A booking the salon marked « Absent » reads "Le salon a signalé une absence à ce rendez-vous." and offers no review
+- [ ] A booking the salon moved reads "Horaire déplacé par le salon." and stays "Modifier" / "Annuler" until it starts, even inside the salon's deadline; once the client picks a new time themselves, the deadline applies again
+- [ ] Lengthening the cancellation deadline in `/pro/salon` doesn't move an accepted booking's "Modifiable ou annulable jusqu'à …" time (only bookings made afterwards follow the new setting)
+- [ ] A request the salon hasn't accepted yet can be withdrawn until it starts, whatever the deadline
 - [ ] Push when the salon refuses the request or cancels the appointment (needs push working, see "Mocked")
 
 ### Review
@@ -81,6 +98,7 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [x] 7 tag chips, comment field caps at 500 chars
 - [x] Server rejects a review on an unfinished appointment
 - [x] Server rejects a second review on the same appointment
+- [ ] Server rejects a review on an appointment marked « Absent »
 
 ### `/profile`
 - [x] Counters, next appointment, visited salons all populate
@@ -110,6 +128,7 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 ### `/pro/dashboard`
 - [x] 4 KPIs populate
 - [x] 8-week bar chart renders
+- [ ] Caption shows "Absences : X %" once a past booking is marked; top services count each prestation of a 2-prestation booking on its own
 - [x] Pending requests + today's appointments show
 - [x] Subscription strip shows correct status
 
@@ -120,11 +139,22 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [ ] A request whose time has already passed can no longer be accepted (server says it expired)
 - [ ] A past appointment can't be cancelled (so the client can still review it)
 - [ ] Push when the client moves an appointment, with the new date (needs push working, see "Mocked")
+- [ ] Tap a booking → sheet with the client, every prestation, price and duration
+- [ ] Confirmed upcoming booking → "Déplacer" → slot picker (the salon's own notice doesn't apply) → "Déplacer ici" → the block moves; the client sees the new time (push once push works)
+- [ ] A pending request has no "Déplacer", only "Refuser" / "Accepter"
+- [ ] "LE CLIENT EST-IL VENU ?" lists past bookings not yet marked (after seed: J-6); « Honoré » / « Absent » removes it from the list; the choice can be changed from the booking's sheet, which updates at once
+- [ ] « Absent » on a booking the client already reviewed → "Le client a déjà laissé un avis sur ce rendez-vous : il ne peut plus être marqué absent."
+- [ ] An appointment that has started can no longer be moved (no "Déplacer")
+- [ ] "Déplacer ici" on a time someone took meanwhile → "Ce créneau est déjà pris." and the grid reloads with that time struck through
+- [ ] « Fermetures » → add by whole days (from / to) or by hours on one day, with an optional label → listed, drawn in the day column; a whole-day closure shows "Fermé ce jour-là · <label>. Aucune réservation possible."
+- [ ] Adding a closure over existing bookings warns "N rendez-vous pendant cette fermeture" and lists them — they stay booked, nothing is cancelled
+- [ ] Deleting a closure makes its slots bookable again on the client side
 
 ### `/pro/salon`
 - [x] Public page fields editable and save
 - [x] Service CRUD (create / edit / delete)
 - [x] Price change here reflects immediately on the client side
+- [ ] "RÉSERVATION": « Je valide » / « Confirmées d'office », then both deadlines with the presets (À tout moment, 30 min, 1 h, 2 h, 12 h, 1 jour, 2 jours) → saved, and shown on the client's salon page
 
 ### `/pro/reviews`
 - [x] Reply to a review
@@ -197,6 +227,8 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 - [ ] **Stylist**: sign up → 4 steps → pending → admin approves → shop completion → dashboard → create a service → salon appears in `/search`
 - [ ] **Rejection**: admin rejects with a reason → mobile shows that reason → "Modifier mon dossier" → resubmit
 - [ ] **Appointment**: client books → stylist accepts → client reschedules → stylist sees the block move → client cancels
+- [ ] **Booking rules**: salon sets 1 h / 1 jour → client can't book a slot 45 min away → books tomorrow 10:00 → salon accepts → after 10:00 today "Modifier" / "Annuler" are gone
+- [ ] **Closure**: stylist adds a closure over a booked slot → warned, booking kept → the client can't book anything else inside it
 - [ ] **Review**: past appointment → review → stylist replies → report it (API) → admin hides it → gone from the public page
 - [ ] **Subscription**: waits for Stripe (TODO.md Phase 4) — the in-app simulators are gone; until then J-7 / expired can only be forced in the dev database
 
@@ -216,10 +248,10 @@ Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:c
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 210 ✅ (runs in UTC, like Render) |
-| `cd server && bun run test:e2e` | 52 ✅ |
+| `cd server && bun run test` | 266 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 56 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
-| `cd mobile && bun run test` | 49 ✅ |
+| `cd mobile && bun run test` | 69 ✅ |
 | `cd web && bun run test` | 11 ✅ |
 
 `typecheck` + `lint` green on all three packages.

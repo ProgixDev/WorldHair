@@ -17,6 +17,7 @@ import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { CityField } from "../../components/ui/CityField";
 import { PhoneField } from "../../components/ui/PhoneField";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Group, RowShell } from "../../components/ui/SettingsList";
 import { TextField } from "../../components/ui/TextField";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -27,9 +28,11 @@ import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { GalleryPhoto, ProProfile, ProService } from "../../features/pro/types";
 import { coverFor, coverPlaceholder } from "../../features/salons/images";
+import { formatNotice } from "../../features/salons/rules";
 import {
   SPECIALTIES,
   specialtyLabel,
+  type ConfirmationMode,
   type SpecialtyId,
 } from "../../features/salons/types";
 import { newServiceId } from "../../services/pro";
@@ -395,6 +398,45 @@ export default function ProSalonPage() {
             </View>
           </View>
 
+          {/* ── Booking rules ──────────────────────────────────────────── */}
+          <View style={{ gap: spacing.lg }}>
+            <Text style={[typography.overline, { color: theme.foreground.gray }]}>
+              RÉSERVATION
+            </Text>
+
+            <SegmentedControl<ConfirmationMode>
+              label="Nouvelles réservations"
+              options={[
+                {
+                  value: "manual",
+                  label: "Je valide",
+                  hint: "Chaque demande attend votre accord.",
+                },
+                {
+                  value: "instant",
+                  label: "Confirmées d'office",
+                  hint: "Le client est confirmé tout de suite.",
+                },
+              ]}
+              value={draft.confirmationMode}
+              onChange={(confirmationMode) => patch({ confirmationMode })}
+            />
+
+            <NoticePicker
+              label="Réservation possible jusqu'à"
+              value={draft.bookingNoticeMinutes}
+              onChange={(bookingNoticeMinutes) => patch({ bookingNoticeMinutes })}
+              anytimeLabel="Dernière minute"
+            />
+
+            <NoticePicker
+              label="Annulation ou modification par le client jusqu'à"
+              value={draft.cancellationNoticeMinutes}
+              onChange={(cancellationNoticeMinutes) => patch({ cancellationNoticeMinutes })}
+              anytimeLabel="À tout moment"
+            />
+          </View>
+
           {/* ── Gallery ("Réalisations") ───────────────────────────────── */}
           <View style={{ gap: spacing.md }}>
             <View
@@ -725,6 +767,40 @@ export default function ProSalonPage() {
           setEditing(null);
         }}
       />
+    </View>
+  );
+}
+
+/** The presets a salon picks its deadlines from, in minutes before the appointment. */
+const NOTICE_PRESETS = [0, 30, 60, 120, 720, 1440, 2880];
+
+function NoticePicker({
+  label,
+  value,
+  onChange,
+  anytimeLabel,
+}: {
+  label: string;
+  value: number;
+  onChange: (minutes: number) => void;
+  /** What "no deadline" reads as for this rule. */
+  anytimeLabel: string;
+}) {
+  const { theme } = useTheme();
+  const presets = NOTICE_PRESETS.includes(value) ? NOTICE_PRESETS : [...NOTICE_PRESETS, value].sort((a, b) => a - b);
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <Text style={[typography.label, { color: theme.foreground.gray }]}>{label}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+        {presets.map((minutes) => (
+          <Chip
+            key={minutes}
+            label={minutes === 0 ? anytimeLabel : formatNotice(minutes) + " avant"}
+            selected={minutes === value}
+            onPress={() => onChange(minutes)}
+          />
+        ))}
+      </View>
     </View>
   );
 }

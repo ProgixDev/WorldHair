@@ -1,12 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../../database/supabase.service';
+import { MailService } from '../../mail/mail.service';
 import { NotificationsService } from '../notifications.service';
+import { PushTokensService } from '../push-tokens.service';
 
 interface AppointmentRow {
   id: string;
   particulier_id: string;
   service_name: string;
+  starts_at: string;
 }
 
 /**
@@ -24,6 +27,8 @@ export class AppointmentRemindersJob {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly notifications: NotificationsService,
+    private readonly pushTokens: PushTokensService,
+    private readonly mail: MailService,
   ) {}
 
   @Cron(CronExpression.EVERY_10_MINUTES)
@@ -34,6 +39,7 @@ export class AppointmentRemindersJob {
       toMinutes: 25 * 60,
       whenLabel: 'demain',
       isEnabled: (prefs) => prefs.reminderDayBefore,
+      emailWithoutPush: true,
     });
     await this.remind({
       type: 'appointment_reminder_h1',
@@ -41,6 +47,7 @@ export class AppointmentRemindersJob {
       toMinutes: 75,
       whenLabel: "dans moins d'une heure",
       isEnabled: (prefs) => prefs.reminderHourBefore,
+      emailWithoutPush: false,
     });
   }
 
@@ -50,6 +57,8 @@ export class AppointmentRemindersJob {
     toMinutes: number;
     whenLabel: string;
     isEnabled: (prefs: { reminderDayBefore: boolean; reminderHourBefore: boolean }) => boolean;
+    /** The J-1 reminder also goes by email to a client no push can reach — H-1 would arrive too late to matter. */
+    emailWithoutPush: boolean;
   }): Promise<void> {
     const now = Date.now();
     const from = new Date(now + params.fromMinutes * 60000).toISOString();
@@ -72,17 +81,34 @@ export class AppointmentRemindersJob {
         if (!params.isEnabled(prefs)) {
           continue;
         }
-        await this.notifications.notifyUser({
+        const firstTime = await this.notifications.notifyUser({
           userId: row.particulier_id,
           type: params.type,
-          dedupeKey: row.id,
+          // Per start time: a booking moved after its reminder gets one for its new time.
+          dedupeKey: `${row.id}:${row.starts_at}`,
           title: 'Rappel de rendez-vous',
           body: `Votre rendez-vous pour ${row.service_name} est ${params.whenLabel}.`,
           data: { appointmentId: row.id },
         });
+        // notifyUser's dedupe log also guards the email: it's false on every later run.
+        if (params.emailWithoutPush && firstTime) {
+          await this.emailIfNoPush(row);
+        }
       } catch (err) {
         this.logger.warn(`Reminder failed for appointment ${row.id}`, err as Error);
       }
     }
+  }
+
+  private async emailIfNoPush(row: AppointmentRow): Promise<void> {
+    const tokens = await this.pushTokens.listActiveForUser(row.particulier_id);
+    if (tokens.length > 0) return;
+
+    const {
+      data: { user },
+      error,
+    } = await this.supabase.client.auth.admin.getUserById(row.particulier_id);
+    if (error || !user?.email) return;
+    await this.mail.sendAppointmentReminderEmail(user.email, row.service_name, row.starts_at);
   }
 }

@@ -283,6 +283,14 @@ create table public.coiffeur_profiles (
   rating numeric(2, 1) not null default 0 check (rating >= 0 and rating <= 5),
   review_count integer not null default 0 check (review_count >= 0),
   badges text[] not null default '{}',
+  -- Booking rules the coiffeur sets in "Mon salon" (UpdateSalonProfileDto):
+  -- `instant` confirms a new booking straight away, `manual` waits for the
+  -- coiffeur to accept it. The two notices say how late before its start a
+  -- client can still book, and still cancel or move an accepted booking
+  -- (0 = no limit). src/appointments/booking-rules.ts applies them.
+  confirmation_mode text not null default 'manual' check (confirmation_mode in ('manual', 'instant')),
+  booking_notice_minutes integer not null default 60 check (booking_notice_minutes between 0 and 20160),
+  cancellation_notice_minutes integer not null default 1440 check (cancellation_notice_minutes between 0 and 20160),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint coiffeur_profiles_specialties_valid check (
@@ -480,6 +488,28 @@ create policy "Anyone can view gallery photos"
 
 create index coiffeur_gallery_photos_profile_id_idx on public.coiffeur_gallery_photos (profile_id);
 
+-- Congés and exceptional closures: whole days (midnight to midnight, Paris)
+-- or a few hours of one day — both are just a time range. Nothing can be
+-- booked inside one. Adding one doesn't cancel bookings already inside it:
+-- the API hands them back to the coiffeur (SalonService.addTimeOff).
+-- `staff_id` is for staff members (TODO.md Phase 3): null = the whole salon.
+-- API only (the public salon page gets the times, never the label), so RLS
+-- is on with no policy.
+create table public.coiffeur_time_off (
+  id uuid primary key default gen_random_uuid (),
+  profile_id uuid not null references public.profiles (id) on delete cascade,
+  staff_id uuid,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  label text not null default '',
+  created_at timestamptz not null default now(),
+  constraint coiffeur_time_off_ends_after_start check (ends_at > starts_at)
+);
+
+create index coiffeur_time_off_profile_id_ends_at_idx on public.coiffeur_time_off (profile_id, ends_at);
+
+alter table public.coiffeur_time_off enable row level security;
+
 -- "Rendez-vous / Agenda" (TODO.md). One row per booking, spanning its whole
 -- lifecycle (pending -> confirmed/refused, confirmed -> cancelled). "done" is
 -- NOT a stored status — the API derives it (confirmed + already past) at
@@ -499,6 +529,16 @@ create table public.appointments (
     status in ('pending', 'confirmed', 'refused', 'cancelled')
   ),
   client_note text,
+  -- Set by the coiffeur once an accepted appointment has started ("marquer
+  -- comme honoré"); null until then. No review after a no-show.
+  attendance text check (attendance in ('attended', 'no_show')),
+  -- The salon's cancellation notice when the client booked: changing the
+  -- setting later never moves an existing booking's deadline. Null on
+  -- bookings made before it was kept (the salon's current notice applies).
+  cancellation_notice_minutes integer check (cancellation_notice_minutes >= 0),
+  -- The salon moved it ("déplacer"): the client never chose that time, so
+  -- they may cancel or change it until it starts, whatever the notice.
+  moved_by_salon boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -521,6 +561,50 @@ create policy "Participant can view their own appointment"
 create trigger set_appointments_updated_at
 before update on public.appointments for each row
 execute procedure public.set_updated_at ();
+
+-- No double booking, even when two requests for the same time arrive at
+-- once: both can pass the API's own overlap check, only one gets in here
+-- (the API turns the refusal, SQLSTATE 23P01, into "no longer available").
+-- `timestamptz + interval` is only STABLE in general (days and months
+-- depend on the timezone), which an index expression can't use; adding
+-- minutes doesn't, so this wrapper is honestly IMMUTABLE.
+create extension if not exists btree_gist with schema extensions;
+
+create function public.appointment_time_range (starts_at timestamptz, duration_min integer)
+returns tstzrange
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+  select tstzrange(starts_at, starts_at + make_interval(mins => duration_min))
+$$;
+
+alter table public.appointments
+  add constraint appointments_no_overlap
+  exclude using gist (coiffeur_id with =, public.appointment_time_range (starts_at, duration_min) with &&)
+  where (status in ('pending', 'confirmed'));
+
+-- The prestations of a booking, in order — several can be booked back to
+-- back as one appointment, whose own service_name/price/duration_min hold
+-- the joined names and the totals. Snapshots, like the appointment's own:
+-- editing or deleting a service later never changes what was booked.
+-- Bookings made before this table existed have no lines; the API falls back
+-- to the appointment's own snapshot as their single line. API only.
+create table public.appointment_services (
+  id uuid primary key default gen_random_uuid (),
+  appointment_id uuid not null references public.appointments (id) on delete cascade,
+  service_id uuid references public.coiffeur_services (id) on delete set null,
+  service_name text not null,
+  price numeric(10, 2) not null check (price > 0),
+  duration_min integer not null check (duration_min > 0),
+  position smallint not null default 0
+);
+
+create index appointment_services_appointment_id_idx on public.appointment_services (appointment_id);
+create index appointment_services_service_id_idx on public.appointment_services (service_id);
+
+alter table public.appointment_services enable row level security;
 
 -- "Avis" (TODO.md). One row per appointment (unique), so "Création avis" is
 -- naturally capped at one review per booking. Every change feeds

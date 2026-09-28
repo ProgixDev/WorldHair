@@ -224,4 +224,50 @@ describe('salon (e2e)', () => {
       .set('Authorization', `Bearer ${otherToken}`)
       .expect(404);
   });
+
+  it('saves the booking rules, and rejects values outside what the app offers', async () => {
+    const updated = await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ confirmationMode: 'instant', bookingNoticeMinutes: 60, cancellationNoticeMinutes: 1440 })
+      .expect(200);
+    expect(updated.body).toMatchObject({ confirmationMode: 'instant', bookingNoticeMinutes: 60, cancellationNoticeMinutes: 1440 });
+
+    await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ confirmationMode: 'sometimes' })
+      .expect(400);
+    await request(server)
+      .patch('/salon/me')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ bookingNoticeMinutes: -5 })
+      .expect(400);
+  });
+
+  it('adds, lists and removes a closure', async () => {
+    const startsAt = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    const endsAt = new Date(Date.now() + 6 * 86_400_000).toISOString();
+
+    const added = await request(server)
+      .post('/salon/me/time-off')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ startsAt, endsAt, label: 'Congés' })
+      .expect(201);
+    expect(added.body).toMatchObject({ timeOff: { startsAt, endsAt, label: 'Congés' }, conflicts: [] });
+
+    const list = await request(server).get('/salon/me/time-off').set('Authorization', `Bearer ${coiffeurToken}`).expect(200);
+    expect(list.body).toHaveLength(1);
+
+    await request(server)
+      .post('/salon/me/time-off')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ startsAt: 'tomorrow', endsAt })
+      .expect(400);
+
+    await request(server)
+      .delete(`/salon/me/time-off/${added.body.timeOff.id}`)
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .expect(200);
+  });
 });

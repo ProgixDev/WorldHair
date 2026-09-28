@@ -5,8 +5,17 @@ import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { ReplaceAvailabilityDto } from './dto/availability-day.dto';
 import { AddGalleryPhotoDto } from './dto/gallery-photo.dto';
 import { CreateServiceDto, UpdateServiceDto } from './dto/service.dto';
+import { CreateTimeOffDto } from './dto/time-off.dto';
 import { UpdateSalonProfileDto } from './dto/update-salon-profile.dto';
-import { AvailabilityDay, SalonGalleryPhoto, SalonProfile, SalonService, SalonServiceItem } from './salon.service';
+import {
+  AvailabilityDay,
+  SalonGalleryPhoto,
+  SalonProfile,
+  SalonService,
+  SalonServiceItem,
+  TimeOff,
+  TimeOffConflict,
+} from './salon.service';
 
 /**
  * The coiffeur's own "Mon salon" workspace — presentation page, weekly
@@ -93,5 +102,23 @@ export class SalonController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<SalonGalleryPhoto[]> {
     return this.salon.deleteGalleryPhoto(current.id, id);
+  }
+
+  @Get('time-off')
+  listTimeOff(@CurrentUser() current: AuthenticatedUser): Promise<TimeOff[]> {
+    return this.salon.listTimeOff(current.id);
+  }
+
+  @Post('time-off')
+  addTimeOff(
+    @CurrentUser() current: AuthenticatedUser,
+    @Body() dto: CreateTimeOffDto,
+  ): Promise<{ timeOff: TimeOff; conflicts: TimeOffConflict[] }> {
+    return this.salon.addTimeOff(current.id, dto);
+  }
+
+  @Delete('time-off/:id')
+  deleteTimeOff(@CurrentUser() current: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.salon.deleteTimeOff(current.id, id);
   }
 }

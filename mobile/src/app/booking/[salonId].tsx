@@ -11,11 +11,14 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
-import { fetchBusySlots, fetchSalonById } from "../../features/salons/api";
-import { openDays, slotsForDay, slotToDate, type BusyInterval } from "../../features/salons/slots";
+import { fetchSalonById, fetchSlots } from "../../features/salons/api";
+import { stepAfterSlot, stepBeforeConfirm } from "../../features/salons/booking-steps";
+import { bookingRuleLines } from "../../features/salons/rules";
+import { bookingDays, dateKey, type DaySlots } from "../../features/salons/slots";
 import type { Salon, Service } from "../../features/salons/types";
 import { getAdSlot, type AdSlot } from "../../services/ads";
 import {
+  BookingError,
   bookAppointment,
   listAppointments,
   payForAppointment,
@@ -41,10 +44,21 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "confirm", label: "Confirmation" },
 ];
 
+/** Two weeks of the salon's open days in the strip. */
+const DAYS_SHOWN = 14;
+
+/** What the recap and footer show, for a new booking or the one being moved. */
+interface Line {
+  name: string;
+  durationMin: number;
+  price: number;
+}
+
 /**
  * Booking wizard styled as a ticket: a perforated stub for the recap, a day
- * strip and a slot grid. Same three-step idea as the coiffeur signup, a
- * deliberately different skin.
+ * strip and a slot grid. Several prestations can be picked; they run back to
+ * back as one appointment. The grid comes from the server, built from the
+ * same rules that accept or refuse the booking.
  */
 export default function BookingFlow() {
   const { salonId, serviceId, appointmentId } = useLocalSearchParams<{
@@ -66,10 +80,17 @@ export default function BookingFlow() {
   const [step, setStep] = useState<Step>(
     serviceId || isReschedule ? "slot" : "service",
   );
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  /** New booking: the prestations picked, in the order they'll happen. */
+  const [picked, setPicked] = useState<Service[]>([]);
+  /** Reschedule: the appointment being moved (its prestations stay the same). */
+  const [moving, setMoving] = useState<Appointment | null>(null);
   const [day, setDay] = useState<Date | null>(null);
-  const [slotMinutes, setSlotMinutes] = useState<number | null>(null);
-  const [busy, setBusy] = useState<BusyInterval[]>([]);
+  const [daySlots, setDaySlots] = useState<DaySlots | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  /** Bumped to fetch the grid again, e.g. after a slot was taken in the meantime. */
+  const [slotsVersion, setSlotsVersion] = useState(0);
+  const [slotStart, setSlotStart] = useState<string | null>(null);
   const [confirmationAd, setConfirmationAd] = useState<AdSlot | null>(null);
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState<PaymentReceipt | null>(null);
@@ -93,62 +114,57 @@ export default function BookingFlow() {
       if (cancelled) return;
       setSalon(found ?? null);
       const preselected = found?.services.find((service) => service.id === serviceId);
-      if (preselected) setSelectedService(preselected);
+      if (preselected) setPicked([preselected]);
     });
     return () => {
       cancelled = true;
     };
   }, [salonId, serviceId]);
 
-  // A slot is unavailable if it overlaps a booking the particulier already
-  // holds elsewhere (minus the one being moved) or one anyone holds at this
-  // salon (see AppointmentsService.listBusySlots — no client identity, just
-  // start and length, so it's safe to ask for regardless of who's browsing).
   useEffect(() => {
+    if (!appointmentId) return;
     let cancelled = false;
-    Promise.all([listAppointments(), fetchBusySlots(String(salonId))]).then(
-      ([appointments, salonBusy]) => {
-        if (cancelled) return;
-        const own = appointments
-          .filter(
-            (a) => (a.status === "pending" || a.status === "confirmed") && a.id !== appointmentId,
-          )
-          .map((a) => ({ startsAt: a.startsAt, durationMin: a.durationMin }));
-        // The salon's list includes the appointment being moved: it mustn't block its own new slot.
-        const current = appointments.find((a) => a.id === appointmentId);
-        const others = salonBusy.filter(
-          (b) => !(current && b.startsAt === current.startsAt && b.durationMin === current.durationMin),
-        );
-        setBusy([...own, ...others]);
-        if (isReschedule && !selectedService) {
-          const current = appointments.find((a) => a.id === appointmentId);
-          const service = salon?.services.find(
-            (s) => s.id === current?.serviceId,
-          );
-          if (service) setSelectedService(service);
-        }
-      },
-    );
+    listAppointments().then((appointments) => {
+      if (!cancelled) setMoving(appointments.find((a) => a.id === appointmentId) ?? null);
+    });
     return () => {
       cancelled = true;
     };
-  }, [appointmentId, isReschedule, salon, salonId, selectedService]);
+  }, [appointmentId]);
 
-  const days = useMemo(() => (salon ? openDays(salon, 10) : []), [salon]);
+  const days = useMemo(() => (salon ? bookingDays(salon, DAYS_SHOWN) : []), [salon]);
 
   useEffect(() => {
-    if (!day && days.length > 0) setDay(days[0]);
+    if (!day && days.length > 0) setDay((days.find((d) => !d.closed) ?? days[0]).date);
   }, [day, days]);
 
-  const slots = useMemo(() => {
-    if (!salon || !day || !selectedService) return [];
-    return slotsForDay({
-      salon,
-      day,
-      durationMin: selectedService.durationMin,
-      busy,
-    });
-  }, [salon, day, selectedService, busy]);
+  const pickedIds = picked.map((service) => service.id).join(",");
+  const ready = isReschedule ? Boolean(appointmentId) : pickedIds.length > 0;
+
+  useEffect(() => {
+    if (step !== "slot" || !salon || !day || !ready) return;
+    let cancelled = false;
+    setSlotsLoading(true);
+    setSlotsError(null);
+    setSlotStart(null);
+    fetchSlots(
+      salon.id,
+      dateKey(day),
+      isReschedule ? { appointmentId: String(appointmentId) } : { serviceIds: pickedIds.split(",") },
+    )
+      .then((result) => {
+        if (!cancelled) setDaySlots(result);
+      })
+      .catch(() => {
+        if (!cancelled) setSlotsError("Impossible de charger les créneaux. Réessayez.");
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, salon, day, ready, isReschedule, appointmentId, pickedIds, slotsVersion]);
 
   if (salon === undefined)
     return (
@@ -182,15 +198,37 @@ export default function BookingFlow() {
       </View>
     );
 
-  const startsAt =
-    day && slotMinutes !== null ? slotToDate(day, slotMinutes) : null;
+  const lines: Line[] = isReschedule
+    ? (moving?.services ?? []).map((line) => ({
+        name: line.name,
+        durationMin: line.durationMin,
+        price: line.price,
+      }))
+    : picked.map((service) => ({
+        name: service.name,
+        durationMin: service.durationMin,
+        price: service.price,
+      }));
+  const totalDuration = lines.reduce((sum, line) => sum + line.durationMin, 0);
+  const totalPrice = lines.reduce((sum, line) => sum + line.price, 0);
+  const summary =
+    lines.length === 1 ? lines[0].name : lines.length + " prestations";
+  const startsAt = slotStart ? new Date(slotStart) : null;
+  const [, cancellationRule, confirmationRule] = bookingRuleLines(salon);
+
+  const toggleService = (service: Service) =>
+    setPicked((current) =>
+      current.some((item) => item.id === service.id)
+        ? current.filter((item) => item.id !== service.id)
+        : [...current, service],
+    );
 
   const handlePay = async () => {
-    if (!selectedService) return;
+    if (lines.length === 0) return;
     setError(null);
     setPaying(true);
     try {
-      const receipt = await payForAppointment(selectedService.price);
+      const receipt = await payForAppointment(totalPrice);
       setPaid(receipt);
       setStep("confirm");
     } catch {
@@ -201,7 +239,7 @@ export default function BookingFlow() {
   };
 
   const handleConfirm = async () => {
-    if (!selectedService || !startsAt) return;
+    if (!startsAt) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -209,7 +247,7 @@ export default function BookingFlow() {
         ? await rescheduleAppointment(String(appointmentId), startsAt)
         : await bookAppointment({
             salonId: salon.id,
-            serviceId: selectedService.id,
+            serviceIds: picked.map((service) => service.id),
             startsAt,
           });
       setBooked(appointment);
@@ -219,6 +257,12 @@ export default function BookingFlow() {
           ? err.message
           : "Réservation impossible. Réessayez.",
       );
+      // Someone else got there first (or the salon changed something): show
+      // the day's grid again, up to date, so another time can be picked.
+      if (err instanceof BookingError && err.code === "SLOT_TAKEN") {
+        setStep("slot");
+        setSlotsVersion((version) => version + 1);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -228,7 +272,7 @@ export default function BookingFlow() {
     return (
       <BookingSuccess
         salonName={salon.name}
-        service={selectedService}
+        serviceLabel={booked.serviceName}
         startsAt={new Date(booked.startsAt)}
         isReschedule={isReschedule}
         pending={booked.status === "pending"}
@@ -240,26 +284,25 @@ export default function BookingFlow() {
 
   const canContinue =
     step === "service"
-      ? Boolean(selectedService)
+      ? picked.length > 0
       : step === "slot"
-        ? slotMinutes !== null
+        ? slotStart !== null
         : true;
 
-  // A reschedule only moves the time of an already-paid appointment, so it
-  // skips the payment step entirely.
+  // A reschedule, or a new slot after the first one was taken, has nothing
+  // left to pay (booking-steps.ts).
+  const payment = { isReschedule, paidAmount: paid?.amount ?? null, total: totalPrice };
   const goNext = () => {
     if (step === "service") return setStep("slot");
-    if (step === "slot")
-      return isReschedule ? setStep("confirm") : setStep("payment");
+    if (step === "slot") return setStep(stepAfterSlot(payment));
     if (step === "payment") return void handlePay();
     void handleConfirm();
   };
 
   const goBack = () => {
-    if (step === "confirm") return setStep(isReschedule ? "slot" : "payment");
+    if (step === "confirm") return setStep(stepBeforeConfirm(payment));
     if (step === "payment") return setStep("slot");
-    if (step === "slot" && !isReschedule && !serviceId)
-      return setStep("service");
+    if (step === "slot" && !isReschedule) return setStep("service");
     router.back();
   };
 
@@ -402,16 +445,23 @@ export default function BookingFlow() {
         {step === "service" ? (
           <View style={{ gap: spacing.md }}>
             <Text style={[typography.h1, { color: theme.foreground.white }]}>
-              Quelle prestation ?
+              Quelles prestations ?
+            </Text>
+            <Text
+              style={[typography.bodySmall, { color: theme.foreground.gray }]}
+            >
+              Choisissez-en une ou plusieurs : elles s&apos;enchaînent dans le
+              même rendez-vous.
             </Text>
             {salon.services.map((service) => {
-              const selected = selectedService?.id === service.id;
+              const order = picked.findIndex((item) => item.id === service.id);
+              const selected = order !== -1;
               return (
                 <Pressable
                   key={service.id}
-                  onPress={() => setSelectedService(service)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
+                  onPress={() => toggleService(service)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
                   style={[
                     {
                       flexDirection: "row",
@@ -430,6 +480,24 @@ export default function BookingFlow() {
                     elevation(1, theme.shadow),
                   ]}
                 >
+                  <View
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: radius.full,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: selected ? 0 : 1.5,
+                      borderColor: theme.border,
+                      backgroundColor: selected ? theme.primary.main : "transparent",
+                    }}
+                  >
+                    {selected ? (
+                      <Text style={[typography.caption, { color: theme.primary.on }]}>
+                        {order + 1}
+                      </Text>
+                    ) : null}
+                  </View>
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text
                       style={[
@@ -470,18 +538,23 @@ export default function BookingFlow() {
             >
               {days.map((candidate) => {
                 const selected = day
-                  ? candidate.getTime() === day.getTime()
+                  ? candidate.date.getTime() === day.getTime()
                   : false;
+                const foreground = selected
+                  ? theme.primary.on
+                  : candidate.closed
+                    ? theme.foreground.gray
+                    : theme.foreground.white;
                 return (
                   <Pressable
-                    key={candidate.toISOString()}
-                    onPress={() => {
-                      setDay(candidate);
-                      setSlotMinutes(null);
-                    }}
+                    key={candidate.date.toISOString()}
+                    onPress={() => setDay(candidate.date)}
+                    disabled={candidate.closed}
                     accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={fullDate(candidate)}
+                    accessibilityState={{ selected, disabled: candidate.closed }}
+                    accessibilityLabel={
+                      fullDate(candidate.date) + (candidate.closed ? ", fermé" : "")
+                    }
                     style={{
                       width: 68,
                       paddingVertical: spacing.lg,
@@ -495,6 +568,7 @@ export default function BookingFlow() {
                       borderColor: selected
                         ? theme.primary.main
                         : theme.divider,
+                      opacity: candidate.closed ? 0.45 : 1,
                     }}
                   >
                     <Text
@@ -507,19 +581,10 @@ export default function BookingFlow() {
                         },
                       ]}
                     >
-                      {weekdayShort(candidate)}
+                      {weekdayShort(candidate.date)}
                     </Text>
-                    <Text
-                      style={[
-                        typography.bodyMedium,
-                        {
-                          color: selected
-                            ? theme.primary.on
-                            : theme.foreground.white,
-                        },
-                      ]}
-                    >
-                      {candidate.getDate()}
+                    <Text style={[typography.bodyMedium, { color: foreground }]}>
+                      {candidate.date.getDate()}
                     </Text>
                     <Text
                       style={[
@@ -532,7 +597,9 @@ export default function BookingFlow() {
                         },
                       ]}
                     >
-                      {dayAndMonth(candidate).split(" ")[1]}
+                      {candidate.closed
+                        ? "Fermé"
+                        : dayAndMonth(candidate.date).split(" ")[1]}
                     </Text>
                   </Pressable>
                 );
@@ -546,14 +613,29 @@ export default function BookingFlow() {
                 {day ? relativeDay(day).toUpperCase() : ""}
               </Text>
 
-              {slots.length === 0 ? (
+              {slotsLoading ? (
+                <ActivityIndicator color={theme.primary.main} />
+              ) : slotsError ? (
+                <View style={{ gap: spacing.sm, alignItems: "flex-start" }}>
+                  <Text style={[typography.bodySmall, { color: theme.danger }]}>
+                    {slotsError}
+                  </Text>
+                  <Button
+                    label="Réessayer"
+                    variant="outline"
+                    onPress={() => setSlotsVersion((version) => version + 1)}
+                  />
+                </View>
+              ) : !daySlots || daySlots.closed || daySlots.slots.length === 0 ? (
                 <Text
                   style={[
                     typography.bodySmall,
                     { color: theme.foreground.gray },
                   ]}
                 >
-                  Aucun créneau ce jour-là. Essayez une autre date.
+                  {daySlots?.closed
+                    ? "Le salon est fermé ce jour-là. Essayez une autre date."
+                    : "Aucun créneau ce jour-là. Essayez une autre date."}
                 </Text>
               ) : (
                 <View
@@ -563,13 +645,13 @@ export default function BookingFlow() {
                     gap: spacing.sm,
                   }}
                 >
-                  {slots.map((slot) => {
-                    const selected = slotMinutes === slot.minutes;
+                  {daySlots.slots.map((slot) => {
+                    const selected = slotStart === slot.startsAt;
                     return (
                       <Pressable
-                        key={slot.minutes}
+                        key={slot.startsAt}
                         onPress={() =>
-                          slot.available ? setSlotMinutes(slot.minutes) : null
+                          slot.available ? setSlotStart(slot.startsAt) : null
                         }
                         disabled={!slot.available}
                         accessibilityRole="button"
@@ -618,10 +700,16 @@ export default function BookingFlow() {
                 </View>
               )}
             </View>
+
+            {error ? (
+              <Text style={[typography.bodySmall, { color: theme.danger }]}>
+                {error}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
-        {step === "payment" && selectedService ? (
+        {step === "payment" && lines.length > 0 ? (
           <View style={{ gap: spacing.lg }}>
             <Text style={[typography.h1, { color: theme.foreground.white }]}>
               Réglez pour envoyer la demande.
@@ -682,7 +770,7 @@ export default function BookingFlow() {
                 Montant à régler
               </Text>
               <Text style={[typography.h2, { color: theme.primary.main }]}>
-                {formatPrice(selectedService.price)}
+                {formatPrice(totalPrice)}
               </Text>
             </View>
 
@@ -694,7 +782,7 @@ export default function BookingFlow() {
           </View>
         ) : null}
 
-        {step === "confirm" && selectedService && startsAt ? (
+        {step === "confirm" && lines.length > 0 && startsAt ? (
           <View style={{ gap: spacing.lg }}>
             <Text style={[typography.h1, { color: theme.foreground.white }]}>
               On récapitule.
@@ -703,18 +791,29 @@ export default function BookingFlow() {
             <TicketCard
               salonName={salon.name}
               stylist={salon.stylist}
-              service={selectedService}
+              lines={lines}
+              totalDuration={totalDuration}
+              totalPrice={totalPrice}
               startsAt={startsAt}
               address={
                 salon.addressLine + ", " + salon.postalCode + " " + salon.city
               }
             />
 
-            <Text
-              style={[typography.caption, { color: theme.foreground.gray }]}
-            >
-              Annulation gratuite jusqu&apos;à 24 h avant le rendez-vous.
-            </Text>
+            <View style={{ gap: 2 }}>
+              <Text
+                style={[typography.caption, { color: theme.foreground.gray }]}
+              >
+                {cancellationRule + " le rendez-vous."}
+              </Text>
+              {!isReschedule ? (
+                <Text
+                  style={[typography.caption, { color: theme.foreground.gray }]}
+                >
+                  {confirmationRule + "."}
+                </Text>
+              ) : null}
+            </View>
 
             {paid ? (
               <Text style={[typography.caption, { color: theme.success }]}>
@@ -747,24 +846,30 @@ export default function BookingFlow() {
           ...elevation(3, theme.shadow),
         }}
       >
-        {selectedService ? (
+        {lines.length > 0 ? (
           <View
             style={{
               flexDirection: "row",
               justifyContent: "space-between",
+              gap: spacing.md,
             }}
           >
             <Text
-              style={[typography.caption, { color: theme.foreground.gray }]}
+              style={[
+                typography.caption,
+                { color: theme.foreground.gray, flex: 1 },
+              ]}
               numberOfLines={1}
             >
-              {selectedService.name +
+              {summary +
+                " · " +
+                formatDuration(totalDuration) +
                 (startsAt
                   ? " · " + relativeDay(startsAt) + " " + timeOfDay(startsAt)
                   : "")}
             </Text>
             <Text style={[typography.label, { color: theme.foreground.white }]}>
-              {formatPrice(selectedService.price)}
+              {formatPrice(totalPrice)}
             </Text>
           </View>
         ) : null}
@@ -772,7 +877,7 @@ export default function BookingFlow() {
         <Button
           label={
             step === "payment"
-              ? "Payer " + formatPrice(selectedService?.price ?? 0)
+              ? "Payer " + formatPrice(totalPrice)
               : step === "confirm"
                 ? isReschedule
                   ? "Confirmer le changement"
@@ -792,13 +897,17 @@ export default function BookingFlow() {
 function TicketCard({
   salonName,
   stylist,
-  service,
+  lines,
+  totalDuration,
+  totalPrice,
   startsAt,
   address,
 }: {
   salonName: string;
   stylist: string;
-  service: Service;
+  lines: Line[];
+  totalDuration: number;
+  totalPrice: number;
   startsAt: Date;
   address: string;
 }) {
@@ -865,8 +974,16 @@ function TicketCard({
       </View>
 
       <View style={{ padding: spacing.xl, gap: spacing.md }}>
-        <TicketRow label="Prestation" value={service.name} />
-        <TicketRow label="Durée" value={formatDuration(service.durationMin)} />
+        {lines.map((line, index) => (
+          <TicketRow
+            key={index}
+            label={
+              lines.length === 1 ? "Prestation" : "Prestation " + (index + 1)
+            }
+            value={line.name + " · " + formatDuration(line.durationMin)}
+          />
+        ))}
+        <TicketRow label="Durée" value={formatDuration(totalDuration)} />
         <TicketRow label="Date" value={fullDate(startsAt)} />
         <TicketRow label="Heure" value={timeOfDay(startsAt)} />
         <TicketRow label="Adresse" value={address} />
@@ -885,7 +1002,7 @@ function TicketCard({
             Total
           </Text>
           <Text style={[typography.h1, { color: theme.primary.main }]}>
-            {formatPrice(service.price)}
+            {formatPrice(totalPrice)}
           </Text>
         </View>
       </View>
@@ -919,7 +1036,7 @@ function TicketRow({ label, value }: { label: string; value: string }) {
 
 function BookingSuccess({
   salonName,
-  service,
+  serviceLabel,
   startsAt,
   isReschedule,
   pending,
@@ -928,7 +1045,8 @@ function BookingSuccess({
   onHome,
 }: {
   salonName: string;
-  service: Service | null;
+  /** Every prestation's name, joined. */
+  serviceLabel: string;
   startsAt: Date;
   isReschedule: boolean;
   /** Awaiting the coiffeur's decision — not confirmed yet. */
@@ -999,19 +1117,22 @@ function BookingSuccess({
           >
             {salonName +
               " · " +
-              (service ? service.name + " · " : "") +
+              serviceLabel +
+              " · " +
               relativeDay(startsAt).toLowerCase() +
               " à " +
               timeOfDay(startsAt)}
           </Text>
-          {!isReschedule && pending ? (
+          {!isReschedule ? (
             <Text
               style={[
                 typography.caption,
                 { color: theme.foreground.gray, textAlign: "center" },
               ]}
             >
-              Le salon doit encore confirmer votre créneau.
+              {pending
+                ? "Le salon doit encore confirmer votre créneau."
+                : "Le salon a confirmé votre rendez-vous."}
             </Text>
           ) : null}
         </View>

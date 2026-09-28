@@ -63,7 +63,10 @@ export interface ProStats {
   cancellations: number;
   /** Busiest weekday label, e.g. "samedi". */
   busiestWeekday: number | null;
-  topServices: { serviceId: string; count: number; revenue: number }[];
+  /** Each prestation counted on its own, even inside a multi-prestation booking. */
+  topServices: { serviceId: string; name: string; count: number; revenue: number }[];
+  /** Share of past appointments the coiffeur marked as missed, as a percentage; null before any. */
+  noShowRate: number | null;
 }
 
 export function computeStats(
@@ -94,17 +97,38 @@ export function computeStats(
   });
   const busiest = [...weekdayCounts.entries()].sort((a, b) => b[1] - a[1])[0];
 
-  const serviceTotals = new Map<string, { count: number; revenue: number }>();
+  const serviceTotals = new Map<
+    string,
+    { name: string; count: number; revenue: number }
+  >();
   billed.forEach((appointment) => {
-    const current = serviceTotals.get(appointment.serviceId) ?? {
-      count: 0,
-      revenue: 0,
-    };
-    serviceTotals.set(appointment.serviceId, {
-      count: current.count + 1,
-      revenue: current.revenue + appointment.price,
+    const lines =
+      appointment.services.length > 0
+        ? appointment.services
+        : [
+            {
+              serviceId: appointment.serviceId,
+              name: "",
+              price: appointment.price,
+              durationMin: appointment.durationMin,
+            },
+          ];
+    lines.forEach((line) => {
+      const key = line.serviceId ?? line.name;
+      const current = serviceTotals.get(key) ?? {
+        name: line.name,
+        count: 0,
+        revenue: 0,
+      };
+      serviceTotals.set(key, {
+        name: current.name || line.name,
+        count: current.count + 1,
+        revenue: current.revenue + line.price,
+      });
     });
   });
+
+  const noShows = done.filter((a) => a.attendance === "no_show").length;
 
   return {
     upcoming: appointments.filter(
@@ -132,6 +156,8 @@ export function computeStats(
       .map(([serviceId, totals]) => ({ serviceId, ...totals }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 4),
+    noShowRate:
+      done.length === 0 ? null : Math.round((noShows / done.length) * 100),
   };
 }
 
@@ -173,4 +199,11 @@ export function serviceName(services: ProService[], serviceId: string): string {
   return (
     services.find((service) => service.id === serviceId)?.name ?? "Prestation"
   );
+}
+
+/** Every prestation of a booking, by name — bookings made before several could be booked fall back to the catalogue. */
+export function servicesLabel(appointment: ProAppointment, services: ProService[]): string {
+  return appointment.services.length > 0
+    ? appointment.services.map((line) => line.name).join(" + ")
+    : serviceName(services, appointment.serviceId);
 }

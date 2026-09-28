@@ -23,6 +23,7 @@ import {
   appointmentsForDay,
   computeStats,
   serviceName,
+  servicesLabel,
   weeklySeries,
 } from "../../features/pro/stats";
 import { daysRemaining, isNearingExpiry } from "../../features/pro/subscription";
@@ -275,10 +276,17 @@ export default function ProDashboard() {
             <Text
               style={[typography.caption, { color: theme.foreground.gray }]}
             >
-              {stats.busiestWeekday !== null
-                ? "Jour fort : " +
-                  weekdayLong(new Date(2026, 7, 16 + stats.busiestWeekday))
-                : ""}
+              {[
+                stats.busiestWeekday !== null
+                  ? "Jour fort : " +
+                    weekdayLong(new Date(2026, 7, 16 + stats.busiestWeekday))
+                  : null,
+                stats.noShowRate !== null
+                  ? "Absences : " + stats.noShowRate + " %"
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Text>
           </View>
 
@@ -438,7 +446,7 @@ export default function ProDashboard() {
                     ]}
                     numberOfLines={1}
                   >
-                    {serviceName(services, appointment.serviceId) +
+                    {servicesLabel(appointment, services) +
                       " · " +
                       relativeDay(new Date(appointment.startsAt)) +
                       " " +
@@ -520,7 +528,7 @@ export default function ProDashboard() {
                     ]}
                     numberOfLines={1}
                   >
-                    {serviceName(services, appointment.serviceId) +
+                    {servicesLabel(appointment, services) +
                       " · " +
                       formatPrice(appointment.price)}
                   </Text>
@@ -560,7 +568,7 @@ export default function ProDashboard() {
                       ]}
                       numberOfLines={1}
                     >
-                      {serviceName(services, entry.serviceId)}
+                      {entry.name || serviceName(services, entry.serviceId)}
                     </Text>
                     <Text
                       style={[

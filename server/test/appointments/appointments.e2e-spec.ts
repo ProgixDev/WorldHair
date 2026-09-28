@@ -119,6 +119,76 @@ describe('appointments (e2e)', () => {
       .expect(400);
   });
 
+  it("books several prestations at once, and serves the day's slots for them", async () => {
+    const serviceId = await fetchServiceId();
+    const slot = nextSlot();
+    const day = slot.toISOString().slice(0, 10); // the suite runs in UTC; 10:00 UTC is the same day in Paris
+
+    const created = await request(server)
+      .post('/appointments')
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .send({ coiffeurId: coiffeur.id, serviceIds: [serviceId], startsAt: slot.toISOString() })
+      .expect(201);
+    expect(created.body.services).toHaveLength(1);
+
+    const slots = await request(server)
+      .get(`/appointments/salon/${coiffeur.id}/slots`)
+      .query({ date: day, serviceIds: serviceId })
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .expect(200);
+    expect(slots.body).toMatchObject({ date: day, closed: false });
+    expect(slots.body.slots.length).toBeGreaterThan(0);
+
+    await request(server)
+      .get(`/appointments/salon/${coiffeur.id}/slots`)
+      .query({ date: 'next-wednesday', serviceIds: serviceId })
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .expect(400);
+  });
+
+  it('lets the coiffeur, and only the coiffeur, move an accepted appointment and mark attendance', async () => {
+    const serviceId = await fetchServiceId();
+    const created = await request(server)
+      .post('/appointments')
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .send({ coiffeurId: coiffeur.id, serviceIds: [serviceId], startsAt: nextSlot().toISOString() })
+      .expect(201);
+    await request(server)
+      .patch(`/appointments/${created.body.id}/decide`)
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ decision: 'confirmed' })
+      .expect(200);
+
+    const later = new Date(nextSlot().getTime() + 3 * 3_600_000).toISOString();
+    await request(server)
+      .patch(`/appointments/${created.body.id}/move`)
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .send({ startsAt: later })
+      .expect(403);
+    await request(server)
+      .patch(`/appointments/${created.body.id}/move`)
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ startsAt: later })
+      .expect(200);
+
+    const past = harness.supabase.seedAppointment({
+      particulierId: particulier.id,
+      coiffeurId: coiffeur.id,
+      startsAt: new Date(Date.now() - 86_400_000).toISOString(),
+      status: 'confirmed',
+    });
+    await request(server)
+      .patch(`/appointments/${past}/attendance`)
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ attendance: 'maybe' })
+      .expect(400);
+    await request(server)
+      .patch(`/appointments/${past}/attendance`)
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ attendance: 'no_show' })
+      .expect(200);
+  });
+
   it('either side can cancel', async () => {
     const serviceId = await fetchServiceId();
     const created = await request(server)

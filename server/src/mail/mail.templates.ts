@@ -110,6 +110,28 @@ export function passwordResetLinkMail(url: string): RenderedMail {
   };
 }
 
+/** For text someone other than WorldHair typed (a salon's prestation names, an admin's reason) going into HTML. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** The J-1 reminder, by email for a client with no phone registered for push notifications. */
+export function appointmentReminderMail(serviceName: string, when: string): RenderedMail {
+  return {
+    subject: 'Rappel : votre rendez-vous de demain',
+    text: `Petit rappel : votre rendez-vous pour ${serviceName} a lieu ${when}. Besoin de le déplacer ou de l'annuler ? Rendez-vous dans l'application WorldHair.`,
+    html: layout(
+      'Rappel de rendez-vous',
+      `<p>Petit rappel : votre rendez-vous pour <strong>${escapeHtml(serviceName)}</strong> a lieu ${when}.</p><p>Besoin de le déplacer ou de l'annuler ? Rendez-vous dans l'application WorldHair.</p>`,
+    ),
+  };
+}
+
 /** "Validation/refus compte coiffeur" (TODO.md → Notifications) — the one notification type that also goes by email, alongside push, since it's an account-lifecycle decision. */
 export function coiffeurApplicationDecidedMail(
   status: 'validated' | 'rejected',
@@ -131,7 +153,7 @@ export function coiffeurApplicationDecidedMail(
     text: `Votre dossier coiffeur n'a pas été validé.${reasonText} Vous pouvez le corriger et le soumettre à nouveau depuis l'application.`,
     html: layout(
       'Dossier refusé',
-      `<p>Votre dossier coiffeur n'a pas été validé.${reviewMessage ? ` Motif : ${reviewMessage}` : ''}</p><p>Vous pouvez le corriger et le soumettre à nouveau depuis l'application.</p>`,
+      `<p>Votre dossier coiffeur n'a pas été validé.${reviewMessage ? ` Motif : ${escapeHtml(reviewMessage)}` : ''}</p><p>Vous pouvez le corriger et le soumettre à nouveau depuis l'application.</p>`,
     ),
   };
 }

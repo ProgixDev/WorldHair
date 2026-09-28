@@ -29,12 +29,40 @@ describe('AppointmentNotificationsListener', () => {
       appointmentId: 'apt-1',
       coiffeurId: 'coiffeur-1',
       serviceName: 'Coupe & brushing',
-      startsAt: new Date().toISOString(),
+      startsAt: '2026-09-30T08:00:00Z',
+      status: 'pending',
     });
 
     const log = supabase.notifyLogFor('coiffeur-1');
     expect(log).toHaveLength(1);
-    expect(log[0]).toMatchObject({ type: 'appointment_created', dedupe_key: 'apt-1' });
+    expect(log[0]).toMatchObject({ type: 'appointment_created', dedupe_key: 'apt-1', title: 'Nouvelle demande de rendez-vous' });
+    expect(log[0].body).toContain('mer. 30 sept. à 10:00');
+  });
+
+  it('announces an instantly confirmed booking as a booking, not a request', async () => {
+    await listener.onCreated({
+      appointmentId: 'apt-1',
+      coiffeurId: 'coiffeur-1',
+      serviceName: 'Coupe & brushing',
+      startsAt: '2026-09-30T08:00:00Z',
+      status: 'confirmed',
+    });
+
+    expect(supabase.notifyLogFor('coiffeur-1')[0]).toMatchObject({ title: 'Nouveau rendez-vous' });
+  });
+
+  it('tells the particulier each time the salon moves their appointment', async () => {
+    await listener.onMoved({
+      appointmentId: 'apt-1',
+      particulierId: 'particulier-1',
+      serviceName: 'Coupe & brushing',
+      previousStartsAt: '2026-09-30T08:00:00Z',
+      startsAt: '2026-10-01T09:00:00Z',
+    });
+
+    const log = supabase.notifyLogFor('particulier-1');
+    expect(log).toMatchObject([{ type: 'appointment_moved', dedupe_key: 'apt-1:2026-10-01T09:00:00Z' }]);
+    expect(log[0].body).toContain('jeu. 1 oct. à 11:00');
   });
 
   it('notifies the particulier once their request is confirmed', async () => {

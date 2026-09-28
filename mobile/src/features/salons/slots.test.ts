@@ -1,102 +1,80 @@
-import { slotsForDay } from "./slots";
+import { bookingDays, dateKey } from "./slots";
 import type { Salon } from "./types";
 
-// Wednesday 30 September 2026, local time (the salon's own clock).
-const DAY = new Date(2026, 8, 30);
-const EARLIER_THAT_WEEK = new Date(2026, 8, 28, 8, 0);
+// Monday 28 September 2026, local time (the salon's own clock).
+const MONDAY = new Date(2026, 8, 28, 8, 0);
 
-function salonOpen(
-  opens: number,
-  closes: number,
-  lunch?: { start: number; end: number },
-): Salon {
+function salon(overrides: Partial<Salon> = {}): Salon {
   return {
     id: "salon-1",
-    hours: [
-      {
-        weekday: DAY.getDay(),
-        opens,
-        closes,
-        breakStart: lunch?.start ?? null,
-        breakEnd: lunch?.end ?? null,
-      },
-    ],
+    // Open Monday to Saturday 9:00-19:00, closed on Sunday.
+    hours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+      weekday,
+      opens: weekday === 0 ? null : 9 * 60,
+      closes: weekday === 0 ? null : 19 * 60,
+    })),
+    closures: [],
+    ...overrides,
   } as unknown as Salon;
 }
 
-function at(hour: number, minute = 0): string {
-  return new Date(2026, 8, 30, hour, minute).toISOString();
-}
+describe("dateKey", () => {
+  it("writes the local calendar day as YYYY-MM-DD", () => {
+    expect(dateKey(new Date(2026, 0, 5, 23, 30))).toBe("2026-01-05");
+  });
+});
 
-function available(slots: { label: string; available: boolean }[]): string[] {
-  return slots.filter((slot) => slot.available).map((slot) => slot.label);
-}
+describe("bookingDays", () => {
+  it("lists the next days the salon opens, skipping its weekly closed day", () => {
+    const days = bookingDays(salon(), 7, MONDAY);
 
-describe("slotsForDay", () => {
-  it("offers every half hour from opening to the last start that still fits", () => {
-    const slots = slotsForDay({
-      salon: salonOpen(9 * 60, 12 * 60),
-      day: DAY,
-      durationMin: 60,
-      now: EARLIER_THAT_WEEK,
-    });
-
-    expect(slots.map((slot) => slot.label)).toEqual(["09:00", "09:30", "10:00", "10:30", "11:00"]);
+    expect(days.map((day) => dateKey(day.date))).toEqual([
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-05",
+    ]);
+    expect(days.every((day) => !day.closed)).toBe(true);
   });
 
-  it("never invents busy slots: with no booking, every slot is free", () => {
-    const slots = slotsForDay({
-      salon: salonOpen(9 * 60, 19 * 60),
-      day: DAY,
-      durationMin: 30,
-      busy: [],
-      now: EARLIER_THAT_WEEK,
-    });
+  it("keeps a day covered by a closure in the strip, marked closed", () => {
+    const days = bookingDays(
+      salon({
+        closures: [
+          {
+            startsAt: new Date(2026, 8, 30).toISOString(),
+            endsAt: new Date(2026, 9, 1).toISOString(),
+          },
+        ],
+      }),
+      3,
+      MONDAY,
+    );
 
-    expect(slots.length).toBeGreaterThan(0);
-    expect(slots.every((slot) => slot.available)).toBe(true);
+    expect(days.map((day) => [dateKey(day.date), day.closed])).toEqual([
+      ["2026-09-28", false],
+      ["2026-09-29", false],
+      ["2026-09-30", true],
+    ]);
   });
 
-  it("blocks every start that would overlap a booking, not only its exact start", () => {
-    const slots = slotsForDay({
-      salon: salonOpen(9 * 60, 12 * 60),
-      day: DAY,
-      durationMin: 60,
-      busy: [{ startsAt: at(10), durationMin: 60 }],
-      now: EARLIER_THAT_WEEK,
-    });
+  it("leaves a day with only a few closed hours open — its slots show what's left", () => {
+    const days = bookingDays(
+      salon({
+        closures: [
+          {
+            startsAt: new Date(2026, 8, 28, 14, 0).toISOString(),
+            endsAt: new Date(2026, 8, 28, 19, 0).toISOString(),
+          },
+        ],
+      }),
+      1,
+      MONDAY,
+    );
 
-    expect(available(slots)).toEqual(["09:00", "11:00"]);
-  });
-
-  it("keeps the lunch break free", () => {
-    const slots = slotsForDay({
-      salon: salonOpen(9 * 60, 15 * 60, { start: 12 * 60, end: 13 * 60 }),
-      day: DAY,
-      durationMin: 60,
-      now: EARLIER_THAT_WEEK,
-    });
-
-    expect(available(slots)).toEqual(["09:00", "09:30", "10:00", "10:30", "11:00", "13:00", "13:30", "14:00"]);
-  });
-
-  it("blocks starts that have already passed today", () => {
-    const slots = slotsForDay({
-      salon: salonOpen(9 * 60, 12 * 60),
-      day: DAY,
-      durationMin: 30,
-      now: new Date(2026, 8, 30, 10, 15),
-    });
-
-    expect(available(slots)).toEqual(["10:30", "11:00", "11:30"]);
-  });
-
-  it("has nothing to offer on a closed day", () => {
-    const closed = {
-      id: "salon-1",
-      hours: [{ weekday: DAY.getDay(), opens: null, closes: null }],
-    } as unknown as Salon;
-
-    expect(slotsForDay({ salon: closed, day: DAY, durationMin: 30, now: EARLIER_THAT_WEEK })).toEqual([]);
+    expect(days[0].closed).toBe(false);
   });
 });

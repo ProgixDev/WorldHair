@@ -63,6 +63,9 @@ export class ReviewsService {
     if (derivedStatus(appointment) !== 'done') {
       throw new BadRequestException('This appointment is not completed yet');
     }
+    if (appointment.attendance === 'no_show') {
+      throw new BadRequestException('This appointment was marked as missed');
+    }
 
     const { data: existing, error: existingError } = await this.supabase.client
       .from('reviews')

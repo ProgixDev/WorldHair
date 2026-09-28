@@ -8,6 +8,8 @@ export interface AppointmentCreatedEvent {
   coiffeurId: string;
   serviceName: string;
   startsAt: string;
+  /** `confirmed` when the salon confirms bookings instantly — then it's a booking, not a request. */
+  status: 'pending' | 'confirmed';
 }
 
 export interface AppointmentConfirmedEvent {
@@ -38,6 +40,15 @@ export interface AppointmentRescheduledEvent {
   startsAt: string;
 }
 
+/** The coiffeur moved an accepted appointment — the particulier is told. */
+export interface AppointmentMovedEvent {
+  appointmentId: string;
+  particulierId: string;
+  serviceName: string;
+  previousStartsAt: string;
+  startsAt: string;
+}
+
 /**
  * Every booking event the other side needs to hear about: new request →
  * coiffeur, confirmation or refusal → particulier, cancellation → whichever
@@ -55,13 +66,15 @@ export class AppointmentNotificationsListener {
 
   @OnEvent('appointment.created')
   async onCreated(event: AppointmentCreatedEvent): Promise<void> {
+    const when = formatParisDateTime(event.startsAt);
     await this.safe(() =>
       this.notifications.notifyUser({
         userId: event.coiffeurId,
         type: 'appointment_created',
         dedupeKey: event.appointmentId,
-        title: 'Nouvelle demande de rendez-vous',
-        body: `Nouvelle demande pour ${event.serviceName}.`,
+        ...(event.status === 'confirmed'
+          ? { title: 'Nouveau rendez-vous', body: `${event.serviceName}, le ${when}.` }
+          : { title: 'Nouvelle demande de rendez-vous', body: `${event.serviceName}, le ${when}. À accepter ou refuser.` }),
         data: { appointmentId: event.appointmentId },
       }),
     );
@@ -131,6 +144,20 @@ export class AppointmentNotificationsListener {
         dedupeKey: `${event.appointmentId}:${event.startsAt}`,
         title: 'Rendez-vous déplacé',
         body: `Le rendez-vous pour ${event.serviceName} est déplacé au ${formatParisDateTime(event.startsAt)}.`,
+        data: { appointmentId: event.appointmentId },
+      }),
+    );
+  }
+
+  @OnEvent('appointment.moved')
+  async onMoved(event: AppointmentMovedEvent): Promise<void> {
+    await this.safe(() =>
+      this.notifications.notifyUser({
+        userId: event.particulierId,
+        type: 'appointment_moved',
+        dedupeKey: `${event.appointmentId}:${event.startsAt}`,
+        title: 'Rendez-vous déplacé par le salon',
+        body: `Votre rendez-vous pour ${event.serviceName} est déplacé au ${formatParisDateTime(event.startsAt)}.`,
         data: { appointmentId: event.appointmentId },
       }),
     );

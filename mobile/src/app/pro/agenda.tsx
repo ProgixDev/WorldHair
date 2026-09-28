@@ -3,7 +3,9 @@ import { Image } from "expo-image";
 import React, { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppointmentSheet } from "../../components/pro/AppointmentSheet";
 import { AvailabilityRow } from "../../components/pro/AvailabilityEditor";
+import { ClosuresSheet } from "../../components/pro/ClosuresSheet";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -12,12 +14,14 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { closureBlocksForDay } from "../../features/pro/closures";
 import {
   appointmentsForDay,
   occupancyForDay,
-  serviceName,
+  servicesLabel,
 } from "../../features/pro/stats";
-import type { AvailabilityDay, ProAppointment } from "../../features/pro/types";
+import type { Attendance, AvailabilityDay, ProAppointment } from "../../features/pro/types";
+import { proErrorMessage } from "../../services/pro";
 import { avatarFor } from "../../features/salons/images";
 import {
   addDays,
@@ -34,10 +38,14 @@ import {
 } from "../../utils/date";
 
 const PX_PER_MIN = 1.15;
+/** How far back past appointments stay in "À marquer" until marked. */
+const MARKING_WINDOW_DAYS = 14;
 
 /**
- * Agenda: pending requests first, then a real day column where each booking is
- * a block sized by its duration. Availability is edited in a sheet.
+ * Agenda: pending requests first, then past appointments still to mark
+ * (attended or missed), then a real day column where each booking is a
+ * block sized by its duration — tap one for its details and actions.
+ * Hours and closures are edited in sheets.
  */
 export default function ProAgenda() {
   const { theme } = useTheme();
@@ -47,14 +55,32 @@ export default function ProAgenda() {
     appointments,
     services,
     availability,
+    timeOff,
     saveAvailability,
     setAppointmentStatus,
+    setAttendance,
   } = usePro();
 
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
   const [busyId, setBusyId] = useState<string | null>(null);
   const [hoursOpen, setHoursOpen] = useState(false);
+  const [closuresOpen, setClosuresOpen] = useState(false);
   const [draft, setDraft] = useState<AvailabilityDay[]>([]);
+  const [sheetAppointment, setSheetAppointment] = useState<ProAppointment | null>(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
+
+  const openAppointment = (appointment: ProAppointment) => {
+    setSheetAppointment(appointment);
+    setSheetVisible(true);
+  };
+  // The sheet follows the live list, so a mark or a move shows in it at once.
+  const liveSheetAppointment = useMemo(
+    () =>
+      sheetAppointment
+        ? (appointments.find((appointment) => appointment.id === sheetAppointment.id) ?? sheetAppointment)
+        : null,
+    [appointments, sheetAppointment],
+  );
 
   const days = useMemo(
     () => Array.from({ length: 14 }, (_, index) => addDays(new Date(), index)),
@@ -69,6 +95,24 @@ export default function ProAgenda() {
     [appointments],
   );
 
+  // Past appointments nobody has marked yet — "Honoré" or "Absent".
+  const toMark = useMemo(() => {
+    const since = addDays(new Date(), -MARKING_WINDOW_DAYS).getTime();
+    const now = Date.now();
+    return appointments
+      .filter((appointment) => {
+        const start = new Date(appointment.startsAt).getTime();
+        return (
+          (appointment.status === "done" || appointment.status === "confirmed") &&
+          appointment.attendance === null &&
+          start <= now &&
+          start >= since
+        );
+      })
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+      .slice(0, 5);
+  }, [appointments]);
+
   const dayConfig = availability.find(
     (day) => day.weekday === selectedDay.getDay(),
   );
@@ -76,6 +120,16 @@ export default function ProAgenda() {
     () => appointmentsForDay(appointments, selectedDay),
     [appointments, selectedDay],
   );
+  const dayClosures = useMemo(
+    () => closureBlocksForDay(timeOff, selectedDay),
+    [timeOff, selectedDay],
+  );
+  const closedAllDay =
+    dayConfig?.open === true &&
+    dayClosures.some(
+      (block) =>
+        block.startMinute <= dayConfig.opens && block.endMinute >= dayConfig.closes,
+    );
   const openMinutes = dayConfig?.open ? dayConfig.closes - dayConfig.opens : 0;
   const occupancy = occupancyForDay(appointments, selectedDay, openMinutes);
 
@@ -86,25 +140,22 @@ export default function ProAgenda() {
     setBusyId(appointment.id);
     try {
       await setAppointmentStatus(appointment.id, status);
+    } catch (err) {
+      Alert.alert("Action impossible", proErrorMessage(err));
     } finally {
       setBusyId(null);
     }
   };
 
-  const cancelBooking = (appointment: ProAppointment) => {
-    Alert.alert(
-      "Annuler ce rendez-vous ?",
-      appointment.clientName +
-        " sera notifié de l'annulation. Cette action est irréversible.",
-      [
-        { text: "Garder", style: "cancel" },
-        {
-          text: "Annuler le RDV",
-          style: "destructive",
-          onPress: () => void setAppointmentStatus(appointment.id, "cancelled"),
-        },
-      ],
-    );
+  const mark = async (appointment: ProAppointment, attendance: Attendance) => {
+    setBusyId(appointment.id);
+    try {
+      await setAttendance(appointment.id, attendance);
+    } catch (err) {
+      Alert.alert("Action impossible", proErrorMessage(err));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   /**
@@ -147,31 +198,20 @@ export default function ProAgenda() {
           >
             Agenda
           </Text>
-          <Pressable
-            onPress={() => openHours()}
-            accessibilityRole="button"
-            accessibilityLabel="Modifier mes disponibilités"
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.xs,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm,
-              borderRadius: radius.full,
-              borderWidth: 1,
-              borderColor: theme.primary.main,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <MaterialCommunityIcons
-              name="clock-edit-outline"
-              size={15}
-              color={theme.primary.main}
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <HeaderAction
+              icon="calendar-remove-outline"
+              label="Fermetures"
+              accessibilityLabel="Congés et fermetures"
+              onPress={() => setClosuresOpen(true)}
             />
-            <Text style={[typography.label, { color: theme.primary.main }]}>
-              Horaires
-            </Text>
-          </Pressable>
+            <HeaderAction
+              icon="clock-edit-outline"
+              label="Horaires"
+              accessibilityLabel="Modifier mes disponibilités"
+              onPress={() => openHours()}
+            />
+          </View>
         </View>
 
         {/* ── Requests ─────────────────────────────────────────────────── */}
@@ -278,7 +318,7 @@ export default function ProAgenda() {
                     { color: theme.foreground.white },
                   ]}
                 >
-                  {serviceName(services, appointment.serviceId)}
+                  {servicesLabel(appointment, services)}
                 </Text>
 
                 {appointment.note ? (
@@ -321,6 +361,67 @@ export default function ProAgenda() {
                 </View>
               </View>
             ))}
+          </View>
+        ) : null}
+
+        {/* ── Past appointments to mark ────────────────────────────────── */}
+        {toMark.length > 0 ? (
+          <View style={{ gap: spacing.md, paddingHorizontal: gutter }}>
+            <Text style={[typography.overline, { color: theme.foreground.gray }]}>
+              LE CLIENT EST-IL VENU ?
+            </Text>
+            {toMark.map((appointment) => {
+              const start = new Date(appointment.startsAt);
+              return (
+                <View
+                  key={appointment.id}
+                  style={{
+                    padding: spacing.lg,
+                    borderRadius: radius.xl,
+                    backgroundColor: theme.surface.raised,
+                    borderWidth: 1,
+                    borderColor: theme.divider,
+                    gap: spacing.md,
+                  }}
+                >
+                  <Pressable
+                    onPress={() => openAppointment(appointment)}
+                    accessibilityRole="button"
+                    style={{ gap: 2 }}
+                  >
+                    <Text style={[typography.bodyMedium, { color: theme.foreground.white }]}>
+                      {appointment.clientName}
+                    </Text>
+                    <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                      {relativeDay(start) +
+                        " · " +
+                        timeOfDay(start) +
+                        " · " +
+                        servicesLabel(appointment, services)}
+                    </Text>
+                  </Pressable>
+                  <View style={{ flexDirection: "row", gap: spacing.md }}>
+                    <Button
+                      label="Absent"
+                      variant="outline"
+                      background={theme.danger}
+                      color={theme.danger}
+                      onPress={() => void mark(appointment, "no_show")}
+                      disabled={busyId === appointment.id}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      label="Honoré"
+                      onPress={() => void mark(appointment, "attended")}
+                      loading={busyId === appointment.id}
+                      background={theme.primary.main}
+                      color={theme.primary.on}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                </View>
+              );
+            })}
           </View>
         ) : null}
 
@@ -423,14 +524,14 @@ export default function ProAgenda() {
           >
             <Text style={[typography.label, { color: theme.foreground.white }]}>
               {relativeDay(selectedDay) +
-                (dayConfig?.open
+                (dayConfig?.open && !closedAllDay
                   ? " · " +
                     minutesToTime(dayConfig.opens) +
                     "–" +
                     minutesToTime(dayConfig.closes)
                   : " · fermé")}
             </Text>
-            {dayConfig?.open ? (
+            {dayConfig?.open && !closedAllDay ? (
               <Text
                 style={[typography.caption, { color: theme.foreground.gray }]}
               >
@@ -474,15 +575,54 @@ export default function ProAgenda() {
               />
             </View>
           ) : (
-            <DayColumn
-              config={dayConfig}
-              appointments={dayAppointments}
-              serviceLabel={(id) => serviceName(services, id)}
-              onCancel={cancelBooking}
-            />
+            <>
+              {closedAllDay ? (
+                <Pressable
+                  onPress={() => setClosuresOpen(true)}
+                  accessibilityRole="button"
+                  style={{
+                    marginBottom: spacing.md,
+                    padding: spacing.md,
+                    borderRadius: radius.lg,
+                    backgroundColor: theme.surface.sunken,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.sm,
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name="calendar-remove-outline"
+                    size={18}
+                    color={theme.foreground.gray}
+                  />
+                  <Text style={[typography.bodySmall, { color: theme.foreground.gray, flex: 1 }]}>
+                    {"Fermé ce jour-là" +
+                      (dayClosures[0]?.label ? " · " + dayClosures[0].label : "") +
+                      ". Aucune réservation possible."}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <DayColumn
+                config={dayConfig}
+                appointments={dayAppointments}
+                closures={dayClosures}
+                serviceLabel={(appointment) =>
+                  servicesLabel(appointment, services)
+                }
+                onOpen={openAppointment}
+              />
+            </>
           )}
         </View>
       </ScrollView>
+
+      <AppointmentSheet
+        appointment={liveSheetAppointment}
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+      />
+
+      <ClosuresSheet visible={closuresOpen} onClose={() => setClosuresOpen(false)} />
 
       {/* ── Availability sheet ─────────────────────────────────────────── */}
       <BottomSheet
@@ -526,17 +666,55 @@ export default function ProAgenda() {
   );
 }
 
-/** Time rail with each booking drawn as a block proportional to its duration. */
+function HeaderAction({
+  icon,
+  label,
+  accessibilityLabel,
+  onPress,
+}: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  label: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.xs,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: theme.primary.main,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <MaterialCommunityIcons name={icon} size={15} color={theme.primary.main} />
+      <Text style={[typography.label, { color: theme.primary.main }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** Time rail with each booking drawn as a block proportional to its duration, and closures greyed over it. */
 function DayColumn({
   config,
   appointments,
+  closures,
   serviceLabel,
-  onCancel,
+  onOpen,
 }: {
   config: AvailabilityDay;
   appointments: ProAppointment[];
-  serviceLabel: (serviceId: string) => string;
-  onCancel: (appointment: ProAppointment) => void;
+  /** Closed stretches of this day, minutes from midnight. */
+  closures: { startMinute: number; endMinute: number; label: string }[];
+  serviceLabel: (appointment: ProAppointment) => string;
+  onOpen: (appointment: ProAppointment) => void;
 }) {
   const { theme } = useTheme();
   const height = (config.closes - config.opens) * PX_PER_MIN;
@@ -621,6 +799,36 @@ function DayColumn({
           </View>
         ) : null}
 
+        {/* Closures (congés, fermetures), clipped to the opening hours */}
+        {closures.map((block, index) => {
+          const from = Math.max(block.startMinute, config.opens);
+          const to = Math.min(block.endMinute, config.closes);
+          if (to <= from) return null;
+          return (
+            <View
+              key={index}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: (from - config.opens) * PX_PER_MIN,
+                height: (to - from) * PX_PER_MIN,
+                backgroundColor: theme.surface.sunken,
+                borderTopWidth: 1,
+                borderBottomWidth: 1,
+                borderStyle: "dashed",
+                borderColor: theme.border,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={[typography.caption, { color: theme.foreground.gray, fontSize: 10 }]}>
+                {"FERMÉ" + (block.label ? " · " + block.label.toUpperCase() : "")}
+              </Text>
+            </View>
+          );
+        })}
+
         {/* Bookings */}
         {appointments.map((appointment) => {
           const start = new Date(appointment.startsAt);
@@ -635,13 +843,14 @@ function DayColumn({
           return (
             <Pressable
               key={appointment.id}
-              onLongPress={() => onCancel(appointment)}
+              onPress={() => onOpen(appointment)}
+              onLongPress={() => onOpen(appointment)}
               accessibilityRole="button"
               accessibilityLabel={
                 appointment.clientName +
                 ", " +
                 timeOfDay(start) +
-                ". Appui long pour annuler."
+                ". Touchez pour voir le détail, déplacer ou annuler."
               }
               style={({ pressed }) => ({
                 position: "absolute",
@@ -660,9 +869,6 @@ function DayColumn({
                 borderWidth: 1.5,
                 borderStyle: isPending ? "dashed" : "solid",
                 borderColor: isPending ? theme.danger : theme.primary.main,
-                // A tap alone does nothing here (only long-press cancels), so
-                // it still needs to visibly react — otherwise the block reads
-                // as unresponsive rather than "hold to cancel".
                 opacity: pressed ? 0.6 : 1,
               })}
             >
@@ -684,7 +890,7 @@ function DayColumn({
                   ]}
                   numberOfLines={1}
                 >
-                  {serviceLabel(appointment.serviceId) +
+                  {serviceLabel(appointment) +
                     " · " +
                     formatPrice(appointment.price)}
                 </Text>

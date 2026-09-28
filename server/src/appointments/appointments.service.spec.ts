@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { parisParts, parisTime } from '../common/utils/paris-time';
 import { SupabaseService } from '../database/supabase.service';
+import { ReviewsService } from '../reviews/reviews.service';
 import { SalonService } from '../salon/salon.service';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { AppointmentsService } from './appointments.service';
@@ -33,10 +34,12 @@ const WEDNESDAY_8PM = () => nextWeekday(3, 20); // after the 19:00 close
 const WEDNESDAY_LUNCH = () => nextWeekday(3, 13, 30); // inside the 13-14 break
 const SUNDAY_10AM = () => nextWeekday(0, 10); // closed by default
 const YESTERDAY = () => new Date(Date.now() - 86_400_000).toISOString();
+const TEN_MINUTES_AGO = () => new Date(Date.now() - 10 * 60_000).toISOString();
 
 describe('AppointmentsService', () => {
   let supabase: FakeSupabaseService;
   let service: AppointmentsService;
+  let salon: SalonService;
   let events: EventEmitter2;
   let serviceId: string;
 
@@ -44,7 +47,7 @@ describe('AppointmentsService', () => {
     supabase = new FakeSupabaseService();
     events = new EventEmitter2();
     const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, events);
-    const salon = new SalonService(supabase as unknown as SupabaseService);
+    salon = new SalonService(supabase as unknown as SupabaseService);
     service = new AppointmentsService(supabase as unknown as SupabaseService, applications, salon, events);
 
     supabase.seedValidatedSalon({
@@ -452,6 +455,469 @@ describe('AppointmentsService', () => {
         serviceName: 'Coupe & brushing',
         startsAt: created.startsAt,
       });
+    });
+  });
+
+  describe('several prestations in one booking', () => {
+    let colorId: string;
+
+    beforeEach(async () => {
+      const color = await salon.createService(COIFFEUR_ID, {
+        name: 'Couleur',
+        price: 55,
+        durationMin: 90,
+        specialty: 'coloration',
+      });
+      colorId = color.id;
+    });
+
+    it('books them as one block: durations and prices add up, lines kept in the order picked', async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [colorId, serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+
+      expect(created).toMatchObject({
+        serviceName: 'Couleur + Coupe & brushing',
+        durationMin: 150,
+        price: 95,
+        services: [
+          { serviceId: colorId, name: 'Couleur', price: 55, durationMin: 90 },
+          { serviceId, name: 'Coupe & brushing', price: 40, durationMin: 60 },
+        ],
+      });
+      const [forSalon] = await service.listForCoiffeur(COIFFEUR_ID);
+      expect(forSalon.services).toHaveLength(2);
+    });
+
+    it('needs the whole block to fit before closing time', async () => {
+      await expect(
+        service.create(PARTICULIER_ID, {
+          coiffeurId: COIFFEUR_ID,
+          serviceIds: [colorId, serviceId],
+          startsAt: nextWeekday(3, 17).toISOString(), // 17:00 + 150 min ends after 19:00
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('still accepts the single serviceId older app versions send', async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      expect(created.services).toEqual([{ serviceId, name: 'Coupe & brushing', price: 40, durationMin: 60 }]);
+    });
+
+    it('refuses a booking with no prestation, or one from another salon', async () => {
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create(PARTICULIER_ID, {
+          coiffeurId: COIFFEUR_ID,
+          serviceIds: [serviceId, '9b2c8f0e-5a3d-4c1b-8e7f-6a5b4c3d2e1f'],
+          startsAt: WEDNESDAY_10AM().toISOString(),
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('instant confirmation', () => {
+    it('confirms the booking straight away and tells the particulier', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { confirmationMode: 'instant' });
+      const confirmed = jest.fn();
+      events.on('appointment.confirmed', confirmed);
+
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+
+      expect(created.status).toBe('confirmed');
+      expect(confirmed).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: created.id }));
+    });
+
+    it("tells listeners the new booking's status, so the coiffeur's message fits", async () => {
+      await salon.updateProfile(COIFFEUR_ID, { confirmationMode: 'instant' });
+      const heard = jest.fn();
+      events.on('appointment.created', heard);
+
+      await service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+
+      expect(heard).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed' }));
+    });
+  });
+
+  describe("the salon's deadlines", () => {
+    it('refuses a booking that starts inside the booking notice', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { bookingNoticeMinutes: 20160 }); // two weeks
+
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(/notice/);
+    });
+
+    it("won't let the particulier cancel or move an accepted booking once the cancellation deadline has passed", async () => {
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+
+      await expect(service.cancel(PARTICULIER_ID, created.id)).rejects.toThrow(/Too late/);
+      await expect(service.reschedule(PARTICULIER_ID, created.id, nextWeekday(4, 11).toISOString())).rejects.toThrow(/Too late/);
+    });
+
+    it('still lets the particulier withdraw a request the salon has not accepted yet', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+
+      await expect(service.cancel(PARTICULIER_ID, created.id)).resolves.toBeUndefined();
+    });
+
+    it('stops the particulier changing a booking once it has started, even with no cancellation notice', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 0 });
+      const started = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: TEN_MINUTES_AGO(),
+        durationMin: 60,
+        status: 'confirmed',
+      });
+      const startedRequest = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: TEN_MINUTES_AGO(),
+        durationMin: 60,
+        status: 'pending',
+      });
+
+      await expect(service.cancel(PARTICULIER_ID, started)).rejects.toThrow(/Too late/);
+      await expect(service.reschedule(PARTICULIER_ID, started, nextWeekday(4, 11).toISOString())).rejects.toThrow(
+        /Too late/,
+      );
+      await expect(service.cancel(PARTICULIER_ID, startedRequest)).rejects.toThrow(/Too late/);
+    });
+
+    it('keeps the cancellation notice the salon had when the client booked', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 60 });
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
+
+      await expect(service.cancel(PARTICULIER_ID, created.id)).resolves.toBeUndefined();
+    });
+
+    it('lets the particulier change a booking the salon moved until it starts, until they pick a time themselves', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+      await service.move(COIFFEUR_ID, created.id, nextWeekday(4, 15).toISOString());
+
+      const [moved] = await service.listForParticulier(PARTICULIER_ID);
+      expect(moved.movedBySalon).toBe(true);
+      expect(moved.modifiableUntil).toBe(moved.startsAt);
+
+      await service.reschedule(PARTICULIER_ID, created.id, nextWeekday(5, 11).toISOString());
+      const [rescheduled] = await service.listForParticulier(PARTICULIER_ID);
+      expect(rescheduled.movedBySalon).toBe(false);
+      await expect(service.cancel(PARTICULIER_ID, created.id)).rejects.toThrow(/Too late/);
+    });
+
+    it('never holds the coiffeur to it', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+
+      await expect(service.cancel(COIFFEUR_ID, created.id)).resolves.toBeUndefined();
+    });
+
+    it('tells the particulier until when an accepted booking can still be changed', async () => {
+      await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 1440 });
+      const startsAt = WEDNESDAY_10AM();
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: startsAt.toISOString(),
+      });
+      expect(created.modifiableUntil).toBe(startsAt.toISOString()); // pending: can be withdrawn until it starts
+
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+      const [mine] = await service.listForParticulier(PARTICULIER_ID);
+      expect(mine.modifiableUntil).toBe(new Date(startsAt.getTime() - 86_400_000).toISOString());
+    });
+  });
+
+  describe('closures and conflicts', () => {
+    it('refuses a booking during a closure', async () => {
+      const startsAt = WEDNESDAY_10AM();
+      supabase.seedTimeOff({
+        profileId: COIFFEUR_ID,
+        startsAt: new Date(startsAt.getTime() - 3_600_000).toISOString(),
+        endsAt: new Date(startsAt.getTime() + 3 * 3_600_000).toISOString(),
+      });
+
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: startsAt.toISOString() }),
+      ).rejects.toThrow(/closed/);
+    });
+
+    it('refuses a booking that overlaps one the particulier already has at another salon', async () => {
+      supabase.seedValidatedSalon({
+        profileId: 'coiffeur-2',
+        firstName: 'Awa',
+        lastName: 'Diallo',
+        salonName: 'Maison Tresse',
+        services: [{ name: 'Tresses', price: 60, durationMin: 120, specialty: 'tresses' }],
+      });
+      const [braids] = await salon.listServices('coiffeur-2');
+      await service.create(PARTICULIER_ID, { coiffeurId: 'coiffeur-2', serviceIds: [braids.id], startsAt: WEDNESDAY_10AM().toISOString() });
+
+      await expect(
+        service.create(PARTICULIER_ID, {
+          coiffeurId: COIFFEUR_ID,
+          serviceIds: [serviceId],
+          startsAt: nextWeekday(3, 11).toISOString(),
+        }),
+      ).rejects.toThrow(/already have an appointment/);
+    });
+
+    it("still sees a taken slot behind a long booking history (PostgREST returns 1 000 rows at most)", async () => {
+      for (let day = 2; day < 1002; day++) {
+        supabase.seedAppointment({
+          particulierId: 'regular-client',
+          coiffeurId: COIFFEUR_ID,
+          startsAt: new Date(Date.now() - day * 86_400_000).toISOString(),
+          status: 'confirmed',
+        });
+      }
+      supabase.seedAppointment({
+        particulierId: 'particulier-2',
+        coiffeurId: COIFFEUR_ID,
+        startsAt: WEDNESDAY_10AM().toISOString(),
+        durationMin: 60,
+        status: 'confirmed',
+      });
+
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(/no longer available/);
+    });
+
+    it("turns the database's double-booking refusal into a friendly 'no longer available'", async () => {
+      supabase.failNextAppointmentInsert('23P01');
+
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(/no longer available/);
+    });
+  });
+
+  describe('slots', () => {
+    const dateOf = (instant: Date) => {
+      const paris = parisParts(instant);
+      return `${paris.year}-${String(paris.month).padStart(2, '0')}-${String(paris.day).padStart(2, '0')}`;
+    };
+
+    it("lists the day's starts for the picked prestations, taking existing bookings into account", async () => {
+      await service.create('particulier-2', { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+
+      const day = await service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, {
+        date: dateOf(WEDNESDAY_10AM()),
+        serviceIds: [serviceId],
+      });
+
+      expect(day.closed).toBe(false);
+      expect(day.slots.find((slot) => slot.label === '10:00')?.available).toBe(false);
+      expect(day.slots.find((slot) => slot.label === '11:00')?.available).toBe(true);
+    });
+
+    it('says a day the salon never opens is closed', async () => {
+      const day = await service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, {
+        date: dateOf(SUNDAY_10AM()),
+        serviceIds: [serviceId],
+      });
+      expect(day).toMatchObject({ closed: true, slots: [] });
+    });
+
+    it("for a move, doesn't block the appointment's own time, and never holds the coiffeur to the booking notice", async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await salon.updateProfile(COIFFEUR_ID, { bookingNoticeMinutes: 20160 });
+
+      const forCoiffeur = await service.slots(COIFFEUR_ID, 'coiffeur', COIFFEUR_ID, {
+        date: dateOf(WEDNESDAY_10AM()),
+        appointmentId: created.id,
+      });
+      expect(forCoiffeur.slots.find((slot) => slot.label === '10:00')?.available).toBe(true);
+
+      const forClient = await service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, {
+        date: dateOf(WEDNESDAY_10AM()),
+        appointmentId: created.id,
+      });
+      expect(forClient.slots.every((slot) => !slot.available)).toBe(true); // all inside the two-week notice
+    });
+
+    it('needs either prestations or an appointment to size the slots', async () => {
+      await expect(
+        service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, { date: dateOf(WEDNESDAY_10AM()) }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('404s a salon that is not bookable', async () => {
+      supabase.setAccountStatus(COIFFEUR_ID, 'banned');
+      await expect(
+        service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, { date: dateOf(WEDNESDAY_10AM()), serviceIds: [serviceId] }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('coiffeur moves an accepted appointment', () => {
+    it('moves it and tells listeners so the particulier hears about it', async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+      const heard = jest.fn();
+      events.on('appointment.moved', heard);
+      const newSlot = nextWeekday(4, 15);
+
+      await service.move(COIFFEUR_ID, created.id, newSlot.toISOString());
+
+      const [mine] = await service.listForParticulier(PARTICULIER_ID);
+      expect(new Date(mine.startsAt).getTime()).toBe(newSlot.getTime());
+      expect(heard).toHaveBeenCalledWith({
+        appointmentId: created.id,
+        particulierId: PARTICULIER_ID,
+        serviceName: 'Coupe & brushing',
+        previousStartsAt: created.startsAt,
+        startsAt: newSlot.toISOString(),
+      });
+    });
+
+    it('only moves an accepted appointment, not a pending request', async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await expect(service.move(COIFFEUR_ID, created.id, nextWeekday(4, 15).toISOString())).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('refuses an appointment that has already started', async () => {
+      const started = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: TEN_MINUTES_AGO(),
+        durationMin: 60,
+        status: 'confirmed',
+      });
+
+      await expect(service.move(COIFFEUR_ID, started, nextWeekday(4, 15).toISOString())).rejects.toThrow(
+        /already started/,
+      );
+    });
+
+    it("refuses a taken time, and 403s another coiffeur's appointment", async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+      await service.create('particulier-2', { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: nextWeekday(4, 15).toISOString() });
+
+      await expect(service.move(COIFFEUR_ID, created.id, nextWeekday(4, 15).toISOString())).rejects.toThrow(
+        /no longer available/,
+      );
+      await expect(service.move('another-coiffeur', created.id, nextWeekday(4, 11).toISOString())).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('attendance', () => {
+    it('lets the coiffeur mark a past appointment as a no-show, and both sides see it', async () => {
+      const past = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: YESTERDAY(),
+        status: 'confirmed',
+      });
+
+      await service.setAttendance(COIFFEUR_ID, past, 'no_show');
+
+      const [forSalon] = await service.listForCoiffeur(COIFFEUR_ID);
+      const [forClient] = await service.listForParticulier(PARTICULIER_ID);
+      expect(forSalon.attendance).toBe('no_show');
+      expect(forClient.attendance).toBe('no_show');
+    });
+
+    it('refuses a no-show once the client has reviewed the appointment, so a review is never taken back', async () => {
+      const past = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        serviceId,
+        startsAt: YESTERDAY(),
+        status: 'confirmed',
+      });
+      await new ReviewsService(supabase as unknown as SupabaseService).create(PARTICULIER_ID, {
+        appointmentId: past,
+        rating: 5,
+      });
+
+      await expect(service.setAttendance(COIFFEUR_ID, past, 'no_show')).rejects.toThrow(/review/);
+      await expect(service.setAttendance(COIFFEUR_ID, past, 'attended')).resolves.toBeUndefined();
+    });
+
+    it("refuses before the appointment has started, and on one that didn't happen", async () => {
+      const created = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.decide(COIFFEUR_ID, created.id, 'confirmed');
+      await expect(service.setAttendance(COIFFEUR_ID, created.id, 'attended')).rejects.toThrow(BadRequestException);
+
+      const cancelled = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        startsAt: YESTERDAY(),
+        status: 'cancelled',
+      });
+      await expect(service.setAttendance(COIFFEUR_ID, cancelled, 'attended')).rejects.toThrow(BadRequestException);
     });
   });
 });

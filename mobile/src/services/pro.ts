@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import {
@@ -7,6 +8,7 @@ import {
   uploadUserPhoto,
 } from "../lib/uploadPhoto";
 import type {
+  Attendance,
   AvailabilityDay,
   GalleryPhoto,
   PlanId,
@@ -15,8 +17,10 @@ import type {
   ProProfile,
   ProService,
   Subscription,
+  TimeOff,
+  TimeOffConflict,
 } from "../features/pro/types";
-import type { Review } from "../features/salons/types";
+import type { ConfirmationMode, Review } from "../features/salons/types";
 import { joinPhone, splitPhone } from "../utils/phoneFormat";
 
 /**
@@ -36,6 +40,38 @@ async function currentUserId(): Promise<string> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Aucune session active.");
   return user.id;
+}
+
+/** The server's refusals are English and meant for logs; these are what the coiffeur reads. */
+const REFUSALS: [string, string][] = [
+  ["no longer available", "Ce créneau est déjà pris."],
+  ["already has an appointment", "Le client a déjà un rendez-vous à ce moment-là."],
+  ["closed at that time", "Le salon est fermé à ce moment-là."],
+  ["opening hours", "Cet horaire est en dehors de vos heures d'ouverture."],
+  ["break", "Cet horaire tombe pendant votre pause."],
+  ["valid date in the future", "Choisissez une date et une heure à venir."],
+  ["already taken place", "Ce rendez-vous est déjà passé."],
+  ["hasn't started yet", "Ce rendez-vous n'a pas encore commencé."],
+  ["has expired", "Cette demande a expiré : son horaire est passé."],
+  ["Only an accepted appointment", "Seul un rendez-vous accepté peut être modifié ainsi."],
+  ["already started", "Ce rendez-vous a déjà commencé : il ne peut plus être déplacé."],
+  [
+    "already left a review",
+    "Le client a déjà laissé un avis sur ce rendez-vous : il ne peut plus être marqué absent.",
+  ],
+  ["end after it starts", "La fermeture doit se terminer après son début."],
+  ["already over", "Cette fermeture est déjà passée."],
+];
+
+/** A French, coiffeur-facing message for a failed agenda action. */
+export function proErrorMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    const body = err.response?.data as { message?: string | string[] } | undefined;
+    const message = Array.isArray(body?.message) ? body.message.join(" ") : (body?.message ?? "");
+    const match = REFUSALS.find(([key]) => message.includes(key));
+    if (match) return match[1];
+  }
+  return "Une erreur est survenue. Réessayez.";
 }
 
 // ─── Seeding ─────────────────────────────────────────────────────────────────
@@ -63,6 +99,9 @@ interface SalonProfileResponse {
   coverUrl: string | null;
   latitude: number | null;
   longitude: number | null;
+  confirmationMode: ConfirmationMode;
+  bookingNoticeMinutes: number;
+  cancellationNoticeMinutes: number;
 }
 
 /**
@@ -93,6 +132,9 @@ function toProProfile(
     coverUri: data.coverUrl,
     latitude: data.latitude,
     longitude: data.longitude,
+    confirmationMode: data.confirmationMode ?? "manual",
+    bookingNoticeMinutes: data.bookingNoticeMinutes ?? 60,
+    cancellationNoticeMinutes: data.cancellationNoticeMinutes ?? 1440,
   };
 }
 
@@ -137,6 +179,9 @@ export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
     coverUrl: coverUrl ?? undefined,
     latitude: profile.latitude ?? undefined,
     longitude: profile.longitude ?? undefined,
+    confirmationMode: profile.confirmationMode,
+    bookingNoticeMinutes: profile.bookingNoticeMinutes,
+    cancellationNoticeMinutes: profile.cancellationNoticeMinutes,
   });
 
   return toProProfile(data, profile.salonId, profile.stylist);
@@ -288,6 +333,43 @@ export async function setAppointmentStatus(
     await apiClient.patch(`/appointments/${id}/cancel`);
   }
   return listProAppointments();
+}
+
+/** "Déplacer" an accepted appointment; the client gets a push with the new time. */
+export async function moveAppointment(id: string, startsAt: string): Promise<ProAppointment[]> {
+  await apiClient.patch(`/appointments/${id}/move`, { startsAt });
+  return listProAppointments();
+}
+
+/** "Honoré" or "Absent", once the appointment has started. No review after a no-show. */
+export async function setAttendance(id: string, attendance: Attendance): Promise<ProAppointment[]> {
+  await apiClient.patch(`/appointments/${id}/attendance`, { attendance });
+  return listProAppointments();
+}
+
+// ─── Closures (congés, fermetures exceptionnelles) ───────────────────────────
+
+export async function listTimeOff(): Promise<TimeOff[]> {
+  const { data } = await apiClient.get<TimeOff[]>("/salon/me/time-off");
+  return data;
+}
+
+/** Adds a closure; bookings already inside it aren't cancelled — they come back as `conflicts` to handle one by one. */
+export async function addTimeOff(input: {
+  startsAt: string;
+  endsAt: string;
+  label?: string;
+}): Promise<{ timeOff: TimeOff[]; conflicts: TimeOffConflict[] }> {
+  const { data } = await apiClient.post<{ timeOff: TimeOff; conflicts: TimeOffConflict[] }>(
+    "/salon/me/time-off",
+    input,
+  );
+  return { timeOff: await listTimeOff(), conflicts: data.conflicts };
+}
+
+export async function deleteTimeOff(id: string): Promise<TimeOff[]> {
+  await apiClient.delete(`/salon/me/time-off/${id}`);
+  return listTimeOff();
 }
 
 // ─── Subscription ────────────────────────────────────────────────────────────

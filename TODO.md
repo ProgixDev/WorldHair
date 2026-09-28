@@ -92,7 +92,11 @@ together. Check an item only when every layer is done.
 
 ## Phase 2 — Booking engine
 
-- [ ] **Server-side slot calculation**, the single source of truth for the
+Done 2026-09-28: code, tests and the dev database (migrations
+`phase2_booking_engine` and `phase2_appointment_deadline_snapshot`). The app
+needs the new server deployed; manual checks are in TESTING.md.
+
+- [x] **Server-side slot calculation**, the single source of truth for the
       booking grid.
   - API: `GET /salons/:id/slots?date=YYYY-MM-DD&serviceIds=…` (later
     `&staffId=`) returns the bookable starts, using hours, break, time off,
@@ -102,7 +106,12 @@ together. Check an item only when every layer is done.
     (`btree_gist`), so two simultaneous requests can't double-book.
   - App: the slot step reads this endpoint; the client-side logic in
     `slots.ts` goes away.
-- [ ] **Several prestations in one booking** (devis: total duration and price
+  - Done. The endpoint is `GET /appointments/salon/:id/slots?date=…&serviceIds=…`
+    (`&appointmentId=…` when moving a booking). One set of rules
+    (`server/src/appointments/booking-rules.ts`) serves the grid, booking,
+    reschedule and move. The constraint is live: the second of two requests on
+    the same slot gets "no longer available" and the grid reloads.
+- [x] **Several prestations in one booking** (devis: total duration and price
       add up).
   - DB: `appointment_services` (appointment_id, service_id nullable, name,
     price and duration snapshots, position). `appointments.price` and
@@ -114,14 +123,18 @@ together. Check an item only when every layer is done.
     services show every line.
   - Done when: 2 services give one continuous block of the summed duration,
     with the summed price on both sides.
-- [ ] **Instant confirmation or manual approval, per salon**
+  - Done. Notifications read "Coloration complète + Soin fondant". Bookings
+    made before this show as a single line.
+- [x] **Instant confirmation or manual approval, per salon**
   - DB: `coiffeur_profiles.confirmation_mode` (`manual` or `instant`, default
     `manual`).
   - API: in instant mode a paid request becomes `confirmed` directly and sends
     the confirmation push.
   - App: toggle in the pro salon settings. The client's confirmation screen
     says "Confirmé" or "En attente" accordingly.
-- [ ] **Booking and cancellation deadlines, per salon**: the salon decides how
+  - Done: « Je valide » or « Confirmées d'office » in "Mon salon" →
+    RÉSERVATION. The client's last screen reads "C'est réservé." or "Demande envoyée."
+- [x] **Booking and cancellation deadlines, per salon**: the salon decides how
       late a client can book and how late they can cancel (for example book up
       to 1 hour before, cancel up to 1 day before).
   - DB: `coiffeur_profiles.booking_notice_minutes` (latest a client can book
@@ -141,7 +154,14 @@ together. Check an item only when every layer is done.
   - Done when: with 1 h and 1 day, a slot starting in 45 minutes is not
     offered, and a booking for tomorrow 10:00 can no longer be cancelled after
     10:00 today.
-- [ ] **Days off and exceptional closures (congés)**
+  - Done. The refund rule joins the text in Phase 5. Once too late,
+    "Modifier" and "Annuler" are hidden rather than greyed, and the card says
+    the salon's deadline has passed. A booking keeps the notice in force when
+    it was made, so changing the setting only affects new bookings. Until it
+    starts, the client can still change a request the salon hasn't accepted
+    yet, or a time the salon imposed by moving the booking ("Horaire déplacé
+    par le salon"). Nothing can be changed once it has started.
+- [x] **Days off and exceptional closures (congés)**
   - DB: `coiffeur_time_off` (profile_id, staff_id nullable for Phase 3,
     starts_at, ends_at, label).
   - API: CRUD `/salon/me/time-off`. Slots and booking validation skip these
@@ -149,16 +169,28 @@ together. Check an item only when every layer is done.
     not cancelled automatically.
   - App: "Congés et fermetures" in the pro agenda (date range picker). The
     client's day strip shows the salon closed.
-- [ ] **Coiffeur moves an appointment** ("déplacer"): `PATCH
+  - Done: whole days or a few hours of one day, from « Fermetures » in the
+    agenda header. Closures are drawn in the day column. `staff_id` is there,
+    unused, for Phase 3.
+- [x] **Coiffeur moves an appointment** ("déplacer"): `PATCH
       /appointments/:id/move` (coiffeur only) with slot validation and a push
       to the client. "Déplacer" action on the agenda card, reusing the slot
       picker.
-- [ ] **Mark attended or no-show** ("marquer comme honoré"):
+      Done for accepted appointments that haven't started (a pending request
+      is accepted or refused). The salon's booking notice doesn't apply to the
+      coiffeur.
+- [x] **Mark attended or no-show** ("marquer comme honoré"):
       `appointments.attendance` (`attended`, `no_show` or empty), set by the
       coiffeur once the slot has passed. No review after a no-show. The
       dashboard shows a no-show rate; the client's history shows the outcome.
-- [ ] (optional) **Email reminder at J-1** when push is off (the mail module
-      already exists).
+      Done: « Honoré » / « Absent » from the agenda's "LE CLIENT EST-IL
+      VENU ?" list or the booking's sheet. The client's history flags a missed
+      appointment; an attended one reads like any past appointment. « Absent »
+      is refused once the client has left a review, so marking can't remove
+      one: reporting the review is the way.
+- [x] (optional) **Email reminder at J-1** when push is off (the mail module
+      already exists). Done: sent when the client has no push token. A
+      booking moved after its reminder gets one again for the new time.
 
 ## Phase 3 — Staff (collaborateurs)
 
@@ -349,6 +381,11 @@ for a no-show.
       (Sentry or similar) on server, app and web. A strong admin password
       instead of `admin123`, a strong Android keystore password, backups of the
       keystore and secrets.
+- [ ] **Lists past 1 000 bookings**: PostgREST returns 1 000 rows at most, so
+      the coiffeur's agenda and dashboard and the client's history silently
+      drop bookings once there are more. Page them, or load a window (upcoming
+      plus recent months) and compute the dashboard stats in SQL. The booking
+      engine already reads only the bookings that can still collide.
 - [ ] **Email**: verify the sending domain in Resend (SPF and DKIM DNS
       records), set `MAIL_FROM` on that domain, point the Supabase auth email
       hook at production. Done when a new user with an outside address

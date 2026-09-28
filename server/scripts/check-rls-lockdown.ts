@@ -61,6 +61,20 @@ async function rewriteOwnValue(
   return !error && updated && updated.length > 0 ? "allowed" : "blocked";
 }
 
+/**
+ * Inserts a row missing its required columns, so it can never be stored.
+ * Postgres checks the privilege and the RLS policy (both 42501) before it
+ * looks at the row: any other answer means the insert itself was let through.
+ */
+async function insertIncompleteRow(
+  client: SupabaseClient,
+  table: string,
+  row: Record<string, string>,
+): Promise<"blocked" | "allowed"> {
+  const { error } = await client.from(table).insert(row);
+  return error?.code === "42501" ? "blocked" : "allowed";
+}
+
 async function main(): Promise<void> {
   const particulier = await signIn("demo.particulier@worldhair.app");
   const coiffeur = await signIn("demo.coiffeur.active@worldhair.app");
@@ -107,6 +121,16 @@ async function main(): Promise<void> {
       name: "coiffeur sets a review's status on their salon",
       expect: "blocked",
       run: () => rewriteOwnValue(coiffeur.client, "reviews", "status", { coiffeur_id: coiffeur.userId }),
+    },
+    {
+      name: "coiffeur adds a closure (coiffeur_time_off) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(coiffeur.client, "coiffeur_time_off", { label: "check:rls" }),
+    },
+    {
+      name: "particulier adds a prestation line (appointment_services) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(particulier.client, "appointment_services", { service_name: "check:rls" }),
     },
   ];
 

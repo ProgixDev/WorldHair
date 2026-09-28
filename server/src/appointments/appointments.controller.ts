@@ -1,11 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { AppointmentsService, CoiffeurAppointment, ParticulierAppointment } from './appointments.service';
+import { DaySlots } from './booking-rules';
+import { AttendanceDto } from './dto/attendance.dto';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { DecideAppointmentDto } from './dto/decide-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
+import { SlotsQueryDto } from './dto/slots-query.dto';
 
 /**
  * "Rendez-vous / Agenda" (TODO.md). No class-level `@Roles()`: particulier
@@ -48,12 +51,22 @@ export class AppointmentsController {
     return this.appointments.cancel(current.id, id);
   }
 
-  /** Public (any authenticated caller) — feeds the booking flow's slot picker. */
+  /** Superseded by `slots` for the booking grid; kept for app versions that still build it themselves. */
   @Get('salon/:coiffeurId/busy')
   listBusySlots(
     @Param('coiffeurId', ParseUUIDPipe) coiffeurId: string,
   ): Promise<{ startsAt: string; durationMin: number }[]> {
     return this.appointments.listBusySlots(coiffeurId);
+  }
+
+  /** The booking grid for one day — a new booking (`serviceIds`) or moving one (`appointmentId`). */
+  @Get('salon/:coiffeurId/slots')
+  slots(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('coiffeurId', ParseUUIDPipe) coiffeurId: string,
+    @Query() query: SlotsQueryDto,
+  ): Promise<DaySlots> {
+    return this.appointments.slots(current.id, current.role, coiffeurId, query);
   }
 
   // ─── Coiffeur ─────────────────────────────────────────────────────────────
@@ -72,5 +85,25 @@ export class AppointmentsController {
     @Body() dto: DecideAppointmentDto,
   ): Promise<void> {
     return this.appointments.decide(current.id, id, dto.decision);
+  }
+
+  @Roles('coiffeur')
+  @Patch(':id/move')
+  move(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RescheduleAppointmentDto,
+  ): Promise<void> {
+    return this.appointments.move(current.id, id, dto.startsAt);
+  }
+
+  @Roles('coiffeur')
+  @Patch(':id/attendance')
+  setAttendance(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AttendanceDto,
+  ): Promise<void> {
+    return this.appointments.setAttendance(current.id, id, dto.attendance);
   }
 }

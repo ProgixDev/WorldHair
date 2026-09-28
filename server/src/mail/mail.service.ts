@@ -2,7 +2,13 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
 import { EnvironmentVariables } from '../config/env.validation';
-import { coiffeurApplicationDecidedMail, passwordResetMail, verificationMail } from './mail.templates';
+import { formatParisDateTime } from '../common/utils/paris-time';
+import {
+  appointmentReminderMail,
+  coiffeurApplicationDecidedMail,
+  passwordResetMail,
+  verificationMail,
+} from './mail.templates';
 import { buildMailTransport } from './mail.transport';
 
 /**
@@ -80,6 +86,10 @@ export class MailService implements OnModuleDestroy {
     reviewMessage?: string | null,
   ): Promise<void> {
     await this.send(to, coiffeurApplicationDecidedMail(status, reviewMessage));
+  }
+
+  async sendAppointmentReminderEmail(to: string, serviceName: string, startsAt: string): Promise<void> {
+    await this.send(to, appointmentReminderMail(serviceName, `le ${formatParisDateTime(startsAt)}`));
   }
 
   /**

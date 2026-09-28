@@ -135,6 +135,7 @@ export async function seedSalonReviews(
         duration_min: service.duration_min,
         starts_at: startsAt.toISOString(),
         status: "confirmed",
+        attendance: "attended",
         created_at: bookedAt,
       })
       .select("id, particulier_id")

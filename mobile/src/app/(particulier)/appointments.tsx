@@ -14,6 +14,7 @@ import { useSalonSummary } from "../../features/salons/api";
 import {
   BookingError,
   cancelAppointment,
+  canStillChange,
   isUpcoming,
   listAppointments,
   listUserReviews,
@@ -230,6 +231,9 @@ function TimelineItem({
   const refused = appointment.status === "refused";
   const inactive = cancelled || refused;
   const upcoming = isUpcoming(appointment);
+  const changeable = canStillChange(appointment);
+  const missed = appointment.attendance === "no_show";
+  const deadline = appointment.modifiableUntil ? new Date(appointment.modifiableUntil) : null;
   const salon = useSalonSummary(appointment.salonId);
 
   const accent = inactive
@@ -338,7 +342,31 @@ function TimelineItem({
           ) : null}
         </View>
 
-        {!inactive ? (
+        {upcoming && appointment.movedBySalon ? (
+          <Text style={[typography.caption, { color: theme.accent.warm }]}>
+            Horaire déplacé par le salon.
+          </Text>
+        ) : null}
+
+        {upcoming && deadline ? (
+          <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+            {changeable
+              ? "Modifiable ou annulable jusqu'à " +
+                relativeDay(deadline).toLowerCase() +
+                ", " +
+                timeOfDay(deadline) +
+                "."
+              : "Le délai fixé par le salon pour modifier ou annuler est passé."}
+          </Text>
+        ) : null}
+
+        {missed ? (
+          <Text style={[typography.caption, { color: theme.danger }]}>
+            Le salon a signalé une absence à ce rendez-vous.
+          </Text>
+        ) : null}
+
+        {!inactive && !missed && (!upcoming || changeable) ? (
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             {upcoming ? (
               <>

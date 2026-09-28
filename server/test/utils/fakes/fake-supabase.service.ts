@@ -60,6 +60,19 @@ interface SalonProfileRow {
   rating: number;
   review_count: number;
   badges: string[];
+  confirmation_mode: string;
+  booking_notice_minutes: number;
+  cancellation_notice_minutes: number;
+}
+
+interface TimeOffRow {
+  id: string;
+  profile_id: string;
+  staff_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  label: string;
+  created_at: string;
 }
 
 /** Great-circle distance in km — good enough for fake-backed test assertions; ST_Distance does the real math. */
@@ -112,7 +125,20 @@ interface AppointmentRow {
   starts_at: string;
   status: string;
   client_note: string | null;
+  attendance: string | null;
+  cancellation_notice_minutes: number | null;
+  moved_by_salon: boolean;
   created_at: string;
+}
+
+interface AppointmentServiceRow {
+  id: string;
+  appointment_id: string;
+  service_id: string | null;
+  service_name: string;
+  price: number;
+  duration_min: number;
+  position: number;
 }
 
 interface ReviewRow {
@@ -212,6 +238,9 @@ function defaultAppContent(): [string, AppContentRow][] {
   ];
 }
 
+/** PostgREST's default max-rows (Supabase → API settings): no select returns more, whatever range it asks for. */
+const MAX_ROWS = 1000;
+
 function matchesAll<TRow extends object>(row: TRow, filters: [keyof TRow, unknown][]): boolean {
   return filters.every(([column, value]) => row[column] === value);
 }
@@ -283,7 +312,7 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
       .filter((row) => this.isFilters.every(([column]) => row[column] === null))
       .filter((row) => this.gteFilters.every(([column, value]) => this.compare(row[column], value) >= 0))
       .filter((row) => this.lteFilters.every(([column, value]) => this.compare(row[column], value) <= 0));
-    return rows.slice(this.rangeFrom, this.rangeTo + 1);
+    return rows.slice(this.rangeFrom, Math.min(this.rangeTo + 1, this.rangeFrom + MAX_ROWS));
   }
 
   /** Compares as dates when both sides parse as one (ISO timestamp columns), otherwise falls back to `<`/`>`. */
@@ -376,7 +405,10 @@ export class FakeSupabaseService {
   private readonly availability = new Map<string, AvailabilityRow>();
   private readonly services = new Map<string, ServiceRow>();
   private readonly galleryPhotos = new Map<string, GalleryPhotoRow>();
+  private readonly timeOff = new Map<string, TimeOffRow>();
   private readonly appointments = new Map<string, AppointmentRow>();
+  private readonly appointmentServices = new Map<string, AppointmentServiceRow>();
+  private nextAppointmentInsertError: string | null = null;
   private readonly reviews = new Map<string, ReviewRow>();
   private readonly pushTokens = new Map<string, PushTokenRow>();
   private readonly notificationPreferences = new Map<string, NotificationPreferencesRow>();
@@ -461,8 +493,14 @@ export class FakeSupabaseService {
       if (table === 'coiffeur_gallery_photos') {
         return this.galleryPhotosTable();
       }
+      if (table === 'coiffeur_time_off') {
+        return this.timeOffTable();
+      }
       if (table === 'appointments') {
         return this.appointmentsTable();
+      }
+      if (table === 'appointment_services') {
+        return this.appointmentServicesTable();
       }
       if (table === 'reviews') {
         return this.reviewsTable();
@@ -535,7 +573,10 @@ export class FakeSupabaseService {
     this.availability.clear();
     this.services.clear();
     this.galleryPhotos.clear();
+    this.timeOff.clear();
     this.appointments.clear();
+    this.appointmentServices.clear();
+    this.nextAppointmentInsertError = null;
     this.reviews.clear();
     this.pushTokens.clear();
     this.notificationPreferences.clear();
@@ -563,6 +604,7 @@ export class FakeSupabaseService {
     durationMin?: number;
     startsAt: string;
     status?: string;
+    attendance?: string | null;
     createdAt?: string;
   }): string {
     const id = params.id ?? randomUUID();
@@ -577,7 +619,34 @@ export class FakeSupabaseService {
       starts_at: params.startsAt,
       status: params.status ?? 'confirmed',
       client_note: null,
+      attendance: params.attendance ?? null,
+      cancellation_notice_minutes: null,
+      moved_by_salon: false,
       created_at: params.createdAt ?? new Date().toISOString(),
+    });
+    return id;
+  }
+
+  /**
+   * Test convenience: the next `appointments` insert fails with this Postgres
+   * error code — e.g. '23P01', the exclusion constraint a simultaneous
+   * booking trips after both requests passed the service's own overlap check.
+   */
+  failNextAppointmentInsert(code: string): void {
+    this.nextAppointmentInsertError = code;
+  }
+
+  /** Test convenience: seeds a closure directly — e.g. one already over, which addTimeOff() would refuse. */
+  seedTimeOff(params: { profileId: string; startsAt: string; endsAt: string; label?: string }): string {
+    const id = randomUUID();
+    this.timeOff.set(id, {
+      id,
+      profile_id: params.profileId,
+      staff_id: null,
+      starts_at: params.startsAt,
+      ends_at: params.endsAt,
+      label: params.label ?? '',
+      created_at: new Date().toISOString(),
     });
     return id;
   }
@@ -688,6 +757,9 @@ export class FakeSupabaseService {
     rating?: number;
     reviewCount?: number;
     coverUrl?: string | null;
+    confirmationMode?: 'manual' | 'instant';
+    bookingNoticeMinutes?: number;
+    cancellationNoticeMinutes?: number;
     services?: { name: string; price: number; durationMin: number; specialty: string }[];
   }): void {
     this.seedApplication({
@@ -725,6 +797,10 @@ export class FakeSupabaseService {
       rating: params.rating ?? 0,
       review_count: params.reviewCount ?? 0,
       badges: params.badges ?? [],
+      // Same defaults as schema.sql's coiffeur_profiles columns.
+      confirmation_mode: params.confirmationMode ?? 'manual',
+      booking_notice_minutes: params.bookingNoticeMinutes ?? 60,
+      cancellation_notice_minutes: params.cancellationNoticeMinutes ?? 1440,
     });
     for (const service of params.services ?? []) {
       const id = randomUUID();
@@ -913,7 +989,16 @@ export class FakeSupabaseService {
         // own patch never sets these (rating/review_count/badges are seed/system-only).
         const defaults = existing
           ? {}
-          : { latitude: null, longitude: null, rating: 0, review_count: 0, badges: [] };
+          : {
+              latitude: null,
+              longitude: null,
+              rating: 0,
+              review_count: 0,
+              badges: [],
+              confirmation_mode: 'manual',
+              booking_notice_minutes: 60,
+              cancellation_notice_minutes: 1440,
+            };
         const merged = skip ? (existing as SalonProfileRow) : ({ ...defaults, ...existing, ...row } as SalonProfileRow);
         if (!skip) rows.set(profileId, merged);
 
@@ -1026,17 +1111,69 @@ export class FakeSupabaseService {
     };
   }
 
-  private appointmentsTable() {
-    const rows = this.appointments;
+  private timeOffTable() {
+    const rows = this.timeOff;
 
     return {
-      select: () => new FakeSelectQuery<AppointmentRow>(() => [...rows.values()]),
+      select: () => new FakeSelectQuery<TimeOffRow>(() => [...rows.values()]),
 
       insert: (row: Record<string, unknown>) => ({
         select: () => ({
           single: async (): Promise<QueryResult> => {
             const id = randomUUID();
-            const created = { ...row, id, created_at: new Date().toISOString() } as AppointmentRow;
+            const created = {
+              staff_id: null,
+              label: '',
+              ...row,
+              id,
+              created_at: new Date().toISOString(),
+            } as TimeOffRow;
+            rows.set(id, created);
+            return { data: created, error: null };
+          },
+        }),
+      }),
+
+      delete: () =>
+        new FakeMutationQuery<TimeOffRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          rows.delete(existing.id);
+          return { data: existing, count: 1 };
+        }),
+    };
+  }
+
+  private appointmentsTable() {
+    const rows = this.appointments;
+    // What `select('*, appointment_services(*)')` embeds for real — always attached here, harmless when not asked for.
+    const withLines = (row: AppointmentRow) => ({
+      ...row,
+      appointment_services: [...this.appointmentServices.values()].filter((line) => line.appointment_id === row.id),
+    });
+
+    return {
+      select: () => new FakeSelectQuery<AppointmentRow>(() => [...rows.values()].map(withLines)),
+
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async (): Promise<QueryResult> => {
+            if (this.nextAppointmentInsertError) {
+              const code = this.nextAppointmentInsertError;
+              this.nextAppointmentInsertError = null;
+              return { data: null, error: { code, message: 'conflicting key value violates exclusion constraint' } };
+            }
+            const id = randomUUID();
+            const created = {
+              attendance: null,
+              cancellation_notice_minutes: null,
+              moved_by_salon: false,
+              ...row,
+              id,
+              created_at: new Date().toISOString(),
+            } as AppointmentRow;
             rows.set(id, created);
             return { data: created, error: null };
           },
@@ -1051,8 +1188,39 @@ export class FakeSupabaseService {
           }
           const updated = { ...existing, ...patch };
           rows.set(existing.id, updated);
-          return { data: updated, count: 1 };
+          return { data: withLines(updated), count: 1 };
         }),
+
+      /** Mirrors the real ON DELETE CASCADE to appointment_services. */
+      delete: () =>
+        new FakeMutationQuery<AppointmentRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) {
+            return { data: null, count: 0 };
+          }
+          rows.delete(existing.id);
+          for (const [lineId, line] of this.appointmentServices) {
+            if (line.appointment_id === existing.id) this.appointmentServices.delete(lineId);
+          }
+          return { data: existing, count: 1 };
+        }),
+    };
+  }
+
+  private appointmentServicesTable() {
+    const rows = this.appointmentServices;
+
+    return {
+      select: () => new FakeSelectQuery<AppointmentServiceRow>(() => [...rows.values()]),
+
+      /** Bulk insert, awaited bare — AppointmentsService never reads the lines back from this call. */
+      insert: (input: Record<string, unknown>[]) => {
+        for (const row of input) {
+          const id = randomUUID();
+          rows.set(id, { ...row, id } as AppointmentServiceRow);
+        }
+        return Promise.resolve({ data: null, error: null });
+      },
     };
   }
 

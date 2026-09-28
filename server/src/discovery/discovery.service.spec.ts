@@ -210,5 +210,35 @@ describe('DiscoveryService', () => {
 
       await expect(discovery.getById('p1')).rejects.toThrow(NotFoundException);
     });
+
+    it("shares the salon's booking rules and upcoming closures, without the closures' private labels", async () => {
+      supabase.seedValidatedSalon({
+        profileId: 'p1',
+        firstName: 'A',
+        lastName: 'B',
+        salonName: 'Studio W',
+        confirmationMode: 'instant',
+        bookingNoticeMinutes: 120,
+        cancellationNoticeMinutes: 2880,
+      });
+      const soon = new Date(Date.now() + 5 * 86_400_000).toISOString();
+      const later = new Date(Date.now() + 6 * 86_400_000).toISOString();
+      supabase.seedTimeOff({ profileId: 'p1', startsAt: soon, endsAt: later, label: 'Mariage de ma sœur' });
+      supabase.seedTimeOff({
+        profileId: 'p1',
+        startsAt: new Date(Date.now() - 6 * 86_400_000).toISOString(),
+        endsAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      });
+
+      const detail = await discovery.getById('p1');
+
+      expect(detail).toMatchObject({
+        confirmationMode: 'instant',
+        bookingNoticeMinutes: 120,
+        cancellationNoticeMinutes: 2880,
+        closures: [{ startsAt: soon, endsAt: later }],
+      });
+      expect(JSON.stringify(detail.closures)).not.toContain('Mariage');
+    });
   });
 });

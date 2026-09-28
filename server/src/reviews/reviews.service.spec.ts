@@ -88,6 +88,17 @@ describe('ReviewsService', () => {
         BadRequestException,
       );
     });
+
+    it('rejects a review for an appointment the salon marked as a no-show', async () => {
+      const appointmentId = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        startsAt: PAST,
+        status: 'confirmed',
+        attendance: 'no_show',
+      });
+      await expect(service.create(PARTICULIER_ID, { appointmentId, rating: 1 })).rejects.toThrow(/missed/);
+    });
   });
 
   describe('visibility', () => {

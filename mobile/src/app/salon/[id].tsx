@@ -19,8 +19,12 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { avatarFor, coverFor, coverPlaceholder } from "../../features/salons/images";
 import { fetchSalonById } from "../../features/salons/api";
 import { formatDistance, haversineKm } from "../../features/salons/geo";
-import { specialtyLabel } from "../../features/salons/types";
-import type { Review, Salon } from "../../features/salons/types";
+import { bookingRuleLines } from "../../features/salons/rules";
+import {
+  specialtyLabel,
+  type Review,
+  type Salon,
+} from "../../features/salons/types";
 import { listUserReviews } from "../../services/booking";
 import {
   formatDuration,
@@ -39,6 +43,8 @@ const WEEKDAYS = [
   "Vendredi",
   "Samedi",
 ];
+/** One icon per line of bookingRuleLines: booking notice, cancellation notice, confirmation. */
+const RULE_ICONS = ["clock-outline", "calendar-remove-outline", "check-decagram-outline"] as const;
 
 /**
  * Salon page: parallax cover, an overlapping content sheet, and a docked
@@ -628,6 +634,45 @@ export default function SalonDetail() {
                   </View>
                 );
               })}
+            </View>
+          </Section>
+
+          {/* Réservation */}
+          <Section title="Réservation">
+            <View
+              style={{
+                borderRadius: radius.xl,
+                borderWidth: 1,
+                borderColor: theme.divider,
+                backgroundColor: theme.surface.base,
+                padding: spacing.lg,
+                gap: spacing.md,
+              }}
+            >
+              {bookingRuleLines(salon).map((line, index) => (
+                <View
+                  key={line}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.md,
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name={RULE_ICONS[index] ?? "information-outline"}
+                    size={18}
+                    color={theme.primary.main}
+                  />
+                  <Text
+                    style={[
+                      typography.bodySmall,
+                      { color: theme.foreground.white, flex: 1 },
+                    ]}
+                  >
+                    {line}
+                  </Text>
+                </View>
+              ))}
             </View>
           </Section>
 

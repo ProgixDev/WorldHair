@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../lib/apiClient";
-import type { BusyInterval } from "./slots";
-import type { OpeningDay, Review, Salon, Service, SpecialtyId } from "./types";
+import type { DaySlots } from "./slots";
+import type { Closure, ConfirmationMode, OpeningDay, Review, Salon, Service, SpecialtyId } from "./types";
 
 /**
  * Real search/detail (server/src/discovery/) replacing the old mock
@@ -50,6 +50,21 @@ interface SalonDetailResponse extends SalonSummaryResponse {
   services: SalonServiceResponse[];
   availability: AvailabilityResponse[];
   gallery: string[];
+  confirmationMode: ConfirmationMode;
+  bookingNoticeMinutes: number;
+  cancellationNoticeMinutes: number;
+  closures: Closure[];
+}
+
+interface SalonExtra {
+  services: Service[];
+  hours: OpeningDay[];
+  reviews: Review[];
+  gallery: string[];
+  confirmationMode: ConfirmationMode;
+  bookingNoticeMinutes: number;
+  cancellationNoticeMinutes: number;
+  closures: Closure[];
 }
 
 interface SalonSearchResponse {
@@ -98,10 +113,7 @@ function toReview(review: ReviewResponse): Review {
   };
 }
 
-function toSalon(
-  summary: SalonSummaryResponse,
-  extra?: { services: Service[]; hours: OpeningDay[]; reviews: Review[]; gallery: string[] },
-): Salon {
+function toSalon(summary: SalonSummaryResponse, extra?: SalonExtra): Salon {
   return {
     id: summary.id,
     name: summary.salonName,
@@ -124,6 +136,11 @@ function toSalon(
     reviews: extra?.reviews ?? [],
     hours: extra?.hours ?? [],
     gallery: extra?.gallery ?? [],
+    // List items don't carry the rules; only the salon's own page shows them.
+    confirmationMode: extra?.confirmationMode ?? "manual",
+    bookingNoticeMinutes: extra?.bookingNoticeMinutes ?? 0,
+    cancellationNoticeMinutes: extra?.cancellationNoticeMinutes ?? 0,
+    closures: extra?.closures ?? [],
   };
 }
 
@@ -149,6 +166,10 @@ export async function fetchSalonById(id: string): Promise<Salon | undefined> {
       hours: toHours(data.availability),
       reviews,
       gallery: data.gallery,
+      confirmationMode: data.confirmationMode ?? "manual",
+      bookingNoticeMinutes: data.bookingNoticeMinutes ?? 0,
+      cancellationNoticeMinutes: data.cancellationNoticeMinutes ?? 0,
+      closures: data.closures ?? [],
     });
   } catch {
     return undefined;
@@ -168,13 +189,20 @@ export async function fetchSalonCities(): Promise<string[]> {
 }
 
 /**
- * Bookings already held by *anyone* at this salon (pending or confirmed, no
- * client identity), with their length — feeds the booking flow's slot
- * picker so every start that would overlap one shows as unavailable, not
- * just the caller's own bookings or exact start times.
+ * The booking grid for one day, built by the server from the same rules that
+ * accept a booking — so a free slot here is one the server takes. Pass the
+ * prestations picked for a new booking, or the appointment being moved (its
+ * own time then doesn't count as taken; a coiffeur moving it isn't held to
+ * the booking notice).
  */
-export async function fetchBusySlots(salonId: string): Promise<BusyInterval[]> {
-  const { data } = await apiClient.get<BusyInterval[]>(`/appointments/salon/${salonId}/busy`);
+export async function fetchSlots(
+  salonId: string,
+  date: string,
+  by: { serviceIds: string[] } | { appointmentId: string },
+): Promise<DaySlots> {
+  const params =
+    "serviceIds" in by ? { date, serviceIds: by.serviceIds.join(",") } : { date, appointmentId: by.appointmentId };
+  const { data } = await apiClient.get<DaySlots>(`/appointments/salon/${salonId}/slots`, { params });
   return data;
 }
 

@@ -1,13 +1,16 @@
 import {
   IsArray,
   IsIn,
+  IsInt,
   IsISO31661Alpha2,
   IsLatitude,
   IsLongitude,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
   ValidateIf,
 } from 'class-validator';
@@ -15,6 +18,12 @@ import {
 /** Mirrors the `coiffeur_profiles`/`coiffeur_services` check constraints in schema.sql. */
 export const SPECIALTIES = ['coupe', 'coloration', 'afro', 'tresses', 'barbier', 'soins', 'mariage'] as const;
 export type Specialty = (typeof SPECIALTIES)[number];
+
+export const CONFIRMATION_MODES = ['manual', 'instant'] as const;
+export type ConfirmationMode = (typeof CONFIRMATION_MODES)[number];
+
+/** Two weeks — the longest deadline the app offers is two days, this only bounds nonsense values. */
+export const MAX_NOTICE_MINUTES = 20160;
 
 export class UpdateSalonProfileDto {
   @IsOptional()
@@ -89,4 +98,20 @@ export class UpdateSalonProfileDto {
   @IsOptional()
   @IsLongitude()
   longitude?: number;
+
+  @IsOptional()
+  @IsIn(CONFIRMATION_MODES)
+  confirmationMode?: ConfirmationMode;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_NOTICE_MINUTES)
+  bookingNoticeMinutes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_NOTICE_MINUTES)
+  cancellationNoticeMinutes?: number;
 }

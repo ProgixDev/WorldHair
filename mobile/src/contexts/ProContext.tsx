@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import type {
+  Attendance,
   AvailabilityDay,
   GalleryPhoto,
   PlanId,
@@ -15,6 +16,8 @@ import type {
   ProProfile,
   ProService,
   Subscription,
+  TimeOff,
+  TimeOffConflict,
 } from "../features/pro/types";
 import type { Review } from "../features/salons/types";
 import * as pro from "../services/pro";
@@ -27,6 +30,8 @@ interface ProContextValue {
   appointments: ProAppointment[];
   subscription: Subscription | null;
   reviews: Review[];
+  /** Upcoming congés and exceptional closures. */
+  timeOff: TimeOff[];
   isLoading: boolean;
   refresh: () => Promise<void>;
   /** Resolves with what's now stored — the server may normalize (uploaded cover URL, phone format). */
@@ -40,6 +45,16 @@ interface ProContextValue {
     id: string,
     status: ProAppointmentStatus,
   ) => Promise<void>;
+  /** Moves an accepted appointment; the client is notified. */
+  moveAppointment: (id: string, startsAt: string) => Promise<void>;
+  setAttendance: (id: string, attendance: Attendance) => Promise<void>;
+  /** Resolves with the bookings already inside the new closure — they're kept, for the coiffeur to handle. */
+  addTimeOff: (input: {
+    startsAt: string;
+    endsAt: string;
+    label?: string;
+  }) => Promise<TimeOffConflict[]>;
+  deleteTimeOff: (id: string) => Promise<void>;
   changePlan: (plan: PlanId) => Promise<void>;
   cancelSubscription: () => Promise<void>;
   reactivateSubscription: () => Promise<void>;
@@ -61,6 +76,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
   const [appointments, setAppointments] = useState<ProAppointment[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -72,6 +88,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       nextAppointments,
       nextSubscription,
       nextReviews,
+      nextTimeOff,
     ] = await Promise.all([
       pro.getProProfile(),
       pro.listProServices(),
@@ -80,6 +97,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       pro.listProAppointments(),
       pro.getSubscription(),
       pro.listProReviews(),
+      pro.listTimeOff(),
     ]);
 
     setProfile(nextProfile);
@@ -89,6 +107,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     setAppointments(nextAppointments);
     setSubscription(nextSubscription);
     setReviews(nextReviews);
+    setTimeOff(nextTimeOff);
     setIsLoading(false);
   }, []);
 
@@ -105,6 +124,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       appointments,
       subscription,
       reviews,
+      timeOff,
       isLoading,
       refresh,
       saveProfile: async (next) => {
@@ -124,6 +144,16 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
         setAvailability(await pro.saveAvailability(next)),
       setAppointmentStatus: async (id, status) =>
         setAppointments(await pro.setAppointmentStatus(id, status)),
+      moveAppointment: async (id, startsAt) =>
+        setAppointments(await pro.moveAppointment(id, startsAt)),
+      setAttendance: async (id, attendance) =>
+        setAppointments(await pro.setAttendance(id, attendance)),
+      addTimeOff: async (input) => {
+        const result = await pro.addTimeOff(input);
+        setTimeOff(result.timeOff);
+        return result.conflicts;
+      },
+      deleteTimeOff: async (id) => setTimeOff(await pro.deleteTimeOff(id)),
       changePlan: async (plan) => setSubscription(await pro.changePlan(plan)),
       cancelSubscription: async () =>
         setSubscription(await pro.cancelSubscription()),
@@ -142,6 +172,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       appointments,
       subscription,
       reviews,
+      timeOff,
       isLoading,
       refresh,
     ],

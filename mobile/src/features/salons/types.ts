@@ -53,6 +53,15 @@ export interface OpeningDay {
   breakEnd?: number | null;
 }
 
+/** `instant`: a booking is confirmed straight away; `manual`: the salon accepts or refuses it. */
+export type ConfirmationMode = "manual" | "instant";
+
+/** A congé or exceptional closure — nothing can be booked inside it. */
+export interface Closure {
+  startsAt: string;
+  endsAt: string;
+}
+
 export interface Salon {
   id: string;
   name: string;
@@ -77,6 +86,14 @@ export interface Salon {
   hours: OpeningDay[];
   /** "Réalisations" — work photos the coiffeur curates themselves; empty until they add any. */
   gallery: string[];
+  /** Booking rules — only known from the salon's own page (fetchSalonById); list items carry neutral defaults. */
+  confirmationMode: ConfirmationMode;
+  /** How late before its start the client can still book; 0 = up to the start. */
+  bookingNoticeMinutes: number;
+  /** How late before its start the client can still cancel or move an accepted booking; 0 = anytime. */
+  cancellationNoticeMinutes: number;
+  /** Upcoming closures; empty for list items. */
+  closures: Closure[];
 }
 
 /** Salon + everything the UI derives from the user's position. */
