@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { SupabaseService } from '../database/supabase.service';
 import { AdminAccountsService } from './admin-accounts.service';
@@ -6,10 +7,12 @@ import { AdminAccountsService } from './admin-accounts.service';
 describe('AdminAccountsService', () => {
   let supabase: FakeSupabaseService;
   let service: AdminAccountsService;
+  let events: EventEmitter2;
 
   beforeEach(() => {
     supabase = new FakeSupabaseService();
-    service = new AdminAccountsService(supabase as unknown as SupabaseService);
+    events = new EventEmitter2();
+    service = new AdminAccountsService(supabase as unknown as SupabaseService, events);
 
     supabase.addUser('token-particulier', { id: 'user-p', email: 'camille@example.com', email_confirmed_at: '2024-01-01T00:00:00Z' }, 'particulier', {
       firstName: 'Camille',
@@ -78,6 +81,15 @@ describe('AdminAccountsService', () => {
     expect(updated.accountStatus).toBe('suspended');
     const [account] = await service.list('particulier');
     expect(account.accountStatus).toBe('suspended');
+  });
+
+  it('setStatus() tells listeners what changed, so billing can follow', async () => {
+    const heard = jest.fn();
+    events.on('account.status_changed', heard);
+
+    await service.setStatus('user-c', 'banned');
+
+    expect(heard).toHaveBeenCalledWith({ profileId: 'user-c', role: 'coiffeur', previousStatus: 'active', status: 'banned' });
   });
 
   it('setStatus() throws NotFoundException for an unknown id', async () => {

@@ -22,6 +22,13 @@ function isBillable(appointment: ProAppointment): boolean {
   return appointment.status === "done" || appointment.status === "confirmed";
 }
 
+/** What the booking brings in: what the client kept after refunds when they paid in the app, else its price. */
+function earned(appointment: ProAppointment): number {
+  return appointment.payment
+    ? appointment.payment.amount - appointment.payment.refundedAmount
+    : appointment.price;
+}
+
 /** Last `count` weeks, oldest first — feeds the dashboard bar chart. */
 export function weeklySeries(
   appointments: ProAppointment[],
@@ -42,7 +49,7 @@ export function weeklySeries(
       start,
       label: start.getDate() + "/" + (start.getMonth() + 1),
       count: inWeek.length,
-      revenue: inWeek.reduce((sum, a) => sum + a.price, 0),
+      revenue: inWeek.reduce((sum, a) => sum + earned(a), 0),
     };
   });
 }
@@ -82,7 +89,7 @@ export function computeStats(
 
   const revenueThisMonth = billed
     .filter((a) => new Date(a.startsAt) >= monthStart)
-    .reduce((sum, a) => sum + a.price, 0);
+    .reduce((sum, a) => sum + earned(a), 0);
 
   const done = appointments.filter((a) => a.status === "done");
   const refused = appointments.filter((a) => a.status === "refused").length;
@@ -145,7 +152,7 @@ export function computeStats(
     averageBasket:
       done.length === 0
         ? 0
-        : Math.round(done.reduce((sum, a) => sum + a.price, 0) / done.length),
+        : Math.round(done.reduce((sum, a) => sum + earned(a), 0) / done.length),
     acceptanceRate:
       accepted + refused === 0
         ? 100

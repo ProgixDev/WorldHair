@@ -422,8 +422,12 @@ create table public.appointments (
   price numeric(10, 2) not null check (price > 0),
   duration_min integer not null check (duration_min > 0),
   starts_at timestamptz not null,
+  -- 'awaiting_payment': held for the client while they pay (TODO.md Phase 5),
+  -- a few minutes at most — released if they don't. Only then does it
+  -- become a request ('pending') or, for an instant-confirmation salon,
+  -- 'confirmed'.
   status text not null default 'pending' check (
-    status in ('pending', 'confirmed', 'refused', 'cancelled')
+    status in ('awaiting_payment', 'pending', 'confirmed', 'refused', 'cancelled')
   ),
   client_note text,
   -- Set by the coiffeur once an accepted appointment has started ("marquer
@@ -480,7 +484,7 @@ $$;
 alter table public.appointments
   add constraint appointments_no_overlap
   exclude using gist (coiffeur_id with =, public.appointment_time_range (starts_at, duration_min) with &&)
-  where (status in ('pending', 'confirmed'));
+  where (status in ('awaiting_payment', 'pending', 'confirmed'));
 
 -- The prestations of a booking, in order — several can be booked back to
 -- back as one appointment, whose own service_name/price/duration_min hold
@@ -502,6 +506,65 @@ create index appointment_services_appointment_id_idx on public.appointment_servi
 create index appointment_services_service_id_idx on public.appointment_services (service_id);
 
 alter table public.appointment_services enable row level security;
+
+-- Where a salon gets paid (TODO.md Phase 5): its Stripe Connect Express
+-- account, and what Stripe says of it (account.updated). A salon takes
+-- online bookings once payouts are enabled — or, for the demo salon only,
+-- with bookable_without_payouts (seed:demo), so paying can be tried without
+-- the salon's own onboarding; its money then stays with WorldHair. API only.
+create table public.coiffeur_payout_accounts (
+  profile_id uuid primary key references public.profiles (id) on delete cascade,
+  stripe_account_id text unique,
+  details_submitted boolean not null default false,
+  charges_enabled boolean not null default false,
+  payouts_enabled boolean not null default false,
+  bookable_without_payouts boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.coiffeur_payout_accounts enable row level security;
+
+create trigger set_coiffeur_payout_accounts_updated_at
+before update on public.coiffeur_payout_accounts for each row
+execute procedure public.set_updated_at ();
+
+-- The client's payment for an appointment (TODO.md Phase 5): WorldHair
+-- charges the full price when the request is sent (a Stripe PaymentIntent),
+-- holds it, and transfers the price minus the commission to the salon a
+-- day after the appointment. The commission rate is copied from
+-- platform_settings when the client pays; the amount kept is settled at
+-- transfer time, after any refund. API only.
+create table public.payments (
+  id uuid primary key default gen_random_uuid (),
+  appointment_id uuid not null unique references public.appointments (id) on delete cascade,
+  particulier_id uuid not null references public.profiles (id) on delete cascade,
+  coiffeur_id uuid not null references public.profiles (id) on delete cascade,
+  payment_intent_id text not null unique,
+  charge_id text,
+  amount numeric(10, 2) not null check (amount > 0),
+  currency text not null default 'eur',
+  commission_rate numeric(5, 2) not null check (commission_rate between 0 and 100),
+  commission_amount numeric(10, 2) not null check (commission_amount >= 0),
+  status text not null default 'requires_payment' check (
+    status in ('requires_payment', 'succeeded', 'canceled')
+  ),
+  refunded_amount numeric(10, 2) not null default 0 check (refunded_amount >= 0),
+  transfer_id text unique,
+  transfer_amount numeric(10, 2),
+  transferred_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index payments_coiffeur_id_idx on public.payments (coiffeur_id);
+create index payments_particulier_id_idx on public.payments (particulier_id);
+
+alter table public.payments enable row level security;
+
+create trigger set_payments_updated_at
+before update on public.payments for each row
+execute procedure public.set_updated_at ();
 
 -- "Avis" (TODO.md). One row per appointment (unique), so "Création avis" is
 -- naturally capped at one review per booking. Every change feeds
@@ -825,6 +888,9 @@ create table public.platform_settings (
   id boolean primary key default true check (id),
   -- Free days a coiffeur's first subscription starts with (Stripe trial).
   trial_days integer not null default 30 check (trial_days between 0 and 365),
+  -- WorldHair's share of each prestation paid in the app, in percent
+  -- (TODO.md Phase 5); Stripe's card fees come out of it.
+  commission_percent numeric(5, 2) not null default 10 check (commission_percent between 0 and 100),
   updated_at timestamptz not null default now()
 );
 

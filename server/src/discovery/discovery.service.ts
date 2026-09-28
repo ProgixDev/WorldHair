@@ -3,6 +3,7 @@ import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.s
 import { isAccountActive } from '../common/utils/account-status';
 import { isSalonListed } from '../common/utils/subscription-status';
 import { SupabaseService } from '../database/supabase.service';
+import { PayoutAccountsService } from '../payments/payout-accounts.service';
 import { ConfirmationMode, Specialty } from '../salon/dto/update-salon-profile.dto';
 import { AvailabilityDay, SalonService, SalonServiceItem } from '../salon/salon.service';
 
@@ -37,6 +38,8 @@ export interface SalonDetail extends SalonSummary {
   cancellationNoticeMinutes: number;
   /** Upcoming closures (just the times — their labels are the coiffeur's own notes). */
   closures: { startsAt: string; endsAt: string }[];
+  /** Bookable and payable in the app: the salon's Stripe payouts are on (TODO.md Phase 5). */
+  onlineBooking: boolean;
 }
 
 export interface SalonSearchResult {
@@ -134,6 +137,7 @@ export class DiscoveryService {
     private readonly supabase: SupabaseService,
     private readonly applications: CoiffeurApplicationsService,
     private readonly salon: SalonService,
+    private readonly payouts: PayoutAccountsService,
   ) {}
 
   async search(params: SearchSalonsParams): Promise<SalonSearchResult> {
@@ -190,11 +194,12 @@ export class DiscoveryService {
     }
     const row = data as ProfileRow;
 
-    const [services, availability, gallery, closures] = await Promise.all([
+    const [services, availability, gallery, closures, onlineBooking] = await Promise.all([
       this.salon.listServices(profileId),
       this.salon.getAvailability(profileId),
       this.salon.listGalleryPhotos(profileId),
       this.salon.listTimeOff(profileId),
+      this.payouts.isBookable(profileId),
     ]);
 
     return {
@@ -223,6 +228,7 @@ export class DiscoveryService {
       bookingNoticeMinutes: row.booking_notice_minutes ?? 0,
       cancellationNoticeMinutes: row.cancellation_notice_minutes ?? 0,
       closures: closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
+      onlineBooking,
     };
   }
 }

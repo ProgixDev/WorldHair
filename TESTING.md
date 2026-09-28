@@ -18,6 +18,7 @@ Review authors: 6 clients, `client.<name>@worldhair.app` / `Demo1234!` — they 
 
 Re-seed: `cd server && bun run seed:admin && bun run seed:demo && bun run seed:catalogue`
 ⚠️ `seed:demo` resets the 4 demo accounts to the states above and replaces every appointment between demo.particulier and demo.coiffeur.active.
+Payments (TODO.md Phase 5): Studio W, the demo salon, takes bookings and payments in the app without its own Stripe account (its money stays with WorldHair); the 26 catalogue salons read « Réservation en ligne bientôt disponible » until each sets up its payouts. Stripe test cards: `4242 4242 4242 4242` (paid), `4000 0025 0000 3155` (asks for 3-D Secure), `4000 0000 0000 0002` (declined) — any future date, any CVC.
 After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2 10:00, a 2-prestation booking at J+5 14:30 (Coloration complète + Soin fondant), two past bookings (J-6 unmarked, J-13 marked « Honoré »), a « Formation » closure on J+8 from 14:00 to 19:00 and « Congés » on J+15 and J+16 (J = the day you ran the seed).
 
 ---
@@ -75,12 +76,20 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Closures: the « Congés » days (J+15, J+16) are greyed and read « Fermé » in the day strip; on J+8 no slot overlaps 14:00–19:00 (« Formation »)
 - [ ] Two phones on the same slot: the second one gets "Ce créneau n'est plus disponible. Choisissez un autre horaire." and the grid reloads with that slot struck through
 - [ ] Recap step shows the salon's cancellation rule and confirmation mode
-- [x] Payment step: simulated (⚠️ 900ms, always succeeds), card `•••• 4242`
-- [x] Ends on "Demande envoyée." — status is *pending*, not confirmed
+- [ ] Steps are Prestation → Créneau → Paiement; the Paiement step shows the recap, the salon's rules and « Remboursé intégralement si le salon refuse ou annule… »
+- [ ] « Payer 40 € » opens Stripe's payment sheet (card, Google Pay on Android); `4242…` → « Demande envoyée. » + « Paiement reçu. Le salon doit encore confirmer votre créneau. »; the salon sees the request only now
+- [ ] `4000 0025 0000 3155` asks for 3-D Secure and comes back to the app; `4000 0000 0000 0002` is declined inside the sheet, nothing is booked, « Payer » works again
+- [ ] Closing the sheet, then « Payer » again, reopens it (same held slot); going back to the grid frees the slot at once (another phone can take it)
+- [ ] Someone takes the slot while you're on Paiement → « Ce créneau n'est plus disponible… » and back to the refreshed grid, nothing charged
+- [ ] Stripe emails the receipt (live mode only: test mode sends none)
+- [ ] A catalogue salon's page reads « Réservation en ligne bientôt disponible » (button disabled)
 - [ ] Salon set to « Confirmées d'office »: ends on "C'est réservé." + "Le salon a confirmé votre rendez-vous.", the booking is confirmed straight away (no request in the coiffeur's red list)
 - [x] Ad pop-up appears when `booking_confirmation` is enabled
 
 ### `/appointments`
+- [ ] A paid booking reads « Payé 40 € »; after a refund « Remboursé 40 € » (green) or « Remboursé 15 € sur 40 € », with a push each time
+- [ ] Cancelling in time, or the salon refusing or cancelling → full refund automatically
+- [ ] A request the salon never answers → at its start time it reads « Annulé », fully refunded, push « Demande sans réponse »
 - [x] Upcoming tab: "Modifier" reopens the flow, skips payment
 - [x] Upcoming tab: "Annuler" cancels
 - [x] History tab: "Laisser un avis" → then shows "Avis envoyé"
@@ -165,6 +174,17 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Delete a reply
 - [x] Hidden reviews still visible here (unlike the public page)
 
+### `/pro/payments` (Compte → Encaissements → Paiements)
+- [ ] Demo salon: « Salon de démonstration » + « Configurer mes paiements »
+- [ ] A catalogue salon (`coiffeur.<slug>@worldhair.app`): « Réservations en ligne fermées » → « Configurer mes paiements » opens Stripe's onboarding in the browser (test mode: use Stripe's test data and « Skip this form » where offered) → back in the app through `/connect/retour` → « Paiements actifs »; the salon becomes bookable in the client app
+- [ ] « Voir mes versements sur Stripe » opens the Express dashboard
+- [ ] « Réservations payées » lists each paid booking: amount, refunds, commission, « versement de 36 € prévu le … » then « versé … le … »
+- [ ] Dashboard shows « Réservations en ligne fermées » while payouts aren't set up; revenue counts what clients kept after refunds
+
+### Booking sheet (agenda → tap a paid booking)
+- [ ] « PAIEMENT » shows paid / refunded / your share / commission
+- [ ] Refund part of it (e.g. 15) → confirm → the client is refunded, the sheet updates; more than what's left is refused; after the payout the refund is refused (« Le montant vous a déjà été versé… »)
+
 ### `/pro/account`
 - [ ] No "Développement" section any more (the J-7 / expired simulators wrote the subscription directly, which the database now refuses)
 - [ ] Status only: state card, « Fiche visible par les clients » Oui/Non, formule, the next date (premier prélèvement / prochain prélèvement / fiche visible jusqu'au). No price, no plan to pick, no cancel or reactivate button, no link to pay
@@ -221,7 +241,13 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] The arrow opens the coiffeur's customer in Stripe (test dashboard while in test mode)
 - [ ] ⚠️ Suspending or banning a coiffeur doesn't stop Stripe: their subscription keeps billing until cancelled from that Stripe link
 
+### `/admin/paiements`
+- [ ] Totals: encaissé, remboursé, commission (on payments already paid out), versé aux salons
+- [ ] Each payment: client → salon, date, amount, state (Payé / Versé au salon / Remboursé / Remboursé en partie / Abandonné / En attente)
+- [ ] « Rembourser » → amount (empty = everything left) → the client is refunded; after a payout the salon's share is taken back first (visible in Stripe's dashboard as a transfer reversal)
+
 ### `/admin/parametres`
+- [ ] « Commission sur les prestations payées »: shows 10, save 12,5 → the next payments keep 12,5 %; an empty field is refused
 - [ ] « Période d'essai des coiffeurs »: shows 30, save 14 → the next Checkout offers 14 days; 0 → no trial; 400 or an empty field refused
 - [ ] Email change
 - [ ] Password change
@@ -248,6 +274,9 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] Locally instead: `stripe listen --forward-to localhost:3000/webhooks/stripe` (Stripe CLI) prints a `whsec_…` for `.env`
 - [ ] Stripe dashboard → Settings → Billing → Subscriptions and emails: Smart Retries on; « Send emails about failed card payments », « Send emails about upcoming renewals » and the trial-ending reminder on; after all retries fail → cancel the subscription
 - [ ] Stripe dashboard → Settings → Branding and Business details (name, logo, support email) — shown on Checkout, the portal and invoices
+- [ ] Stripe dashboard → Connect → Get started: platform in France, Express accounts, "the platform pays out" — then run `stripe:setup` (again) with `--webhook-url`: it also creates the Connect endpoint `…/webhooks/stripe/connect` and prints `STRIPE_CONNECT_WEBHOOK_SECRET=whsec_…` for `server/.env` and Render
+- [ ] Locally: `stripe listen --forward-to localhost:3000/webhooks/stripe --forward-connect-to localhost:3000/webhooks/stripe/connect` prints the secret to use for both
+- [ ] `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (pk_test_…, same account) in `mobile/.env`, then a new build of the app (Stripe's SDK is native: `npx expo prebuild` / `npx expo run:android`, or EAS)
 
 ---
 
@@ -260,6 +289,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] **Closure**: stylist adds a closure over a booked slot → warned, booking kept → the client can't book anything else inside it
 - [ ] **Review**: past appointment → review → stylist replies → report it (API) → admin hides it → gone from the public page
 - [ ] **Subscription**: new coiffeur → admin validates → email « Choisir mon abonnement » → `/pro/abonnement` → Checkout with 4242 → salon listed, app shows « Essai gratuit »
+- [ ] **Paid booking**: client pays 40 € at Studio W → salon accepts → the day after the appointment `/admin/paiements` shows it « Payé » (demo salon: no transfer); with a catalogue salon whose payouts are set up: « Versé au salon », 36 € in its Express dashboard, 4 € commission
 - [ ] **Failed renewal** (Stripe test clock, or card `4000 0000 0000 0341` then end the trial from the dashboard): « Paiement refusé » banner in the app + push, salon still listed → after the retries Stripe cancels → salon gone from search, « Abonnement terminé » veil, email with the link → subscribe again → listed again
 - [ ] **J-7**: a subscription cancelled in the portal with its end 7 days away → push + email « se termine le … » once
 
@@ -267,7 +297,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 ## Mocked — don't report as bugs
 
-- **Service payment**: simulated, always succeeds, no charge and no refund (real payment: TODO.md Phase 5).
+- **Payments**: Stripe **test mode** — test cards only, nothing is charged; test-mode transfers go to test Express accounts.
 - **Subscriptions**: Stripe in **test mode** — test cards only, nothing is charged. Seeded salons run on an offered year (no Stripe) until they subscribe.
 - **Push**: no `eas.projectId` in `app.json` → token registration fails silently. Every notification is created server-side (see `notifications_log`) but can't reach a phone until `eas init` is run with the WorldHair Expo account.
 - **Emails**: sent via Resend + a Supabase "Send Email" hook. Only sends to real inboxes once `worldhair.app` is verified in Resend — until then, sending is limited to the Resend account's own registered address.
@@ -279,10 +309,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 306 ✅ (runs in UTC, like Render) |
-| `cd server && bun run test:e2e` | 63 ✅ |
+| `cd server && bun run test` | 339 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 68 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
-| `cd mobile && bun run test` | 81 ✅ |
-| `cd web && bun run test` | 21 ✅ |
+| `cd mobile && bun run test` | 80 ✅ |
+| `cd web && bun run test` | 23 ✅ |
 
 `typecheck` + `lint` green on all three packages.

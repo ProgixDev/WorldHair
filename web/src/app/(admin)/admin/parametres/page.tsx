@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
-import { TrialSettingsCard } from "@/components/admin/TrialSettingsCard";
+import { PlatformSettingsCard } from "@/components/admin/PlatformSettingsCard";
 import { Pagination, pageSlice } from "@/components/admin/Pagination";
 import {
   type AdminSession,
@@ -205,7 +205,7 @@ export default function AdminParametresPage() {
             </div>
           </div>
 
-          <TrialSettingsCard />
+          <PlatformSettingsCard />
 
           {session?.tier === "admin" && (
             <div className="flex flex-col gap-4 rounded-2xl bg-[#111c2e] p-5">

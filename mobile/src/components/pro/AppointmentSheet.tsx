@@ -6,11 +6,16 @@ import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { Attendance, ProAppointment } from "../../features/pro/types";
 import { proErrorMessage } from "../../services/pro";
-import { formatDuration, formatPrice, relativeDay, timeOfDay } from "../../utils/date";
+import { formatDuration, formatPrice, fullDate, relativeDay, timeOfDay } from "../../utils/date";
 import { BottomSheet } from "../ui/BottomSheet";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
+import { TextField } from "../ui/TextField";
 import { SlotPicker } from "./SlotPicker";
+
+function euros(amount: number): string {
+  return (Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(".", ",")) + " €";
+}
 
 const STATUS_LABELS: Record<ProAppointment["status"], string> = {
   pending: "En attente de votre réponse",
@@ -42,17 +47,20 @@ export function AppointmentSheet({
     setAppointmentStatus,
     moveAppointment,
     setAttendance,
+    refundAppointment,
   } = usePro();
   const [mode, setMode] = useState<"details" | "move">("details");
   const [moveTo, setMoveTo] = useState<string | null>(null);
   const [gridVersion, setGridVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refundAmount, setRefundAmount] = useState("");
 
   useEffect(() => {
     setMode("details");
     setMoveTo(null);
     setError(null);
+    setRefundAmount("");
   }, [appointment?.id, visible]);
 
   if (!appointment) {
@@ -100,6 +108,40 @@ export function AppointmentSheet({
 
   const mark = (attendance: Attendance) =>
     void run(() => setAttendance(appointment.id, attendance), false);
+
+  const payment = appointment.payment;
+  const refundable = payment ? Math.round((payment.amount - payment.refundedAmount) * 100) / 100 : 0;
+  // Until the salon's share has left (a day after the appointment), the coiffeur can give money back.
+  const canRefund =
+    Boolean(payment) &&
+    !payment?.paidOutAt &&
+    refundable > 0 &&
+    (appointment.status === "confirmed" || appointment.status === "done");
+
+  const confirmRefund = () => {
+    const typed = refundAmount.trim().replace(",", ".");
+    const amount = typed === "" ? refundable : Number(typed);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > refundable) {
+      setError("Montant à rembourser entre 0,01 € et " + euros(refundable) + ".");
+      return;
+    }
+    Alert.alert(
+      "Rembourser " + euros(amount) + " ?",
+      appointment.clientName + " sera remboursé sur sa carte, sous quelques jours.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Rembourser",
+          style: "destructive",
+          onPress: () =>
+            void run(async () => {
+              await refundAppointment(appointment.id, amount === refundable ? undefined : amount);
+              setRefundAmount("");
+            }, false),
+        },
+      ],
+    );
+  };
 
   const footer =
     mode === "move" ? (
@@ -243,6 +285,47 @@ export function AppointmentSheet({
             <Text style={[typography.caption, { color: theme.foreground.gray }]}>
               {"« " + appointment.note + " »"}
             </Text>
+          ) : null}
+
+          {payment ? (
+            <View style={{ gap: spacing.sm }}>
+              <Text style={[typography.overline, { color: theme.foreground.gray }]}>PAIEMENT</Text>
+              <Text style={[typography.bodySmall, { color: theme.foreground.white }]}>
+                {"Payé " +
+                  euros(payment.amount) +
+                  (payment.refundedAmount > 0 ? " · remboursé " + euros(payment.refundedAmount) : "")}
+              </Text>
+              {refundable > 0 ? (
+                <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                  {(payment.paidOutAt
+                    ? "Versé " + euros(payment.payoutAmount) + " le " + fullDate(new Date(payment.paidOutAt))
+                    : "Votre part : " + euros(payment.payoutAmount) + ", versée 24 h après le rendez-vous") +
+                    " · commission " +
+                    euros(payment.commissionAmount)}
+                </Text>
+              ) : null}
+              {canRefund ? (
+                <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <TextField
+                      label="Rembourser (€)"
+                      value={refundAmount}
+                      onChangeText={setRefundAmount}
+                      placeholder={"Tout : " + euros(refundable)}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <Button
+                    label="Rembourser"
+                    variant="outline"
+                    background={theme.danger}
+                    color={theme.danger}
+                    onPress={confirmRefund}
+                    disabled={busy}
+                  />
+                </View>
+              ) : null}
+            </View>
           ) : null}
 
           {canMark ? (

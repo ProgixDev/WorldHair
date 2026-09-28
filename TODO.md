@@ -295,6 +295,9 @@ Stripe account: that needs the keys (see TESTING.md, "Stripe").
       are switches in the Stripe dashboard: see TESTING.md, "Stripe".
 - [x] **Admin**: `/admin/abonnements` shows the Stripe status, period end and a
       link to the Stripe customer. Trial days editable in `/admin/parametres`.
+- [x] **Moderation stops billing** (added 2026-09-28): banning a coiffeur
+      cancels their Stripe subscription at once; suspending pauses billing
+      until the admin reactivates the account.
 
 ## Phase 5 — Prestation payment (issue #2, Stripe Connect)
 
@@ -304,7 +307,17 @@ set in the admin. Full refund if the coiffeur refuses or cancels, or if the
 client cancels before the salon's deadline. No refund after the deadline or
 for a no-show.
 
-- [ ] **Salons connect Stripe to get paid**
+Done 2026-09-28 in code, tests and the dev database (migration
+`phase5_payments`). Decided on the way: salons without payouts stay listed
+but can't be booked ("Réservation en ligne bientôt disponible"), except the
+demo salon, which takes bookings without its own Stripe account (its money
+stays with WorldHair); a salon is paid 24 h after the appointment ends; a
+request the salon never answers is cancelled and refunded at its start time;
+the commission starts at 10 %. Not yet run against a real Stripe account:
+it needs the keys, Connect switched on, and a new build of the app (Stripe's
+SDK is a native module) — see TESTING.md, "Stripe".
+
+- [x] **Salons connect Stripe to get paid**
   - Stripe: enable Connect on the client's account (platform profile), Express
     accounts for salons.
   - DB: `coiffeur_payout_accounts` (profile_id, stripe_account_id,
@@ -315,7 +328,13 @@ for a no-show.
     browser), its status and a link to the Stripe Express dashboard. A salon
     appears in search only once onboarding is complete, like the mandatory
     shop setup.
-- [ ] **Client pays when sending the request**
+  - Done: "Paiements" in the Compte tab, and a banner on the dashboard while
+    online booking is off. The onboarding opens in the browser and comes back
+    through the website's `/connect/retour` page. Per the owner, a salon
+    without payouts stays in search with booking off; the demo salon is
+    exempt (`bookable_without_payouts`). `account.updated` has its own
+    Connect endpoint, `/webhooks/stripe/connect`.
+- [x] **Client pays when sending the request**
   - DB: `payments` (appointment_id, payment_intent_id, amount, commission rate
     and amount snapshots, status, refunded_amount, transfer_id,
     transferred_at). New appointment status `awaiting_payment`, which holds the
@@ -331,24 +350,40 @@ for a no-show.
     the receipt.
   - Done when: a test card pays and only then does the coiffeur see the
     request; a declined card leaves no request and frees the slot.
-- [ ] **Refunds**: automatic full refund when the coiffeur refuses or cancels,
+  - Done: the slot is held 15 minutes; leaving the payment step frees it at
+    once, and a job frees unpaid holds every minute. Card and Google Pay;
+    Apple Pay needs an Apple merchant id, set up with the store accounts.
+    A payment landing after its hold was freed is refunded automatically.
+- [x] **Refunds**: automatic full refund when the coiffeur refuses or cancels,
       or when the client cancels before the salon's deadline. None after the
       deadline or for a no-show. The coiffeur can still refund by hand, fully or
       partly, from the appointment. The client sees the refund in "Mes
       rendez-vous" and gets a push.
-- [ ] **Paying the salon after the appointment**: a scheduled job transfers the
+      Done, plus: a request the salon never answered is cancelled and fully
+      refunded at its start time, with its own push.
+- [x] **Paying the salon after the appointment**: a scheduled job transfers the
       amount minus the commission to the salon's Stripe account once the
       appointment has passed (separate charges and transfers, `transfer_group`
       = appointment id). Refunded bookings are not transferred.
-- [ ] **Commission**: rate in `platform_settings`, editable in
+      Done: hourly, 24 h after the end, tied to the client's charge
+      (`source_transaction`); the commission is taken on what the client kept.
+- [x] **Commission**: rate in `platform_settings`, editable in
       `/admin/parametres`, copied onto each payment. Stripe's card fees are
       taken from WorldHair's side, so the rate should cover them.
-- [ ] **Coiffeur payments view**: amount paid, commission, transfer and refund
+      Done; starts at 10 %.
+- [x] **Coiffeur payments view**: amount paid, commission, transfer and refund
       per appointment in the pro area. Dashboard revenue counts paid bookings.
-- [ ] **Admin payments page** `/admin/paiements`: payments, refunds, transfers,
+      Done: the Paiements screen lists each paid booking; the booking's sheet
+      shows it and refunds; revenue counts what clients kept.
+- [x] **Admin payments page** `/admin/paiements`: payments, refunds, transfers,
       commission totals, and an admin refund for disputes.
-- [ ] Payment webhooks share the Phase 4 endpoint: `payment_intent.*`,
+      Done; an admin refund after the payout takes the salon's share back first.
+- [x] Payment webhooks share the Phase 4 endpoint: `payment_intent.*`,
       `charge.refunded`, `account.updated`, `transfer.*`.
+      Done: `payment_intent.succeeded` and `charge.refunded` there;
+      `account.updated` comes on the Connect endpoint (Stripe sends connected
+      accounts' events apart). No `transfer.*` needed: a transfer is recorded
+      when it's made.
 
 ## Phase 6 — Discovery, salon page and profile
 

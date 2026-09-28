@@ -40,6 +40,27 @@ export interface AppointmentRescheduledEvent {
   startsAt: string;
 }
 
+/** A request the salon never answered before its time: cancelled, and the client refunded. */
+export interface AppointmentExpiredEvent {
+  appointmentId: string;
+  particulierId: string;
+  coiffeurId: string;
+  serviceName: string;
+  startsAt: string;
+}
+
+/** Money went back to the client (payments/payments.service.ts). */
+export interface PaymentRefundedEvent {
+  appointmentId: string;
+  particulierId: string;
+  /** Euros refunded this time. */
+  amount: number;
+  /** Euros refunded on this appointment so far, this time included — tells refunds apart. */
+  refundedTotal: number;
+}
+
+const euros = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+
 /** The coiffeur moved an accepted appointment — the particulier is told. */
 export interface AppointmentMovedEvent {
   appointmentId: string;
@@ -164,6 +185,36 @@ export class AppointmentNotificationsListener {
   }
 
   /** A failed notification must never fail the booking action that triggered it. */
+  @OnEvent('appointment.expired')
+  async onExpired(event: AppointmentExpiredEvent): Promise<void> {
+    await this.safe(() =>
+      this.notifications.notifyUser({
+        userId: event.particulierId,
+        type: 'appointment_expired',
+        dedupeKey: event.appointmentId,
+        title: 'Demande sans réponse',
+        body: `Le salon n'a pas répondu à votre demande du ${formatParisDateTime(event.startsAt)} pour ${event.serviceName}. Vous êtes intégralement remboursé.`,
+        data: { appointmentId: event.appointmentId },
+      }),
+    );
+  }
+
+  @OnEvent('payment.refunded')
+  async onRefunded(event: PaymentRefundedEvent): Promise<void> {
+    const amount = euros.format(event.amount).replace(/ | /g, ' ');
+    await this.safe(() =>
+      this.notifications.notifyUser({
+        userId: event.particulierId,
+        type: 'payment_refunded',
+        // Each refund once, even several on one appointment.
+        dedupeKey: `${event.appointmentId}:${event.refundedTotal}`,
+        title: `Remboursement de ${amount}`,
+        body: 'Il apparaîtra sur votre compte bancaire sous quelques jours.',
+        data: { appointmentId: event.appointmentId },
+      }),
+    );
+  }
+
   private async safe(fn: () => Promise<unknown>): Promise<void> {
     try {
       await fn();

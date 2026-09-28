@@ -405,6 +405,37 @@ describe('SubscriptionsService', () => {
     });
   });
 
+  describe('when the admin moderates the account', () => {
+    beforeEach(() => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' });
+      stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'active', profileId: COIFFEUR_ID });
+    });
+
+    it('cancels the Stripe subscription of a banned coiffeur at once', async () => {
+      await service.onAccountStatusChanged({ profileId: COIFFEUR_ID, role: 'coiffeur', previousStatus: 'active', status: 'banned' });
+
+      expect(stripe.subscriptionCalls).toEqual([{ id: 'sub_1', call: 'cancel' }]);
+    });
+
+    it('pauses billing while a coiffeur is suspended, and resumes it on reactivation', async () => {
+      await service.onAccountStatusChanged({ profileId: COIFFEUR_ID, role: 'coiffeur', previousStatus: 'active', status: 'suspended' });
+      await service.onAccountStatusChanged({ profileId: COIFFEUR_ID, role: 'coiffeur', previousStatus: 'suspended', status: 'active' });
+
+      expect(stripe.subscriptionCalls).toEqual([
+        { id: 'sub_1', call: 'update', params: { pause_collection: { behavior: 'void' } } },
+        { id: 'sub_1', call: 'update', params: { pause_collection: '' } },
+      ]);
+    });
+
+    it('leaves clients, offered subscriptions and ended ones alone', async () => {
+      await service.onAccountStatusChanged({ profileId: 'client-1', role: 'particulier', previousStatus: 'active', status: 'banned' });
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'canceled' });
+      await service.onAccountStatusChanged({ profileId: COIFFEUR_ID, role: 'coiffeur', previousStatus: 'active', status: 'banned' });
+
+      expect(stripe.subscriptionCalls).toEqual([]);
+    });
+  });
+
   describe('listAllForAdmin', () => {
     it("shows every coiffeur's state, with a link to the customer in Stripe's test dashboard", async () => {
       supabase.seedSubscription({

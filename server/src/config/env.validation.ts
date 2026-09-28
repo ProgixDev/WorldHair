@@ -159,6 +159,11 @@ export class EnvironmentVariables {
   @IsOptional()
   STRIPE_WEBHOOK_SECRET = '';
 
+  /** Signs the Connect endpoint's calls (`whsec_…`): events on the salons' own Stripe accounts (TODO.md Phase 5). */
+  @IsString()
+  @IsOptional()
+  STRIPE_CONNECT_WEBHOOK_SECRET = '';
+
   /**
    * The website's public URL, e.g. https://worldhair.onrender.com. Stripe
    * Checkout and the Customer Portal send the coiffeur back to its

@@ -54,6 +54,7 @@ interface SalonDetailResponse extends SalonSummaryResponse {
   bookingNoticeMinutes: number;
   cancellationNoticeMinutes: number;
   closures: Closure[];
+  onlineBooking: boolean;
 }
 
 interface SalonExtra {
@@ -65,6 +66,7 @@ interface SalonExtra {
   bookingNoticeMinutes: number;
   cancellationNoticeMinutes: number;
   closures: Closure[];
+  onlineBooking: boolean;
 }
 
 interface SalonSearchResponse {
@@ -141,6 +143,7 @@ function toSalon(summary: SalonSummaryResponse, extra?: SalonExtra): Salon {
     bookingNoticeMinutes: extra?.bookingNoticeMinutes ?? 0,
     cancellationNoticeMinutes: extra?.cancellationNoticeMinutes ?? 0,
     closures: extra?.closures ?? [],
+    onlineBooking: extra?.onlineBooking ?? false,
   };
 }
 
@@ -170,6 +173,7 @@ export async function fetchSalonById(id: string): Promise<Salon | undefined> {
       bookingNoticeMinutes: data.bookingNoticeMinutes ?? 0,
       cancellationNoticeMinutes: data.cancellationNoticeMinutes ?? 0,
       closures: data.closures ?? [],
+      onlineBooking: data.onlineBooking ?? false,
     });
   } catch {
     return undefined;

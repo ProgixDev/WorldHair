@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { PaymentSheetError, useStripe } from "@stripe/stripe-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheet } from "../../components/ui/BottomSheet";
@@ -12,7 +13,6 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
 import { fetchSalonById, fetchSlots } from "../../features/salons/api";
-import { stepAfterSlot, stepBeforeConfirm } from "../../features/salons/booking-steps";
 import { bookingRuleLines } from "../../features/salons/rules";
 import { bookingDays, dateKey, type DaySlots } from "../../features/salons/slots";
 import type { Salon, Service } from "../../features/salons/types";
@@ -20,11 +20,11 @@ import { getAdSlot, type AdSlot } from "../../services/ads";
 import {
   BookingError,
   bookAppointment,
+  confirmPayment,
   listAppointments,
-  payForAppointment,
+  releaseHold,
   rescheduleAppointment,
   type Appointment,
-  type PaymentReceipt,
 } from "../../services/booking";
 import {
   dayAndMonth,
@@ -37,12 +37,24 @@ import {
 } from "../../utils/date";
 
 type Step = "service" | "slot" | "payment" | "confirm";
-const STEPS: { id: Step; label: string }[] = [
+/** A new booking ends on paying for it (the recap sits on that step); moving one ends on confirming the new time. */
+const BOOKING_STEPS: { id: Step; label: string }[] = [
   { id: "service", label: "Prestation" },
   { id: "slot", label: "Créneau" },
   { id: "payment", label: "Paiement" },
+];
+const RESCHEDULE_STEPS: { id: Step; label: string }[] = [
+  { id: "slot", label: "Créneau" },
   { id: "confirm", label: "Confirmation" },
 ];
+
+/** The slot held while the client pays (server-side, 15 minutes at most), and what Stripe's sheet was set up with. */
+interface Hold {
+  appointmentId: string;
+  startsAt: string;
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Two weeks of the salon's open days in the strip. */
 const DAYS_SHOWN = 14;
@@ -76,6 +88,8 @@ export default function BookingFlow() {
 
   const [salon, setSalon] = useState<Salon | null | undefined>(undefined);
   const isReschedule = Boolean(appointmentId);
+  const steps = isReschedule ? RESCHEDULE_STEPS : BOOKING_STEPS;
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const [step, setStep] = useState<Step>(
     serviceId || isReschedule ? "slot" : "service",
@@ -92,11 +106,19 @@ export default function BookingFlow() {
   const [slotsVersion, setSlotsVersion] = useState(0);
   const [slotStart, setSlotStart] = useState<string | null>(null);
   const [confirmationAd, setConfirmationAd] = useState<AdSlot | null>(null);
-  const [paying, setPaying] = useState(false);
-  const [paid, setPaid] = useState<PaymentReceipt | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<Appointment | null>(null);
+  /** Kept in a ref too: leaving the screen releases the hold, whatever render we're on. */
+  const hold = useRef<Hold | null>(null);
+
+  // Leaving before paying gives the slot back at once (the server would after 15 minutes).
+  useEffect(
+    () => () => {
+      if (hold.current) void releaseHold(hold.current.appointmentId);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -223,18 +245,72 @@ export default function BookingFlow() {
         : [...current, service],
     );
 
+  const releaseCurrentHold = () => {
+    if (hold.current) void releaseHold(hold.current.appointmentId);
+    hold.current = null;
+  };
+
+  /** After the sheet: the server checks with Stripe and sends the request — a moment for a bank to answer. */
+  const confirmUntilSent = async (id: string): Promise<Appointment> => {
+    let appointment = await confirmPayment(id);
+    for (let tries = 0; appointment.status === "awaiting_payment" && tries < 4; tries += 1) {
+      await wait(1500);
+      appointment = await confirmPayment(id);
+    }
+    return appointment;
+  };
+
+  /**
+   * Holds the slot and charges it with Stripe's payment sheet (card, Google
+   * Pay): the salon only gets the request once it's paid. A declined card or
+   * a closed sheet keeps the same hold for another try.
+   */
   const handlePay = async () => {
-    if (lines.length === 0) return;
+    if (!startsAt || !slotStart) return;
     setError(null);
-    setPaying(true);
+    setSubmitting(true);
     try {
-      const receipt = await payForAppointment(totalPrice);
-      setPaid(receipt);
-      setStep("confirm");
-    } catch {
-      setError("Paiement impossible. Réessayez.");
+      if (hold.current?.startsAt !== slotStart) {
+        releaseCurrentHold();
+        const { appointment, payment } = await bookAppointment({
+          salonId: salon.id,
+          serviceIds: picked.map((service) => service.id),
+          startsAt,
+        });
+        hold.current = { appointmentId: appointment.id, startsAt: slotStart };
+        const { error: initError } = await initPaymentSheet({
+          merchantDisplayName: "WorldHair",
+          paymentIntentClientSecret: payment.clientSecret,
+          returnURL: "worldhair://stripe-redirect",
+          defaultBillingDetails: { address: { country: "FR" } },
+          googlePay: { merchantCountryCode: "FR", currencyCode: "EUR", testEnv: __DEV__ },
+        });
+        if (initError) {
+          releaseCurrentHold();
+          setError("Le paiement n'a pas pu s'ouvrir. Réessayez.");
+          return;
+        }
+      }
+
+      const { error: sheetError } = await presentPaymentSheet();
+      if (sheetError) {
+        if (sheetError.code !== PaymentSheetError.Canceled) setError(sheetError.message);
+        return;
+      }
+
+      const appointment = await confirmUntilSent(hold.current!.appointmentId);
+      hold.current = null;
+      setBooked(appointment);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Paiement impossible. Réessayez.");
+      // Someone else got there first (or the salon changed something): show
+      // the day's grid again, up to date, so another time can be picked.
+      if (err instanceof BookingError && err.code === "SLOT_TAKEN") {
+        setStep("slot");
+        setSlotsVersion((version) => version + 1);
+      }
     } finally {
-      setPaying(false);
+      setSubmitting(false);
     }
   };
 
@@ -243,14 +319,7 @@ export default function BookingFlow() {
     setError(null);
     setSubmitting(true);
     try {
-      const appointment = isReschedule
-        ? await rescheduleAppointment(String(appointmentId), startsAt)
-        : await bookAppointment({
-            salonId: salon.id,
-            serviceIds: picked.map((service) => service.id),
-            startsAt,
-          });
-      setBooked(appointment);
+      setBooked(await rescheduleAppointment(String(appointmentId), startsAt));
     } catch (err) {
       setError(
         err instanceof Error
@@ -276,6 +345,7 @@ export default function BookingFlow() {
         startsAt={new Date(booked.startsAt)}
         isReschedule={isReschedule}
         pending={booked.status === "pending"}
+        awaitingPayment={booked.status === "awaiting_payment"}
         adSlot={confirmationAd}
         onAppointments={() => router.replace("/appointments" as never)}
         onHome={() => router.replace("/discover" as never)}
@@ -289,19 +359,20 @@ export default function BookingFlow() {
         ? slotStart !== null
         : true;
 
-  // A reschedule, or a new slot after the first one was taken, has nothing
-  // left to pay (booking-steps.ts).
-  const payment = { isReschedule, paidAmount: paid?.amount ?? null, total: totalPrice };
   const goNext = () => {
     if (step === "service") return setStep("slot");
-    if (step === "slot") return setStep(stepAfterSlot(payment));
+    if (step === "slot") return setStep(isReschedule ? "confirm" : "payment");
     if (step === "payment") return void handlePay();
     void handleConfirm();
   };
 
   const goBack = () => {
-    if (step === "confirm") return setStep(stepBeforeConfirm(payment));
-    if (step === "payment") return setStep("slot");
+    setError(null);
+    if (step === "confirm") return setStep("slot");
+    if (step === "payment") {
+      releaseCurrentHold();
+      return setStep("slot");
+    }
     if (step === "slot" && !isReschedule) return setStep("service");
     router.back();
   };
@@ -360,8 +431,8 @@ export default function BookingFlow() {
           style={{ flexDirection: "row", alignItems: "center" }}
           accessibilityRole="progressbar"
         >
-          {STEPS.map((item, index) => {
-            const currentIndex = STEPS.findIndex((s) => s.id === step);
+          {steps.map((item, index) => {
+            const currentIndex = steps.findIndex((s) => s.id === step);
             const done = index < currentIndex;
             const active = index === currentIndex;
             return (
@@ -416,7 +487,7 @@ export default function BookingFlow() {
                   </Text>
                 </View>
 
-                {index < STEPS.length - 1 ? (
+                {index < steps.length - 1 ? (
                   <View
                     style={{
                       flex: 1,
@@ -710,68 +781,62 @@ export default function BookingFlow() {
           </View>
         ) : null}
 
-        {step === "payment" && lines.length > 0 ? (
+        {step === "payment" && lines.length > 0 && startsAt ? (
           <View style={{ gap: spacing.lg }}>
             <Text style={[typography.h1, { color: theme.foreground.white }]}>
               Réglez pour envoyer la demande.
             </Text>
-            <Text
-              style={[typography.bodySmall, { color: theme.foreground.gray }]}
-            >
-              Le montant est prélevé maintenant, avant que le coiffeur ne
-              reçoive votre demande.
-            </Text>
 
-            <View
-              style={[
-                {
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.md,
-                  padding: spacing.lg,
-                  borderRadius: radius.xl,
-                  borderWidth: 1.5,
-                  borderColor: theme.primary.main,
-                  backgroundColor: theme.surface.raised,
-                },
-                elevation(1, theme.shadow),
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="credit-card-outline"
-                size={28}
-                color={theme.primary.main}
-              />
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text
-                  style={[
-                    typography.bodyMedium,
-                    { color: theme.foreground.white },
-                  ]}
-                >
-                  Carte bancaire
-                </Text>
-                <Text
-                  style={[
-                    typography.caption,
-                    { color: theme.foreground.gray },
-                  ]}
-                >
-                  •••• •••• •••• 4242
-                </Text>
-              </View>
+            <TicketCard
+              salonName={salon.name}
+              stylist={salon.stylist}
+              lines={lines}
+              totalDuration={totalDuration}
+              totalPrice={totalPrice}
+              startsAt={startsAt}
+              address={
+                salon.addressLine + ", " + salon.postalCode + " " + salon.city
+              }
+            />
+
+            <View style={{ gap: 2 }}>
+              <Text
+                style={[typography.caption, { color: theme.foreground.gray }]}
+              >
+                {"Le montant est prélevé maintenant ; " +
+                  confirmationRule.charAt(0).toLowerCase() +
+                  confirmationRule.slice(1) +
+                  "."}
+              </Text>
+              <Text
+                style={[typography.caption, { color: theme.foreground.gray }]}
+              >
+                Remboursé intégralement si le salon refuse ou annule, ou si
+                vous annulez dans les délais.
+              </Text>
+              <Text
+                style={[typography.caption, { color: theme.foreground.gray }]}
+              >
+                {cancellationRule + " le rendez-vous."}
+              </Text>
             </View>
 
             <View
-              style={{ flexDirection: "row", justifyContent: "space-between" }}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
             >
+              <MaterialCommunityIcons
+                name="lock-outline"
+                size={16}
+                color={theme.foreground.gray}
+              />
               <Text
-                style={[typography.label, { color: theme.foreground.gray }]}
+                style={[
+                  typography.caption,
+                  { color: theme.foreground.gray, flex: 1 },
+                ]}
               >
-                Montant à régler
-              </Text>
-              <Text style={[typography.h2, { color: theme.primary.main }]}>
-                {formatPrice(totalPrice)}
+                Paiement sécurisé par Stripe : vos données bancaires ne
+                transitent jamais par WorldHair.
               </Text>
             </View>
 
@@ -815,12 +880,6 @@ export default function BookingFlow() {
                 </Text>
               ) : null}
             </View>
-
-            {paid ? (
-              <Text style={[typography.caption, { color: theme.success }]}>
-                {"Paiement de " + formatPrice(paid.amount) + " effectué."}
-              </Text>
-            ) : null}
 
             {error ? (
               <Text style={[typography.bodySmall, { color: theme.danger }]}>
@@ -887,7 +946,7 @@ export default function BookingFlow() {
           }
           onPress={goNext}
           disabled={!canContinue}
-          loading={submitting || paying}
+          loading={submitting}
         />
       </View>
     </View>
@@ -1041,6 +1100,7 @@ function BookingSuccess({
   startsAt,
   isReschedule,
   pending,
+  awaitingPayment,
   adSlot,
   onAppointments,
   onHome,
@@ -1052,6 +1112,8 @@ function BookingSuccess({
   isReschedule: boolean;
   /** Awaiting the coiffeur's decision — not confirmed yet. */
   pending: boolean;
+  /** Paid, but the bank hasn't confirmed yet (rare with cards): the request leaves once it does. */
+  awaitingPayment: boolean;
   adSlot: AdSlot | null;
   onAppointments: () => void;
   onHome: () => void;
@@ -1106,9 +1168,11 @@ function BookingSuccess({
           >
             {isReschedule
               ? "Rendez-vous déplacé."
-              : pending
-                ? "Demande envoyée."
-                : "C'est réservé."}
+              : awaitingPayment
+                ? "Paiement en cours."
+                : pending
+                  ? "Demande envoyée."
+                  : "C'est réservé."}
           </Text>
           <Text
             style={[
@@ -1131,9 +1195,11 @@ function BookingSuccess({
                 { color: theme.foreground.gray, textAlign: "center" },
               ]}
             >
-              {pending
-                ? "Le salon doit encore confirmer votre créneau."
-                : "Le salon a confirmé votre rendez-vous."}
+              {awaitingPayment
+                ? "Votre demande partira au salon dès que votre banque aura confirmé le paiement."
+                : pending
+                  ? "Paiement reçu. Le salon doit encore confirmer votre créneau."
+                  : "Paiement reçu. Le salon a confirmé votre rendez-vous."}
             </Text>
           ) : null}
         </View>

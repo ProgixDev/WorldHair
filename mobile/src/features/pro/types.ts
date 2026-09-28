@@ -95,6 +95,29 @@ export interface ProAppointment {
   note?: string;
   /** New client vs regular — shown as a tag on the request card. */
   isNewClient: boolean;
+  /** Paid in the app (TODO.md Phase 5); `null` for a booking made before payments. */
+  payment: ProPayment | null;
+}
+
+/** The salon's side of a booking's payment. */
+export interface ProPayment {
+  amount: number;
+  refundedAmount: number;
+  /** WorldHair's commission on what the client kept. */
+  commissionAmount: number;
+  /** What the salon receives — or received. */
+  payoutAmount: number;
+  /** When it was sent to the salon's bank account; `null` until a day after the appointment. */
+  paidOutAt: string | null;
+}
+
+/** Where the salon gets paid: none yet, onboarding unfinished, ready, or the demo salon's exemption. */
+export interface PayoutStatus {
+  state: "none" | "incomplete" | "ready" | "exempt";
+  /** Clients can book and pay in the app. */
+  onlineBooking: boolean;
+  /** Stripe's Express dashboard (payouts, bank details) can open. */
+  canOpenDashboard: boolean;
 }
 
 export type PlanId = "monthly" | "yearly";

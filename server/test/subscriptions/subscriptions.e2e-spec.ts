@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 import request from 'supertest';
 import type { Server } from 'http';
 import Stripe from 'stripe';
-import { STRIPE_CLIENT } from '../../src/stripe/stripe.service';
 import { createTestApp, TestApp } from '../utils/app-harness';
 import { FakeStripe } from '../utils/fakes/fake-stripe';
 
@@ -23,10 +22,8 @@ describe('subscriptions (e2e)', () => {
   const admin = { id: randomUUID(), email: 'admin@example.com', email_confirmed_at: '2024-01-01T00:00:00Z' };
 
   beforeAll(async () => {
-    stripe = new FakeStripe();
-    harness = await createTestApp({
-      customize: (builder) => builder.overrideProvider(STRIPE_CLIENT).useValue(stripe),
-    });
+    harness = await createTestApp();
+    stripe = harness.stripe;
     server = harness.app.getHttpServer() as Server;
   });
 
@@ -123,12 +120,12 @@ describe('subscriptions (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ trialDays: 14 })
         .expect(200)
-        .expect({ trialDays: 14 });
+        .expect({ trialDays: 14, commissionPercent: 10 });
       await request(server)
         .get('/admin/settings')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200)
-        .expect({ trialDays: 14 });
+        .expect({ trialDays: 14, commissionPercent: 10 });
     });
 
     it('refuses an impossible trial, and non-admins', async () => {

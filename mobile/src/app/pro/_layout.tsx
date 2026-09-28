@@ -42,6 +42,8 @@ function ProGate() {
         <Tabs.Screen name="salon" options={{ title: "Mon salon" }} />
         <Tabs.Screen name="reviews" options={{ title: "Avis" }} />
         <Tabs.Screen name="account" options={{ title: "Compte" }} />
+        {/* Reached from Compte (and Stripe's onboarding coming back); not in the tab bar. */}
+        <Tabs.Screen name="payments" options={{ title: "Paiements" }} />
       </Tabs>
       {expired ? <SubscriptionExpiredOverlay /> : null}
     </View>

@@ -14,6 +14,7 @@ import type {
   ProAppointment,
   ProAppointmentStatus,
   ProProfile,
+  PayoutStatus,
   ProService,
   Subscription,
   TimeOff,
@@ -59,6 +60,10 @@ const REFUSALS: [string, string][] = [
     "Le client a déjà laissé un avis sur ce rendez-vous : il ne peut plus être marqué absent.",
   ],
   ["end after it starts", "La fermeture doit se terminer après son début."],
+  ["Already paid out", "Le montant vous a déjà été versé : pour rembourser le client, contactez WorldHair."],
+  ["left to refund", "Montant trop élevé : il reste moins que ça à rembourser."],
+  ["Nothing was paid in the app", "Ce rendez-vous n'a pas été payé dans l'application."],
+  ["Finish setting up payouts", "Terminez d'abord la configuration de vos paiements."],
   ["already over", "Cette fermeture est déjà passée."],
 ];
 
@@ -334,6 +339,31 @@ export async function moveAppointment(id: string, startsAt: string): Promise<Pro
 export async function setAttendance(id: string, attendance: Attendance): Promise<ProAppointment[]> {
   await apiClient.patch(`/appointments/${id}/attendance`, { attendance });
   return listProAppointments();
+}
+
+/** Gives the client money back — everything, or `amount` euros — until the salon has been paid. */
+export async function refundAppointment(id: string, amount?: number): Promise<ProAppointment[]> {
+  await apiClient.post(`/appointments/${id}/refund`, amount === undefined ? {} : { amount });
+  return listProAppointments();
+}
+
+// ─── Payouts (Stripe Connect) ────────────────────────────────────────────────
+
+export async function getPayoutStatus(): Promise<PayoutStatus> {
+  const { data } = await apiClient.get<PayoutStatus>("/payments/connect/status");
+  return data;
+}
+
+/** Stripe's own onboarding page (identity, bank details) — opened in the browser, never filled in here. */
+export async function createPayoutOnboardingLink(): Promise<string> {
+  const { data } = await apiClient.post<{ url: string }>("/payments/connect/onboarding-link");
+  return data.url;
+}
+
+/** Stripe's Express dashboard: the salon's transfers, payouts and bank details. */
+export async function createPayoutDashboardLink(): Promise<string> {
+  const { data } = await apiClient.post<{ url: string }>("/payments/connect/dashboard-link");
+  return data.url;
 }
 
 // ─── Closures (congés, fermetures exceptionnelles) ───────────────────────────

@@ -24,11 +24,20 @@ export class StripeService {
     return this.stripe;
   }
 
-  /** Checks Stripe's signature over the exact bytes received: a forged or replayed call never reaches the handlers. */
-  constructEvent(rawBody: Buffer | undefined, signature: string | undefined): Stripe.Event {
-    const secret = this.config.get('STRIPE_WEBHOOK_SECRET', { infer: true });
+  /**
+   * Checks Stripe's signature over the exact bytes received: a forged or
+   * replayed call never reaches the handlers. WorldHair's own account and
+   * the salons' connected accounts are two endpoints with two secrets.
+   */
+  constructEvent(
+    rawBody: Buffer | undefined,
+    signature: string | undefined,
+    endpoint: 'platform' | 'connect' = 'platform',
+  ): Stripe.Event {
+    const variable = endpoint === 'connect' ? 'STRIPE_CONNECT_WEBHOOK_SECRET' : 'STRIPE_WEBHOOK_SECRET';
+    const secret = this.config.get(variable, { infer: true });
     if (!secret) {
-      throw new ServiceUnavailableException('Stripe webhooks are not configured (STRIPE_WEBHOOK_SECRET)');
+      throw new ServiceUnavailableException(`Stripe webhooks are not configured (${variable})`);
     }
     if (!rawBody || !signature) {
       throw new BadRequestException('Missing Stripe signature');

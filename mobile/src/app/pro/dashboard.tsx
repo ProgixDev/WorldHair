@@ -53,7 +53,7 @@ export default function ProDashboard() {
   const kpiColumns = isExpanded ? 4 : 2;
   const kpiWidth =
     (width - gutter * 2 - spacing.md * (kpiColumns - 1)) / kpiColumns;
-  const { profile, services, appointments, subscription, isLoading } = usePro();
+  const { profile, services, appointments, subscription, payoutStatus, isLoading } = usePro();
 
   const stats = useMemo(() => computeStats(appointments), [appointments]);
   const series = useMemo(() => weeklySeries(appointments, 8), [appointments]);
@@ -152,6 +152,36 @@ export default function ProDashboard() {
       </View>
 
       <View style={{ paddingHorizontal: gutter, gap: spacing.xl }}>
+        {/* ── Payouts strip: no online bookings until the salon can be paid ── */}
+        {payoutStatus && !payoutStatus.onlineBooking ? (
+          <Pressable
+            onPress={() => router.push("/pro/payments" as never)}
+            accessibilityRole="button"
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              padding: spacing.lg,
+              borderRadius: radius.xl,
+              borderWidth: 1.5,
+              borderColor: theme.accent.warm,
+              backgroundColor: theme.surface.raised,
+              opacity: pressed ? 0.8 : 1,
+            })}
+          >
+            <MaterialCommunityIcons name="bank-outline" size={22} color={theme.accent.warm} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[typography.label, { color: theme.foreground.white }]}>
+                Réservations en ligne fermées
+              </Text>
+              <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                Configurez vos paiements pour que vos clients réservent et paient dans l&apos;application.
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={theme.foreground.gray} />
+          </Pressable>
+        ) : null}
+
         {/* ── Subscription strip ───────────────────────────────────────── */}
         {subscriptionSummary ? (
           <Pressable

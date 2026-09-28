@@ -56,7 +56,7 @@ export default function ProAccount() {
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
   const { session, signOut } = useAuth();
-  const { profile, subscription, appointments, isLoading, refreshSubscription } = usePro();
+  const { profile, subscription, appointments, payoutStatus, isLoading, refreshSubscription } = usePro();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -233,6 +233,25 @@ export default function ProAccount() {
           </View>
         ))}
       </View>
+
+      {/* ── Payments (Stripe Connect) ─────────────────────────────────── */}
+      <Group title="Encaissements">
+        <Row
+          icon="bank-outline"
+          label="Paiements"
+          value={
+            payoutStatus?.state === "ready"
+              ? "Actifs"
+              : payoutStatus?.state === "exempt"
+                ? "Démonstration"
+                : payoutStatus?.state === "incomplete"
+                  ? "À terminer"
+                  : "À configurer"
+          }
+          onPress={() => router.push("/pro/payments" as never)}
+          isLast
+        />
+      </Group>
 
       {/* ── Preferences ──────────────────────────────────────────────── */}
       <Group title="Préférences">

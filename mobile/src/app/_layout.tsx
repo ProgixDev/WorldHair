@@ -1,3 +1,4 @@
+import { StripeProvider } from "@stripe/stripe-react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
@@ -23,6 +24,11 @@ NativeSplash.setOptions({ duration: 700, fade: true });
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* Stripe's payment sheet (booking) — the publishable key is public by design. urlScheme: 3-D Secure comes back to the app. */}
+      <StripeProvider
+        publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ""}
+        urlScheme="worldhair"
+      >
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthProvider>
@@ -34,6 +40,7 @@ export default function RootLayout() {
           </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>
+      </StripeProvider>
     </GestureHandlerRootView>
   );
 }

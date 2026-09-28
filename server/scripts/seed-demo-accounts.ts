@@ -452,6 +452,13 @@ async function seedSalonWorkspace(
 
   await offerSubscription(supabase, userId);
 
+  // Bookable without the salon's own Stripe payouts, so paying in the app can be
+  // tried end to end; a real onboarding later (test mode) takes over.
+  const { error: payoutError } = await supabase
+    .from("coiffeur_payout_accounts")
+    .upsert({ profile_id: userId, bookable_without_payouts: true }, { onConflict: "profile_id" });
+  if (payoutError) throw payoutError;
+
   console.log(`  ${userId}: salon workspace seeded (${salon.services.length} services, offered subscription)`);
 }
 

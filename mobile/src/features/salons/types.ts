@@ -94,6 +94,8 @@ export interface Salon {
   cancellationNoticeMinutes: number;
   /** Upcoming closures; empty for list items. */
   closures: Closure[];
+  /** Bookable and payable in the app (the salon's Stripe payouts are set up); only known from its own page. */
+  onlineBooking: boolean;
 }
 
 /** Salon + everything the UI derives from the user's position. */

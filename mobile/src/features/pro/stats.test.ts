@@ -16,11 +16,28 @@ function appointment(overrides: Partial<ProAppointment>): ProAppointment {
     status: "done",
     attendance: null,
     isNewClient: false,
+    payment: null,
     ...overrides,
   };
 }
 
 describe("computeStats", () => {
+  it("counts what clients actually kept when they paid in the app", () => {
+    const stats = computeStats(
+      [
+        appointment({
+          price: 40,
+          payment: { amount: 40, refundedAmount: 15, commissionAmount: 2.5, payoutAmount: 22.5, paidOutAt: null },
+        }),
+        appointment({ price: 30 }),
+      ],
+      NOW,
+    );
+
+    expect(stats.revenueThisMonth).toBe(55);
+    expect(stats.averageBasket).toBe(28);
+  });
+
   it("counts every prestation of a multi-prestation booking in the top services", () => {
     const stats = computeStats(
       [

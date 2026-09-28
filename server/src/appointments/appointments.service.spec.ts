@@ -1,12 +1,20 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import type Stripe from 'stripe';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { parisParts, parisTime } from '../common/utils/paris-time';
+import { EnvironmentVariables } from '../config/env.validation';
 import { SupabaseService } from '../database/supabase.service';
+import { PaymentsService } from '../payments/payments.service';
+import { PayoutAccountsService } from '../payments/payout-accounts.service';
 import { ReviewsService } from '../reviews/reviews.service';
 import { SalonService } from '../salon/salon.service';
+import { PlatformSettingsService } from '../settings/platform-settings.service';
+import { StripeService } from '../stripe/stripe.service';
+import { FakeStripe } from '../../test/utils/fakes/fake-stripe';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
-import { AppointmentsService } from './appointments.service';
+import { AppointmentsService, CreateAppointmentInput, ParticulierAppointment } from './appointments.service';
 
 const COIFFEUR_ID = 'coiffeur-1';
 const PARTICULIER_ID = 'particulier-1';
@@ -41,14 +49,42 @@ describe('AppointmentsService', () => {
   let service: AppointmentsService;
   let salon: SalonService;
   let events: EventEmitter2;
+  let stripe: FakeStripe;
   let serviceId: string;
+
+  /** Books like the app: holds the slot, pays with Stripe's test card, then confirms. */
+  async function book(particulierId: string, input: CreateAppointmentInput): Promise<ParticulierAppointment> {
+    const { appointment } = await service.create(particulierId, input);
+    stripe.succeedIntent(supabase.paymentFor(appointment.id)!.payment_intent_id);
+    return service.completePayment(particulierId, appointment.id);
+  }
 
   beforeEach(async () => {
     supabase = new FakeSupabaseService();
     events = new EventEmitter2();
+    stripe = new FakeStripe();
+    const config = {
+      get: (key: string) => ({ STRIPE_SECRET_KEY: 'sk_test_123', WEB_APP_URL: 'https://worldhair.test' })[key],
+    } as unknown as ConfigService<EnvironmentVariables, true>;
+    const stripeService = new StripeService(stripe as unknown as Stripe, config);
+    const payouts = new PayoutAccountsService(supabase as unknown as SupabaseService, stripeService, config);
+    const payments = new PaymentsService(
+      supabase as unknown as SupabaseService,
+      stripeService,
+      new PlatformSettingsService(supabase as unknown as SupabaseService),
+      payouts,
+      events,
+    );
     const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, events);
     salon = new SalonService(supabase as unknown as SupabaseService);
-    service = new AppointmentsService(supabase as unknown as SupabaseService, applications, salon, events);
+    service = new AppointmentsService(
+      supabase as unknown as SupabaseService,
+      applications,
+      salon,
+      events,
+      payments,
+      payouts,
+    );
 
     supabase.seedValidatedSalon({
       profileId: COIFFEUR_ID,
@@ -66,10 +102,162 @@ describe('AppointmentsService', () => {
     });
   });
 
+  describe('paying at booking', () => {
+    it('holds the slot while the client pays: nothing reaches the salon before the card goes through', async () => {
+      const heard = jest.fn();
+      events.on('appointment.created', heard);
+
+      const { appointment, payment } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+
+      expect(appointment.status).toBe('awaiting_payment');
+      expect(payment).toEqual({ clientSecret: 'pi_test_1_secret_test', amount: 40 });
+      expect(stripe.paymentIntentsCreated[0].params).toMatchObject({ amount: 4000, transfer_group: appointment.id });
+      expect(heard).not.toHaveBeenCalled();
+      await expect(service.listForCoiffeur(COIFFEUR_ID)).resolves.toEqual([]);
+      await expect(service.listForParticulier(PARTICULIER_ID)).resolves.toEqual([]);
+    });
+
+    it("keeps the held slot from anyone else while it's being paid", async () => {
+      await service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+
+      await expect(
+        service.create('particulier-2', { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(/no longer available/);
+    });
+
+    it('sends the request once Stripe confirms the payment, and only once', async () => {
+      const heard = jest.fn();
+      events.on('appointment.created', heard);
+      const { appointment } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+
+      await expect(service.completePayment(PARTICULIER_ID, appointment.id)).resolves.toMatchObject({ status: 'awaiting_payment' });
+      stripe.succeedIntent('pi_test_1');
+      await expect(service.completePayment(PARTICULIER_ID, appointment.id)).resolves.toMatchObject({
+        status: 'pending',
+        payment: { amount: 40, refundedAmount: 0 },
+      });
+      await service.handlePaymentEvent({
+        type: 'payment_intent.succeeded',
+        data: { object: stripe.succeedIntent('pi_test_1') },
+      } as unknown as Stripe.Event);
+
+      expect(heard).toHaveBeenCalledTimes(1);
+      expect(supabase.paymentFor(appointment.id)).toMatchObject({ status: 'succeeded', charge_id: 'ch_pi_test_1' });
+    });
+
+    it("refuses a salon that can't be paid online yet, but the demo salon takes bookings anyway", async () => {
+      supabase.seedPayoutAccount({ profileId: COIFFEUR_ID, stripeAccountId: null, payoutsEnabled: false });
+      await expect(
+        service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).rejects.toThrow(/online bookings/);
+
+      supabase.seedPayoutAccount({ profileId: COIFFEUR_ID, bookableWithoutPayouts: true });
+      await expect(
+        book(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() }),
+      ).resolves.toMatchObject({ status: 'pending' });
+    });
+
+    it('frees the slot when the client leaves before paying, and keeps it if they paid meanwhile', async () => {
+      const { appointment: left } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await service.releaseHold(PARTICULIER_ID, left.id);
+      expect(stripe.intentStatus('pi_test_1')).toBe('canceled');
+      expect(supabase.paymentFor(left.id)).toBeUndefined();
+
+      const { appointment: paid } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      stripe.succeedIntent('pi_test_2');
+      await service.releaseHold(PARTICULIER_ID, paid.id);
+      const [kept] = await service.listForParticulier(PARTICULIER_ID);
+      expect(kept).toMatchObject({ id: paid.id, status: 'pending' });
+    });
+
+    it('releases holds nobody paid for within 15 minutes', async () => {
+      const { appointment } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+
+      await service.releaseStaleHolds(new Date(Date.now() + 5 * 60_000));
+      expect(supabase.paymentFor(appointment.id)).toBeDefined();
+
+      await service.releaseStaleHolds(new Date(Date.now() + 16 * 60_000));
+      expect(supabase.paymentFor(appointment.id)).toBeUndefined();
+    });
+
+    it('gives everything back when a payment lands after its hold was released', async () => {
+      await service.handlePaymentEvent({
+        type: 'payment_intent.succeeded',
+        data: { object: { id: 'pi_orphan', metadata: { appointment_id: 'gone' } } },
+      } as unknown as Stripe.Event);
+
+      expect(stripe.refundsCreated[0].params).toMatchObject({ payment_intent: 'pi_orphan' });
+    });
+  });
+
+  describe('refunds', () => {
+    const slot = () => ({ coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+
+    it('refunds everything when the salon refuses or cancels, or the client cancels in time', async () => {
+      const refused = await book(PARTICULIER_ID, slot());
+      await service.decide(COIFFEUR_ID, refused.id, 'refused');
+
+      const cancelledBySalon = await book(PARTICULIER_ID, slot());
+      await service.decide(COIFFEUR_ID, cancelledBySalon.id, 'confirmed');
+      await service.cancel(COIFFEUR_ID, cancelledBySalon.id);
+
+      const cancelledByClient = await book(PARTICULIER_ID, slot());
+      await service.cancel(PARTICULIER_ID, cancelledByClient.id);
+
+      expect(stripe.refundsCreated.map((refund) => refund.params.amount)).toEqual([4000, 4000, 4000]);
+      const mine = await service.listForParticulier(PARTICULIER_ID);
+      expect(mine.every((appointment) => appointment.payment?.refundedAmount === 40)).toBe(true);
+    });
+
+    it('expires a request the salon never answered before its time, and refunds it', async () => {
+      const request = await book(PARTICULIER_ID, slot());
+      const heard = jest.fn();
+      events.on('appointment.expired', heard);
+
+      await service.expireUnansweredRequests(new Date(WEDNESDAY_10AM().getTime() + 60_000));
+
+      const [expired] = await service.listForParticulier(PARTICULIER_ID);
+      expect(expired).toMatchObject({ id: request.id, status: 'cancelled', payment: { refundedAmount: 40 } });
+      expect(heard).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: request.id, particulierId: PARTICULIER_ID }));
+    });
+
+    it('lets the coiffeur refund part of an accepted booking by hand, never more than was paid', async () => {
+      const booked = await book(PARTICULIER_ID, slot());
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed');
+
+      await expect(service.refundByCoiffeur(COIFFEUR_ID, booked.id, 15)).resolves.toEqual({ refunded: 15 });
+      await expect(service.refundByCoiffeur(COIFFEUR_ID, booked.id, 30)).rejects.toThrow(BadRequestException);
+      await expect(service.refundByCoiffeur('another-coiffeur', booked.id)).rejects.toThrow(ForbiddenException);
+
+      const [forSalon] = await service.listForCoiffeur(COIFFEUR_ID);
+      expect(forSalon.payment).toMatchObject({ amount: 40, refundedAmount: 15, commissionAmount: 2.5, payoutAmount: 22.5, paidOutAt: null });
+    });
+  });
+
   describe('create', () => {
     it('creates a pending request with a snapshot of the service', async () => {
       const startsAt = WEDNESDAY_10AM();
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: startsAt.toISOString(),
@@ -86,7 +274,7 @@ describe('AppointmentsService', () => {
     });
 
     it("accepts the salon's first slot of the day, read on a Paris clock", async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_9AM().toISOString(),
@@ -196,7 +384,7 @@ describe('AppointmentsService', () => {
 
     it('rejects an overlapping slot already held by a pending or confirmed request', async () => {
       const startsAt = WEDNESDAY_10AM();
-      await service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceId, startsAt: startsAt.toISOString() });
+      await book(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceId, startsAt: startsAt.toISOString() });
 
       const overlapping = new Date(startsAt.getTime() + 30 * 60000); // 30 min into the same 60-min slot
       await expect(
@@ -211,7 +399,7 @@ describe('AppointmentsService', () => {
 
   describe('listForParticulier', () => {
     it('includes the salon name and derives "done" for a past confirmed booking', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -228,12 +416,12 @@ describe('AppointmentsService', () => {
 
   describe('listBusySlots', () => {
     it('exposes pending/confirmed starts with no client identity, excluding refused/cancelled', async () => {
-      const pending = await service.create(PARTICULIER_ID, {
+      const pending = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
       });
-      const refused = await service.create('particulier-2', {
+      const refused = await book('particulier-2', {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: nextWeekday(4, 11).toISOString(),
@@ -248,7 +436,7 @@ describe('AppointmentsService', () => {
 
   describe('reschedule', () => {
     it('moves a pending booking to a new valid slot', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -260,7 +448,7 @@ describe('AppointmentsService', () => {
     });
 
     it("403s someone else's booking", async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -271,7 +459,7 @@ describe('AppointmentsService', () => {
     });
 
     it('rejects rescheduling an already-refused booking', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -296,7 +484,7 @@ describe('AppointmentsService', () => {
     });
 
     it('tells listeners the coiffeur should hear about the move', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -318,7 +506,7 @@ describe('AppointmentsService', () => {
 
     it("doesn't conflict with its own current slot", async () => {
       const startsAt = WEDNESDAY_10AM();
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: startsAt.toISOString(),
@@ -331,7 +519,7 @@ describe('AppointmentsService', () => {
 
   describe('cancel', () => {
     it('lets the particulier cancel their own pending request', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -342,7 +530,7 @@ describe('AppointmentsService', () => {
     });
 
     it('lets the coiffeur cancel a confirmed booking', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -354,7 +542,7 @@ describe('AppointmentsService', () => {
     });
 
     it('403s a bystander', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -363,7 +551,7 @@ describe('AppointmentsService', () => {
     });
 
     it('rejects cancelling an already-cancelled booking', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -384,7 +572,7 @@ describe('AppointmentsService', () => {
     });
 
     it('tells listeners who the particulier is, so a salon cancellation reaches them', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -407,12 +595,12 @@ describe('AppointmentsService', () => {
 
   describe('listForCoiffeur / decide', () => {
     it('resolves the client name and flags their first-ever booking as new', async () => {
-      const first = await service.create(PARTICULIER_ID, {
+      const first = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
       });
-      const second = await service.create(PARTICULIER_ID, {
+      const second = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: nextWeekday(4, 11).toISOString(),
@@ -425,7 +613,7 @@ describe('AppointmentsService', () => {
     });
 
     it('accepts a pending request', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -436,7 +624,7 @@ describe('AppointmentsService', () => {
     });
 
     it("403s a different coiffeur deciding on someone else's request", async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -447,7 +635,7 @@ describe('AppointmentsService', () => {
     });
 
     it('rejects deciding on a request that was already decided', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -468,7 +656,7 @@ describe('AppointmentsService', () => {
     });
 
     it('tells listeners about a refusal, so the particulier can be told', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -501,7 +689,7 @@ describe('AppointmentsService', () => {
     });
 
     it('books them as one block: durations and prices add up, lines kept in the order picked', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [colorId, serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -531,7 +719,7 @@ describe('AppointmentsService', () => {
     });
 
     it('still accepts the single serviceId older app versions send', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceId,
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -559,7 +747,7 @@ describe('AppointmentsService', () => {
       const confirmed = jest.fn();
       events.on('appointment.confirmed', confirmed);
 
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -574,7 +762,7 @@ describe('AppointmentsService', () => {
       const heard = jest.fn();
       events.on('appointment.created', heard);
 
-      await service.create(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+      await book(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
 
       expect(heard).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed' }));
     });
@@ -591,7 +779,7 @@ describe('AppointmentsService', () => {
 
     it("won't let the particulier cancel or move an accepted booking once the cancellation deadline has passed", async () => {
       await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -604,7 +792,7 @@ describe('AppointmentsService', () => {
 
     it('still lets the particulier withdraw a request the salon has not accepted yet', async () => {
       await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -641,7 +829,7 @@ describe('AppointmentsService', () => {
 
     it('keeps the cancellation notice the salon had when the client booked', async () => {
       await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 60 });
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -654,7 +842,7 @@ describe('AppointmentsService', () => {
 
     it('lets the particulier change a booking the salon moved until it starts, until they pick a time themselves', async () => {
       await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -674,7 +862,7 @@ describe('AppointmentsService', () => {
 
     it('never holds the coiffeur to it', async () => {
       await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 20160 });
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -687,7 +875,7 @@ describe('AppointmentsService', () => {
     it('tells the particulier until when an accepted booking can still be changed', async () => {
       await salon.updateProfile(COIFFEUR_ID, { cancellationNoticeMinutes: 1440 });
       const startsAt = WEDNESDAY_10AM();
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: startsAt.toISOString(),
@@ -723,7 +911,7 @@ describe('AppointmentsService', () => {
         services: [{ name: 'Tresses', price: 60, durationMin: 120, specialty: 'tresses' }],
       });
       const [braids] = await salon.listServices('coiffeur-2');
-      await service.create(PARTICULIER_ID, { coiffeurId: 'coiffeur-2', serviceIds: [braids.id], startsAt: WEDNESDAY_10AM().toISOString() });
+      await book(PARTICULIER_ID, { coiffeurId: 'coiffeur-2', serviceIds: [braids.id], startsAt: WEDNESDAY_10AM().toISOString() });
 
       await expect(
         service.create(PARTICULIER_ID, {
@@ -772,7 +960,7 @@ describe('AppointmentsService', () => {
     };
 
     it("lists the day's starts for the picked prestations, taking existing bookings into account", async () => {
-      await service.create('particulier-2', { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+      await book('particulier-2', { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
 
       const day = await service.slots(PARTICULIER_ID, 'particulier', COIFFEUR_ID, {
         date: dateOf(WEDNESDAY_10AM()),
@@ -793,7 +981,7 @@ describe('AppointmentsService', () => {
     });
 
     it("for a move, doesn't block the appointment's own time, and never holds the coiffeur to the booking notice", async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -829,7 +1017,7 @@ describe('AppointmentsService', () => {
 
   describe('coiffeur moves an accepted appointment', () => {
     it('moves it and tells listeners so the particulier hears about it', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -853,7 +1041,7 @@ describe('AppointmentsService', () => {
     });
 
     it('only moves an accepted appointment, not a pending request', async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
@@ -879,13 +1067,13 @@ describe('AppointmentsService', () => {
     });
 
     it("refuses a taken time, and 403s another coiffeur's appointment", async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),
       });
       await service.decide(COIFFEUR_ID, created.id, 'confirmed');
-      await service.create('particulier-2', { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: nextWeekday(4, 15).toISOString() });
+      await book('particulier-2', { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: nextWeekday(4, 15).toISOString() });
 
       await expect(service.move(COIFFEUR_ID, created.id, nextWeekday(4, 15).toISOString())).rejects.toThrow(
         /no longer available/,
@@ -932,7 +1120,7 @@ describe('AppointmentsService', () => {
     });
 
     it("refuses before the appointment has started, and on one that didn't happen", async () => {
-      const created = await service.create(PARTICULIER_ID, {
+      const created = await book(PARTICULIER_ID, {
         coiffeurId: COIFFEUR_ID,
         serviceIds: [serviceId],
         startsAt: WEDNESDAY_10AM().toISOString(),

@@ -1,7 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
+import { EnvironmentVariables } from '../config/env.validation';
 import { SupabaseService } from '../database/supabase.service';
+import { PayoutAccountsService } from '../payments/payout-accounts.service';
+import { StripeService } from '../stripe/stripe.service';
 import { SalonService } from '../salon/salon.service';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { DiscoveryService } from './discovery.service';
@@ -18,7 +22,9 @@ describe('DiscoveryService', () => {
     supabase = new FakeSupabaseService();
     const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, new EventEmitter2());
     salon = new SalonService(supabase as unknown as SupabaseService);
-    discovery = new DiscoveryService(supabase as unknown as SupabaseService, applications, salon);
+    const config = { get: () => '' } as unknown as ConfigService<EnvironmentVariables, true>;
+    const payouts = new PayoutAccountsService(supabase as unknown as SupabaseService, new StripeService(null, config), config);
+    discovery = new DiscoveryService(supabase as unknown as SupabaseService, applications, salon, payouts);
   });
 
   describe('search', () => {
@@ -219,6 +225,14 @@ describe('DiscoveryService', () => {
       supabase.setAccountStatus('p1', 'banned');
 
       await expect(discovery.getById('p1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('says whether the salon takes bookings in the app yet (its Stripe payouts)', async () => {
+      supabase.seedValidatedSalon({ profileId: 'p1', firstName: 'A', lastName: 'B', salonName: 'Ready' });
+      supabase.seedValidatedSalon({ profileId: 'p2', firstName: 'C', lastName: 'D', salonName: 'Not yet', onlineBooking: false });
+
+      await expect(discovery.getById('p1')).resolves.toMatchObject({ onlineBooking: true });
+      await expect(discovery.getById('p2')).resolves.toMatchObject({ onlineBooking: false });
     });
 
     it('404s a salon without a live subscription', async () => {

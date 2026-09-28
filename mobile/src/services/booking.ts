@@ -7,7 +7,8 @@ import { apiClient } from "../lib/apiClient";
  * calls the NestJS server.
  */
 
-export type AppointmentStatus = "pending" | "confirmed" | "refused" | "cancelled" | "done";
+/** "awaiting_payment": the slot is held while the client pays — never listed, the salon doesn't see it yet. */
+export type AppointmentStatus = "awaiting_payment" | "pending" | "confirmed" | "refused" | "cancelled" | "done";
 
 /** Set by the salon once the appointment has started. */
 export type Attendance = "attended" | "no_show";
@@ -41,7 +42,15 @@ export interface Appointment {
   modifiableUntil: string | null;
   /** The salon moved it: it stays changeable until it starts, whatever the salon's deadline. */
   movedBySalon: boolean;
+  /** What was paid in the app, and refunded since; `null` for a booking made before payments. */
+  payment: { amount: number; refundedAmount: number } | null;
   createdAt: string;
+}
+
+/** POST /appointments: the slot held for the client, and what Stripe's payment sheet needs. */
+export interface HeldBooking {
+  appointment: Appointment;
+  payment: { clientSecret: string; amount: number };
 }
 
 export interface UserReview {
@@ -59,6 +68,7 @@ export type BookingErrorCode =
   | "SLOT_TAKEN"
   | "ALREADY_INACTIVE"
   | "TOO_LATE"
+  | "NOT_BOOKABLE"
   | "NOT_FOUND";
 
 export class BookingError extends Error {
@@ -106,6 +116,9 @@ function mapBookingError(err: unknown): never {
       }
       if (message.includes("already taken place")) {
         throw new BookingError("ALREADY_INACTIVE", "Ce rendez-vous est déjà passé.");
+      }
+      if (message.includes("online bookings")) {
+        throw new BookingError("NOT_BOOKABLE", "Ce salon ne prend pas encore de réservation en ligne.");
       }
       if (message.includes("Too late")) {
         throw new BookingError(
@@ -159,10 +172,6 @@ function mapBookingError(err: unknown): never {
   throw new BookingError("NOT_FOUND", "Une erreur est survenue. Réessayez.");
 }
 
-function delay(ms = 500): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 // ─── Appointments ────────────────────────────────────────────────────────────
 
 export async function listAppointments(): Promise<Appointment[]> {
@@ -170,15 +179,19 @@ export async function listAppointments(): Promise<Appointment[]> {
   return data;
 }
 
-/** Books one or several prestations back to back, starting at `startsAt`. */
+/**
+ * Holds the slot for one or several prestations back to back, and gets
+ * what Stripe's payment sheet needs to charge them. The salon only sees
+ * the request once it's paid (`confirmPayment`).
+ */
 export async function bookAppointment(params: {
   salonId: string;
   serviceIds: string[];
   startsAt: Date;
   note?: string;
-}): Promise<Appointment> {
+}): Promise<HeldBooking> {
   try {
-    const { data } = await apiClient.post<Appointment>("/appointments", {
+    const { data } = await apiClient.post<HeldBooking>("/appointments", {
       coiffeurId: params.salonId,
       serviceIds: params.serviceIds,
       startsAt: params.startsAt.toISOString(),
@@ -187,6 +200,21 @@ export async function bookAppointment(params: {
     return data;
   } catch (err) {
     mapBookingError(err);
+  }
+}
+
+/** After Stripe's payment sheet: the server checks with Stripe and sends the request to the salon. */
+export async function confirmPayment(id: string): Promise<Appointment> {
+  const { data } = await apiClient.post<Appointment>(`/appointments/${id}/payment/confirm`);
+  return data;
+}
+
+/** Leaving the payment step: the held slot goes back to everyone (it would expire on its own anyway). */
+export async function releaseHold(id: string): Promise<void> {
+  try {
+    await apiClient.post(`/appointments/${id}/release`);
+  } catch {
+    // Released server-side after 15 minutes regardless.
   }
 }
 
@@ -229,21 +257,17 @@ export function canStillChange(appointment: Appointment, now = new Date()): bool
 
 // ─── Payment ─────────────────────────────────────────────────────────────────
 
-export interface PaymentReceipt {
-  amount: number;
-  /** ISO timestamp. */
-  paidAt: string;
+function euros(amount: number): string {
+  return (Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(".", ",")) + " €";
 }
 
-/**
- * Mocked pre-authorization: the amount is taken before the request even
- * reaches the coiffeur (issue #2 — pay-before-request, not pay-on-accept).
- * Real billing needs a provider decision (Apple/Google IAP vs a card
- * processor — see TODO.md); this only simulates latency and always succeeds.
- */
-export async function payForAppointment(amount: number): Promise<PaymentReceipt> {
-  await delay(900);
-  return { amount, paidAt: new Date().toISOString() };
+/** "Payé 40 €", "Remboursé 40 €", "Remboursé 15,50 € sur 40 €" — `null` when nothing was paid in the app. */
+export function paymentLabel(appointment: Appointment): string | null {
+  const payment = appointment.payment;
+  if (!payment) return null;
+  if (payment.refundedAmount <= 0) return "Payé " + euros(payment.amount);
+  if (payment.refundedAmount >= payment.amount) return "Remboursé " + euros(payment.amount);
+  return "Remboursé " + euros(payment.refundedAmount) + " sur " + euros(payment.amount);
 }
 
 // ─── Reviews ─────────────────────────────────────────────────────────────────

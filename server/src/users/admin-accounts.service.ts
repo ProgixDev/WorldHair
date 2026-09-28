@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SupabaseService } from '../database/supabase.service';
 import { AccountRole, AccountStatus, AdminAccountDto } from './dto/admin-account.dto';
 
@@ -20,7 +21,10 @@ interface ProfileRow {
  */
 @Injectable()
 export class AdminAccountsService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   async list(role?: AccountRole, search?: string): Promise<AdminAccountDto[]> {
     const { data, error } = await this.supabase.client
@@ -90,6 +94,15 @@ export class AdminAccountsService {
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
+
+    // A coiffeur's Stripe subscription follows (SubscriptionsService): cancelled on a ban, paused while suspended.
+    const previous = existing as ProfileRow;
+    this.events.emit('account.status_changed', {
+      profileId: id,
+      role: previous.role,
+      previousStatus: previous.account_status,
+      status,
+    });
 
     const emailById = await this.emailsById([id]);
     return this.toDto(data as ProfileRow, emailById.get(id) ?? '');

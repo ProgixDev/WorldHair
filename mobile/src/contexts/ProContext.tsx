@@ -17,6 +17,7 @@ import type {
   Subscription,
   TimeOff,
   TimeOffConflict,
+  PayoutStatus,
 } from "../features/pro/types";
 import type { Review } from "../features/salons/types";
 import * as pro from "../services/pro";
@@ -56,6 +57,12 @@ interface ProContextValue {
   deleteTimeOff: (id: string) => Promise<void>;
   /** Reads the subscription again — after the coiffeur subscribed or renewed on the website. */
   refreshSubscription: () => Promise<void>;
+  /** Where the salon gets paid (Stripe Connect); `null` while unknown. */
+  payoutStatus: PayoutStatus | null;
+  /** Reads it again — after the coiffeur comes back from Stripe's onboarding. */
+  refreshPayoutStatus: () => Promise<void>;
+  /** Gives the client money back — everything, or `amount` euros — until the salon has been paid. */
+  refundAppointment: (id: string, amount?: number) => Promise<void>;
   saveReply: (reviewId: string, text: string) => Promise<void>;
   deleteReply: (reviewId: string) => Promise<void>;
 }
@@ -75,6 +82,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
+  const [payoutStatus, setPayoutStatus] = useState<PayoutStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -87,6 +95,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       nextSubscription,
       nextReviews,
       nextTimeOff,
+      nextPayoutStatus,
     ] = await Promise.all([
       pro.getProProfile(),
       pro.listProServices(),
@@ -96,6 +105,8 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       pro.getSubscription(),
       pro.listProReviews(),
       pro.listTimeOff(),
+      // Stripe may be unreachable: the rest of the workspace loads anyway.
+      pro.getPayoutStatus().catch(() => null),
     ]);
 
     setProfile(nextProfile);
@@ -106,6 +117,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     setSubscription(nextSubscription);
     setReviews(nextReviews);
     setTimeOff(nextTimeOff);
+    setPayoutStatus(nextPayoutStatus);
     setIsLoading(false);
   }, []);
 
@@ -153,6 +165,9 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       },
       deleteTimeOff: async (id) => setTimeOff(await pro.deleteTimeOff(id)),
       refreshSubscription: async () => setSubscription(await pro.getSubscription()),
+      payoutStatus,
+      refreshPayoutStatus: async () => setPayoutStatus(await pro.getPayoutStatus()),
+      refundAppointment: async (id, amount) => setAppointments(await pro.refundAppointment(id, amount)),
       saveReply: async (reviewId, text) =>
         setReviews(await pro.saveReply(reviewId, text)),
       deleteReply: async (reviewId) =>
@@ -167,6 +182,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       subscription,
       reviews,
       timeOff,
+      payoutStatus,
       isLoading,
       refresh,
     ],

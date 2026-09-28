@@ -33,6 +33,18 @@ describe("proErrorMessage", () => {
     expect(proErrorMessage(serverRefusal("This request has expired"))).toBe(
       "Cette demande a expiré : son horaire est passé.",
     );
+    expect(proErrorMessage(serverRefusal("Already paid out to the salon: only WorldHair can refund now"))).toBe(
+      "Le montant vous a déjà été versé : pour rembourser le client, contactez WorldHair.",
+    );
+    expect(proErrorMessage(serverRefusal("At most 25 € left to refund"))).toBe(
+      "Montant trop élevé : il reste moins que ça à rembourser.",
+    );
+    expect(proErrorMessage(serverRefusal("Nothing was paid in the app for this appointment"))).toBe(
+      "Ce rendez-vous n'a pas été payé dans l'application.",
+    );
+    expect(proErrorMessage(serverRefusal("Finish setting up payouts first"))).toBe(
+      "Terminez d'abord la configuration de vos paiements.",
+    );
     expect(proErrorMessage(serverRefusal("This appointment has already started"))).toBe(
       "Ce rendez-vous a déjà commencé : il ne peut plus être déplacé.",
     );

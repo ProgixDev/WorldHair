@@ -18,6 +18,7 @@ import {
   isUpcoming,
   listAppointments,
   listUserReviews,
+  paymentLabel,
   type Appointment,
 } from "../../services/booking";
 import {
@@ -332,6 +333,22 @@ function TimelineItem({
               " · " +
               formatPrice(appointment.price)}
           </Text>
+
+          {paymentLabel(appointment) ? (
+            <Text
+              style={[
+                typography.caption,
+                {
+                  color:
+                    (appointment.payment?.refundedAmount ?? 0) > 0
+                      ? theme.success
+                      : theme.foreground.gray,
+                },
+              ]}
+            >
+              {paymentLabel(appointment)}
+            </Text>
+          ) : null}
 
           {salon ? (
             <Text

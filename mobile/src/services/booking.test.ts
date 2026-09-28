@@ -1,4 +1,4 @@
-import { canStillChange, type Appointment } from "./booking";
+import { canStillChange, paymentLabel, type Appointment } from "./booking";
 
 jest.mock("../lib/apiClient", () => ({ apiClient: {} }));
 
@@ -17,6 +17,7 @@ function appointment(overrides: Partial<Appointment>): Appointment {
     attendance: null,
     modifiableUntil: null,
     movedBySalon: false,
+    payment: null,
     createdAt: "2026-09-20T08:00:00.000Z",
     ...overrides,
   };
@@ -37,5 +38,17 @@ describe("canStillChange", () => {
   it("is false once the booking is no longer active", () => {
     expect(canStillChange(appointment({ status: "cancelled" }), NOW)).toBe(false);
     expect(canStillChange(appointment({ status: "done" }), NOW)).toBe(false);
+  });
+});
+
+describe("paymentLabel", () => {
+  it("says what was paid in the app, and what came back", () => {
+    expect(paymentLabel(appointment({ payment: { amount: 40, refundedAmount: 0 } }))).toBe("Payé 40 €");
+    expect(paymentLabel(appointment({ payment: { amount: 40, refundedAmount: 40 } }))).toBe("Remboursé 40 €");
+    expect(paymentLabel(appointment({ payment: { amount: 40, refundedAmount: 15.5 } }))).toBe("Remboursé 15,50 € sur 40 €");
+  });
+
+  it("says nothing for a booking paid outside the app", () => {
+    expect(paymentLabel(appointment({ payment: null }))).toBeNull();
   });
 });

@@ -259,6 +259,37 @@ export async function listSubscriptions(): Promise<AdminSubscriptionSummary[]> {
 export interface PlatformSettings {
   /** Free days a coiffeur's first subscription starts with. */
   trialDays: number;
+  /** WorldHair's share of each prestation paid in the app, in percent. */
+  commissionPercent: number;
+}
+
+/** Mirrors server/src/payments/payments.service.ts's AdminPaymentSummary. */
+export interface AdminPayment {
+  id: string;
+  appointmentId: string;
+  createdAt: string;
+  clientName: string;
+  salonName: string;
+  amount: number;
+  refundedAmount: number;
+  commissionAmount: number;
+  transferAmount: number | null;
+  transferredAt: string | null;
+  status: "requires_payment" | "succeeded" | "canceled";
+}
+
+export async function listPayments(): Promise<AdminPayment[]> {
+  const { data } = await apiClient.get<AdminPayment[]>("/admin/payments");
+  return data;
+}
+
+/** Refunds the client — everything left, or `amount` euros — even after the salon was paid (its share is taken back first). */
+export async function refundPayment(appointmentId: string, amount?: number): Promise<number> {
+  const { data } = await apiClient.post<{ refunded: number }>(
+    `/admin/payments/${appointmentId}/refund`,
+    amount === undefined ? {} : { amount },
+  );
+  return data.refunded;
 }
 
 export async function getPlatformSettings(): Promise<PlatformSettings> {

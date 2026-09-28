@@ -811,9 +811,11 @@ export default function SalonDetail() {
             {formatPrice(salon.priceFrom)}
           </Text>
         </View>
+        {/* Booking means paying in the app: only once the salon can be paid (its Stripe payouts). */}
         <Button
-          label="Réserver"
+          label={salon.onlineBooking ? "Réserver" : "Réservation en ligne bientôt disponible"}
           onPress={() => router.push(("/booking/" + salon.id) as never)}
+          disabled={!salon.onlineBooking}
           style={{ flex: 1 }}
         />
       </View>

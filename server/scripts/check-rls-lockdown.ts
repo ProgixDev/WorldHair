@@ -133,6 +133,16 @@ async function main(): Promise<void> {
       run: () => insertIncompleteRow(particulier.client, "appointment_services", { service_name: "check:rls" }),
     },
     {
+      name: "coiffeur marks their own payouts as ready (coiffeur_payout_accounts) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(coiffeur.client, "coiffeur_payout_accounts", { stripe_account_id: "check:rls" }),
+    },
+    {
+      name: "particulier records a payment (payments) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(particulier.client, "payments", { payment_intent_id: "check:rls" }),
+    },
+    {
       // The one row already exists: were the insert let through, its primary key would refuse it anyway.
       name: "coiffeur writes platform_settings (the trial length) directly",
       expect: "blocked",

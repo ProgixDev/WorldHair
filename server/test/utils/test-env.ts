@@ -23,6 +23,7 @@ export function applyTestEnv(overrides: Record<string, string> = {}): void {
     // The webhook secret is real enough — specs sign payloads with it.
     STRIPE_SECRET_KEY: 'sk_test_fake',
     STRIPE_WEBHOOK_SECRET: 'whsec_test_secret',
+    STRIPE_CONNECT_WEBHOOK_SECRET: 'whsec_test_connect_secret',
     WEB_APP_URL: 'https://worldhair.test',
     ...overrides,
   });

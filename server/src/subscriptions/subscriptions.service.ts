@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { OnEvent } from '@nestjs/event-emitter';
 import type Stripe from 'stripe';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { subscriptionPageUrl } from '../common/utils/web-links';
@@ -301,6 +302,33 @@ export class SubscriptionsService {
       }
       default:
         return;
+    }
+  }
+
+  /**
+   * A banned coiffeur stops paying at once; a suspended one pauses (Stripe
+   * voids the invoices meanwhile) and resumes on reactivation. Offered
+   * subscriptions and ended ones have nothing to stop.
+   */
+  @OnEvent('account.status_changed')
+  async onAccountStatusChanged(change: {
+    profileId: string;
+    role: string;
+    previousStatus: string;
+    status: string;
+  }): Promise<void> {
+    if (change.role !== 'coiffeur' || change.status === change.previousStatus) return;
+    const row = await this.findRow(change.profileId);
+    if (!row?.stripe_subscription_id || !isLiveStatus(row.status)) return;
+
+    if (change.status === 'banned') {
+      await this.stripe.client.subscriptions.cancel(row.stripe_subscription_id);
+    } else if (change.status === 'suspended') {
+      await this.stripe.client.subscriptions.update(row.stripe_subscription_id, {
+        pause_collection: { behavior: 'void' },
+      });
+    } else if (change.status === 'active' && change.previousStatus === 'suspended') {
+      await this.stripe.client.subscriptions.update(row.stripe_subscription_id, { pause_collection: '' });
     }
   }
 

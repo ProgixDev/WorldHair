@@ -1,12 +1,18 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
-import { AppointmentsService, CoiffeurAppointment, ParticulierAppointment } from './appointments.service';
+import {
+  AppointmentsService,
+  CoiffeurAppointment,
+  HeldAppointment,
+  ParticulierAppointment,
+} from './appointments.service';
 import { DaySlots } from './booking-rules';
 import { AttendanceDto } from './dto/attendance.dto';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { DecideAppointmentDto } from './dto/decide-appointment.dto';
+import { RefundAppointmentDto } from './dto/refund-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { SlotsQueryDto } from './dto/slots-query.dto';
 
@@ -27,12 +33,27 @@ export class AppointmentsController {
     return this.appointments.listForParticulier(current.id);
   }
 
+  /** Holds the slot and returns what the app's Stripe payment sheet needs; the salon sees nothing until it's paid. */
   @Post()
-  create(
-    @CurrentUser() current: AuthenticatedUser,
-    @Body() dto: CreateAppointmentDto,
-  ): Promise<ParticulierAppointment> {
+  create(@CurrentUser() current: AuthenticatedUser, @Body() dto: CreateAppointmentDto): Promise<HeldAppointment> {
     return this.appointments.create(current.id, dto);
+  }
+
+  /** After the payment sheet: Stripe is asked directly, so the request goes out at once. */
+  @Post(':id/payment/confirm')
+  @HttpCode(200)
+  completePayment(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ParticulierAppointment> {
+    return this.appointments.completePayment(current.id, id);
+  }
+
+  /** The client left the payment step: the held slot goes back to everyone. */
+  @Post(':id/release')
+  @HttpCode(204)
+  releaseHold(@CurrentUser() current: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.appointments.releaseHold(current.id, id);
   }
 
   @Patch(':id/reschedule')
@@ -75,6 +96,18 @@ export class AppointmentsController {
   @Get('salon')
   listForSalon(@CurrentUser() current: AuthenticatedUser): Promise<CoiffeurAppointment[]> {
     return this.appointments.listForCoiffeur(current.id);
+  }
+
+  /** Gives the client money back by hand — everything, or `amount` euros — until the salon has been paid. */
+  @Roles('coiffeur')
+  @Post(':id/refund')
+  @HttpCode(200)
+  refund(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RefundAppointmentDto,
+  ): Promise<{ refunded: number }> {
+    return this.appointments.refundByCoiffeur(current.id, id, dto.amount);
   }
 
   @Roles('coiffeur')

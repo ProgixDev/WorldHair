@@ -3,15 +3,19 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import type Stripe from 'stripe';
 import { CoiffeurApplicationsService } from '../coiffeur/coiffeur-applications.service';
 import { Role } from '../common/types/role';
 import { isAccountActive } from '../common/utils/account-status';
 import { findSalonSubscription, isSalonListed } from '../common/utils/subscription-status';
 import { subscriptionEndsAt } from '../subscriptions/subscription-state';
 import { SupabaseService } from '../database/supabase.service';
+import { PaymentRow, PaymentsService } from '../payments/payments.service';
+import { PayoutAccountsService } from '../payments/payout-accounts.service';
 import { SalonProfile, SalonService, SalonServiceItem } from '../salon/salon.service';
 import { BookingRules, BusyBooking, DaySlots, refusalFor, SlotRefusal, slotsForDay } from './booking-rules';
 
@@ -21,7 +25,7 @@ import { BookingRules, BusyBooking, DaySlots, refusalFor, SlotRefusal, slotsForD
  * background job transitions it; nothing in the product ever needs to act on
  * the transition itself, only ever read the resulting label.
  */
-export type AppointmentStatus = 'pending' | 'confirmed' | 'refused' | 'cancelled' | 'done';
+export type AppointmentStatus = 'awaiting_payment' | 'pending' | 'confirmed' | 'refused' | 'cancelled' | 'done';
 
 /** Set by the coiffeur once an accepted appointment has started; `null` until then. */
 export type Attendance = 'attended' | 'no_show';
@@ -54,7 +58,27 @@ export interface ParticulierAppointment {
   modifiableUntil: string | null;
   /** The salon moved it: the particulier can change it until it starts, whatever the salon's notice. */
   movedBySalon: boolean;
+  /** What the client paid in the app, and got back; `null` for a booking made before payments. */
+  payment: { amount: number; refundedAmount: number } | null;
   createdAt: string;
+}
+
+/** The salon's side of a payment: its share, and when it was sent. */
+export interface CoiffeurPayment {
+  amount: number;
+  refundedAmount: number;
+  /** WorldHair's commission on what the client kept. */
+  commissionAmount: number;
+  /** What the salon receives (or received). */
+  payoutAmount: number;
+  /** When it was transferred; `null` until a day after the appointment. */
+  paidOutAt: string | null;
+}
+
+/** POST /appointments: the held booking, and what the app's Stripe payment sheet needs to charge it. */
+export interface HeldAppointment {
+  appointment: ParticulierAppointment;
+  payment: { clientSecret: string; amount: number };
 }
 
 export interface CoiffeurAppointment {
@@ -71,6 +95,7 @@ export interface CoiffeurAppointment {
   note?: string;
   /** First-ever booking from this client at this salon. */
   isNewClient: boolean;
+  payment: CoiffeurPayment | null;
 }
 
 export interface CreateAppointmentInput {
@@ -118,10 +143,15 @@ export interface AppointmentRow {
   created_at: string;
   /** Embedded by `select(WITH_LINES)`. */
   appointment_services?: AppointmentServiceRow[];
+  /** Embedded by `select(WITH_LINES)` — one-to-one, so an object (a list from older PostgREST). */
+  payments?: PaymentRow | PaymentRow[] | null;
 }
 
-/** An appointment row with its prestations embedded — one round-trip, whatever the number of bookings. */
-const WITH_LINES = '*, appointment_services(*)';
+/** An appointment row with its prestations and its payment embedded — one round-trip, whatever the number of bookings. */
+const WITH_LINES = '*, appointment_services(*), payments(*)';
+
+/** How long a slot stays held for a client paying (TODO.md Phase 5). */
+export const PAYMENT_HOLD_MS = 15 * 60_000;
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -150,6 +180,39 @@ export function derivedStatus(row: AppointmentRow, now: Date = new Date()): Appo
 
 function isActive(row: AppointmentRow): boolean {
   return row.status === 'pending' || row.status === 'confirmed';
+}
+
+/** A booking, or a slot held while its client pays: either keeps the time from anyone else. */
+function holdsSlot(row: AppointmentRow): boolean {
+  return isActive(row) || row.status === 'awaiting_payment';
+}
+
+const round2 = (euros: number) => Math.round(euros * 100) / 100;
+
+function paymentOf(row: AppointmentRow): PaymentRow | null {
+  const embedded = row.payments;
+  return Array.isArray(embedded) ? (embedded[0] ?? null) : (embedded ?? null);
+}
+
+function clientPayment(row: AppointmentRow): ParticulierAppointment['payment'] {
+  const payment = paymentOf(row);
+  if (!payment || payment.status !== 'succeeded') return null;
+  return { amount: Number(payment.amount), refundedAmount: Number(payment.refunded_amount) };
+}
+
+function salonPayment(row: AppointmentRow): CoiffeurPayment | null {
+  const payment = paymentOf(row);
+  if (!payment || payment.status !== 'succeeded') return null;
+  const kept = round2(Number(payment.amount) - Number(payment.refunded_amount));
+  const paidOut = payment.transfer_amount !== null;
+  const commission = paidOut ? Number(payment.commission_amount) : round2((kept * Number(payment.commission_rate)) / 100);
+  return {
+    amount: Number(payment.amount),
+    refundedAmount: Number(payment.refunded_amount),
+    commissionAmount: commission,
+    payoutAmount: paidOut ? Number(payment.transfer_amount) : round2(kept - commission),
+    paidOutAt: payment.transferred_at,
+  };
 }
 
 function toBusy(row: AppointmentRow): BusyBooking {
@@ -201,22 +264,35 @@ function modifiableUntil(row: AppointmentRow, salonNoticeMinutes: number): strin
  */
 @Injectable()
 export class AppointmentsService {
+  private readonly logger = new Logger(AppointmentsService.name);
+
   constructor(
     private readonly supabase: SupabaseService,
     private readonly applications: CoiffeurApplicationsService,
     private readonly salon: SalonService,
     private readonly events: EventEmitter2,
+    private readonly payments: PaymentsService,
+    private readonly payouts: PayoutAccountsService,
   ) {}
 
   // ─── Create (particulier) ────────────────────────────────────────────────
 
-  async create(particulierId: string, input: CreateAppointmentInput): Promise<ParticulierAppointment> {
+  /**
+   * Holds the slot and asks Stripe to charge the total (TODO.md Phase 5): the
+   * app's payment sheet pays it, and only then does the salon get the
+   * request (`completePayment`, or Stripe's webhook). An unpaid hold is
+   * released after PAYMENT_HOLD_MS.
+   */
+  async create(particulierId: string, input: CreateAppointmentInput): Promise<HeldAppointment> {
     const serviceIds = [...new Set(input.serviceIds ?? (input.serviceId ? [input.serviceId] : []))];
     if (serviceIds.length === 0) {
       throw new BadRequestException('Pick at least one service');
     }
 
     const profile = await this.bookableSalon(input.coiffeurId);
+    if (!(await this.payouts.isBookable(input.coiffeurId))) {
+      throw new BadRequestException('This salon does not take online bookings yet');
+    }
     const services = await this.salon.listServices(input.coiffeurId);
     const lines = serviceIds.map((id) => {
       const service = services.find((item) => item.id === id);
@@ -236,7 +312,6 @@ export class AppointmentsService {
     });
     this.assertSlot(rules, startsAt, durationMin, 'client');
 
-    const status = profile.confirmationMode === 'instant' ? 'confirmed' : 'pending';
     const { data, error } = await this.supabase.client
       .from('appointments')
       .insert({
@@ -247,7 +322,7 @@ export class AppointmentsService {
         price,
         duration_min: durationMin,
         starts_at: startsAt.toISOString(),
-        status,
+        status: 'awaiting_payment',
         client_note: input.note?.trim() || null,
         cancellation_notice_minutes: profile.cancellationNoticeMinutes,
       })
@@ -279,28 +354,204 @@ export class AppointmentsService {
       throw new InternalServerErrorException(linesError.message);
     }
 
+    let clientSecret: string;
+    try {
+      ({ clientSecret } = await this.payments.startPayment({
+        appointmentId: created.id,
+        particulierId,
+        coiffeurId: input.coiffeurId,
+        amount: price,
+        description: `WorldHair — ${profile.salonName} — ${serviceName}`,
+        email: await this.emailOf(particulierId),
+      }));
+    } catch (err) {
+      await this.supabase.client.from('appointments').delete().eq('id', created.id);
+      throw err;
+    }
+
+    return {
+      appointment: this.mapParticulier(created, profile.salonName, profile.cancellationNoticeMinutes, new Date(), lines),
+      payment: { clientSecret, amount: price },
+    };
+  }
+
+  // ─── Payment (particulier, Stripe) ───────────────────────────────────────
+
+  /** "I've paid": Stripe is asked directly, so the request goes out without waiting for its webhook. */
+  async completePayment(particulierId: string, id: string): Promise<ParticulierAppointment> {
+    let row = await this.rowOrThrow(id);
+    if (row.particulier_id !== particulierId) {
+      throw new ForbiddenException();
+    }
+    if (row.status === 'awaiting_payment') {
+      const payment = await this.payments.findByAppointment(id);
+      if (payment) {
+        const intent = await this.payments.retrieveIntent(payment);
+        if (intent.status === 'succeeded') row = await this.finalizePayment(row, payment, intent);
+      }
+    }
+    const profile = await this.salon.getProfile(row.coiffeur_id);
+    return this.mapParticulier(row, profile.salonName, profile.cancellationNoticeMinutes);
+  }
+
+  /** The client left the payment step: the slot goes back to everyone — unless they paid after all. */
+  async releaseHold(particulierId: string, id: string): Promise<void> {
+    const row = await this.rowOrThrow(id);
+    if (row.particulier_id !== particulierId) {
+      throw new ForbiddenException();
+    }
+    await this.releaseRow(row);
+  }
+
+  /** Every minute: holds nobody paid within PAYMENT_HOLD_MS. */
+  async releaseStaleHolds(now = new Date()): Promise<void> {
+    const { data, error } = await this.supabase.client
+      .from('appointments')
+      .select()
+      .eq('status', 'awaiting_payment')
+      .lte('created_at', new Date(now.getTime() - PAYMENT_HOLD_MS).toISOString());
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    for (const row of data as AppointmentRow[]) {
+      try {
+        await this.releaseRow(row);
+      } catch (err) {
+        this.logger.warn(`Couldn't release hold ${row.id}`, err as Error);
+      }
+    }
+  }
+
+  /**
+   * A request the salon never answered before its time can't be accepted
+   * any more (see `decide`): it's cancelled, the client refunded and told.
+   */
+  async expireUnansweredRequests(now = new Date()): Promise<void> {
+    const { data, error } = await this.supabase.client
+      .from('appointments')
+      .select()
+      .eq('status', 'pending')
+      .lte('starts_at', now.toISOString());
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    for (const row of data as AppointmentRow[]) {
+      const { data: expired, error: updateError } = await this.supabase.client
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', row.id)
+        .eq('status', 'pending')
+        .select()
+        .maybeSingle();
+      if (updateError || !expired) continue;
+      await this.payments.refund(row.id, { reason: 'request_expired' });
+      this.events.emit('appointment.expired', {
+        appointmentId: row.id,
+        particulierId: row.particulier_id,
+        coiffeurId: row.coiffeur_id,
+        serviceName: row.service_name,
+        startsAt: row.starts_at,
+      });
+    }
+  }
+
+  /** Stripe's payment events (webhook). */
+  async handlePaymentEvent(event: Stripe.Event): Promise<void> {
+    if (event.type === 'payment_intent.succeeded') {
+      const intent = event.data.object;
+      const payment = await this.payments.findByIntent(intent.id);
+      if (!payment) {
+        // One of ours (it names an appointment) whose hold is already gone: nothing was booked.
+        if (intent.metadata?.appointment_id) await this.payments.refundOrphan(intent);
+        return;
+      }
+      const row = await this.findRow(payment.appointment_id);
+      if (row) await this.finalizePayment(row, payment, intent);
+    } else if (event.type === 'charge.refunded') {
+      await this.payments.syncRefund(event.data.object);
+    }
+  }
+
+  /** The coiffeur gives money back by hand — all or part — until the salon has been paid. */
+  async refundByCoiffeur(coiffeurId: string, id: string, amount?: number): Promise<{ refunded: number }> {
+    const row = await this.rowOrThrow(id);
+    if (row.coiffeur_id !== coiffeurId) {
+      throw new ForbiddenException();
+    }
+    if (row.status !== 'confirmed') {
+      throw new BadRequestException('Only an accepted appointment can be refunded by hand');
+    }
+    const refunded = await this.payments.refund(id, { amount, reason: 'coiffeur_manual' });
+    if (refunded === 0) {
+      throw new BadRequestException('Nothing was paid in the app for this appointment');
+    }
+    return { refunded };
+  }
+
+  /** Paid: the hold becomes the request (or, for an instant salon, the booking). Only the first call acts. */
+  private async finalizePayment(
+    row: AppointmentRow,
+    payment: PaymentRow,
+    intent: Stripe.PaymentIntent,
+  ): Promise<AppointmentRow> {
+    if (payment.status !== 'succeeded') await this.payments.markSucceeded(payment, intent);
+    if (row.status !== 'awaiting_payment') return row;
+
+    const profile = await this.salon.getProfile(row.coiffeur_id);
+    const status = profile.confirmationMode === 'instant' ? 'confirmed' : 'pending';
+    const { data, error } = await this.supabase.client
+      .from('appointments')
+      .update({ status })
+      .eq('id', row.id)
+      .eq('status', 'awaiting_payment')
+      .select(WITH_LINES)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) return (await this.findRow(row.id)) ?? row;
+
+    const updated = data as unknown as AppointmentRow;
     this.events.emit('appointment.created', {
-      appointmentId: created.id,
-      coiffeurId: input.coiffeurId,
-      serviceName,
-      startsAt: created.starts_at,
+      appointmentId: row.id,
+      coiffeurId: row.coiffeur_id,
+      serviceName: row.service_name,
+      startsAt: row.starts_at,
       status,
     });
     if (status === 'confirmed') {
       this.events.emit('appointment.confirmed', {
-        appointmentId: created.id,
-        particulierId,
-        serviceName,
-        startsAt: created.starts_at,
+        appointmentId: row.id,
+        particulierId: row.particulier_id,
+        serviceName: row.service_name,
+        startsAt: row.starts_at,
       });
     }
-    return this.mapParticulier(created, profile.salonName, profile.cancellationNoticeMinutes, new Date(), lines);
+    return updated;
+  }
+
+  private async releaseRow(row: AppointmentRow): Promise<void> {
+    if (row.status !== 'awaiting_payment') return;
+    const payment = await this.payments.findByAppointment(row.id);
+    if (payment) {
+      const outcome = await this.payments.cancelIntent(payment);
+      if (outcome === 'succeeded') {
+        await this.finalizePayment(row, payment, await this.payments.retrieveIntent(payment));
+        return;
+      }
+      // Still going through the bank: the hold stays until Stripe says.
+      if (outcome === 'processing') return;
+    }
+    await this.supabase.client.from('appointments').delete().eq('id', row.id).eq('status', 'awaiting_payment');
   }
 
   // ─── Particulier: list / reschedule / cancel ────────────────────────────
 
   async listForParticulier(particulierId: string): Promise<ParticulierAppointment[]> {
-    const rows = await this.rowsWhere('particulier_id', particulierId, WITH_LINES);
+    // A slot held for an unfinished payment isn't a booking yet.
+    const rows = (await this.rowsWhere('particulier_id', particulierId, WITH_LINES)).filter(
+      (row) => row.status !== 'awaiting_payment',
+    );
     const salons = await this.salonsFor([...new Set(rows.map((row) => row.coiffeur_id))]);
     const now = new Date();
     return rows
@@ -354,6 +605,10 @@ export class AppointmentsService {
       this.assertBeforeDeadline(row, profile.cancellationNoticeMinutes);
     }
     await this.updateRow(id, { status: 'cancelled' });
+    // In time (the client) or not their fault (the salon): the client gets everything back.
+    await this.payments.refund(id, {
+      reason: currentUserId === row.particulier_id ? 'client_cancelled' : 'salon_cancelled',
+    });
     this.events.emit('appointment.cancelled', {
       appointmentId: id,
       coiffeurId: row.coiffeur_id,
@@ -421,9 +676,10 @@ export class AppointmentsService {
   // ─── Coiffeur: list / decide / move / attendance ─────────────────────────
 
   async listForCoiffeur(coiffeurId: string): Promise<CoiffeurAppointment[]> {
-    const rows = (await this.rowsWhere('coiffeur_id', coiffeurId, WITH_LINES)).sort((a, b) =>
-      a.created_at.localeCompare(b.created_at),
-    );
+    // A slot held while its client pays reaches the salon only once paid.
+    const rows = (await this.rowsWhere('coiffeur_id', coiffeurId, WITH_LINES))
+      .filter((row) => row.status !== 'awaiting_payment')
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
     const names = await this.particulierNamesFor([...new Set(rows.map((row) => row.particulier_id))]);
 
     const seen = new Set<string>();
@@ -448,6 +704,9 @@ export class AppointmentsService {
       throw new BadRequestException('This request has expired');
     }
     await this.updateRow(id, { status: decision });
+    if (decision === 'refused') {
+      await this.payments.refund(id, { reason: 'salon_refused' });
+    }
     this.events.emit(decision === 'confirmed' ? 'appointment.confirmed' : 'appointment.refused', {
       appointmentId: id,
       particulierId: row.particulier_id,
@@ -572,7 +831,7 @@ export class AppointmentsService {
       options.particulierId ? this.activeRowsWhere('particulier_id', options.particulierId) : Promise.resolve([]),
       findSalonSubscription(this.supabase, coiffeurId),
     ]);
-    const counts = (row: AppointmentRow) => isActive(row) && row.id !== options.excludeAppointmentId;
+    const counts = (row: AppointmentRow) => holdsSlot(row) && row.id !== options.excludeAppointmentId;
     // Past the end of a subscription on its way out (cancelled, or an offered one), the
     // salon leaves WorldHair: no time after it can be booked or moved to.
     const subscriptionEnd = subscriptionEndsAt(subscription);
@@ -620,7 +879,7 @@ export class AppointmentsService {
       .from('appointments')
       .select()
       .eq(column, value)
-      .in('status', ['pending', 'confirmed'])
+      .in('status', ['awaiting_payment', 'pending', 'confirmed'])
       .gte('starts_at', new Date(Date.now() - DAY_MS).toISOString());
     if (error) {
       throw new InternalServerErrorException(error.message);
@@ -638,6 +897,27 @@ export class AppointmentsService {
       throw new InternalServerErrorException(error.message);
     }
     return data !== null;
+  }
+
+  private async findRow(id: string): Promise<AppointmentRow | null> {
+    const { data, error } = await this.supabase.client
+      .from('appointments')
+      .select(WITH_LINES)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return data as unknown as AppointmentRow | null;
+  }
+
+  /** Where Stripe emails the payment receipt. */
+  private async emailOf(profileId: string): Promise<string | null> {
+    const {
+      data: { user },
+      error,
+    } = await this.supabase.client.auth.admin.getUserById(profileId);
+    return error ? null : (user?.email ?? null);
   }
 
   private async rowOrThrow(id: string): Promise<AppointmentRow> {
@@ -725,6 +1005,7 @@ export class AppointmentsService {
       attendance: (row.attendance as Attendance | null | undefined) ?? null,
       modifiableUntil: modifiableUntil(row, cancellationNoticeMinutes),
       movedBySalon: row.moved_by_salon ?? false,
+      payment: clientPayment(row),
       createdAt: row.created_at,
     };
   }
@@ -748,6 +1029,7 @@ export class AppointmentsService {
       attendance: (row.attendance as Attendance | null | undefined) ?? null,
       note: row.client_note ?? undefined,
       isNewClient,
+      payment: salonPayment(row),
     };
   }
 }

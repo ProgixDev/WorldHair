@@ -14,10 +14,13 @@ import { PLAN_LOOKUP_KEYS, PORTAL_CONFIGURATION_APP } from "../src/subscriptions
  * by the server through their lookup keys — a price change makes a new
  * price and moves the key to it, existing subscribers keep theirs until they
  * change plan); the Customer Portal settings (plan switch, card, invoices,
- * cancellation at period end); with --webhook-url, the webhook endpoint,
- * whose signing secret it prints once for STRIPE_WEBHOOK_SECRET.
+ * cancellation at period end); with --webhook-url, the two webhook
+ * endpoints — WorldHair's own account, and the salons' connected accounts
+ * at <url>/connect — whose signing secrets it prints once, for
+ * STRIPE_WEBHOOK_SECRET and STRIPE_CONNECT_WEBHOOK_SECRET.
  */
 
+/** WorldHair's own account: coiffeur subscriptions (Phase 4), client payments and refunds (Phase 5). */
 const WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
   "checkout.session.completed",
   "customer.subscription.created",
@@ -28,7 +31,12 @@ const WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
   "customer.subscription.trial_will_end",
   "invoice.paid",
   "invoice.payment_failed",
+  "payment_intent.succeeded",
+  "charge.refunded",
 ];
+
+/** The salons' connected accounts (Phase 5): whether their payouts are set up. */
+const CONNECT_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = ["account.updated"];
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -124,11 +132,17 @@ async function ensurePortal(stripe: Stripe, product: Stripe.Product, prices: Str
   console.log(`Portal       ${configuration.id} (created)`);
 }
 
-async function ensureWebhook(stripe: Stripe, url: string): Promise<void> {
+async function ensureWebhook(
+  stripe: Stripe,
+  url: string,
+  events: Stripe.WebhookEndpointCreateParams.EnabledEvent[],
+  connect: boolean,
+): Promise<void> {
+  const variable = connect ? "STRIPE_CONNECT_WEBHOOK_SECRET" : "STRIPE_WEBHOOK_SECRET";
   const { data } = await stripe.webhookEndpoints.list({ limit: 100 });
   const existing = data.find((endpoint) => endpoint.url === url);
   if (existing) {
-    await stripe.webhookEndpoints.update(existing.id, { enabled_events: WEBHOOK_EVENTS, disabled: false });
+    await stripe.webhookEndpoints.update(existing.id, { enabled_events: events, disabled: false });
     console.log(`Webhook      ${existing.id} (already there, events updated)`);
     console.log("             Its signing secret is on that endpoint's page in Stripe's dashboard.");
     if (existing.api_version !== Stripe.API_VERSION) {
@@ -140,14 +154,15 @@ async function ensureWebhook(stripe: Stripe, url: string): Promise<void> {
   }
   const endpoint = await stripe.webhookEndpoints.create({
     url,
-    enabled_events: WEBHOOK_EVENTS,
-    description: "WorldHair server — coiffeur subscriptions",
+    enabled_events: events,
+    connect,
+    description: connect ? "WorldHair server — salons' payouts" : "WorldHair server — subscriptions and payments",
     // Events shaped like the SDK the server reads them with, whatever the account's default.
     api_version: Stripe.API_VERSION,
   });
-  console.log(`Webhook      ${endpoint.id} (created)`);
-  console.log(`\nSTRIPE_WEBHOOK_SECRET=${endpoint.secret}`);
-  console.log("Put it in the server's .env (and on Render). Stripe shows it only once here.");
+  console.log(`Webhook      ${endpoint.id} (created${connect ? ", Connect" : ""})`);
+  console.log(`\n${variable}=${endpoint.secret}`);
+  console.log("Put it in the server's .env (and on Render). Stripe shows it only once here.\n");
 }
 
 async function main(): Promise<void> {
@@ -165,9 +180,11 @@ async function main(): Promise<void> {
 
   const webhookUrl = argument("webhook-url");
   if (webhookUrl) {
-    await ensureWebhook(stripe, webhookUrl);
+    await ensureWebhook(stripe, webhookUrl, WEBHOOK_EVENTS, false);
+    // Connect must be switched on in the dashboard first (Connect → Get started).
+    await ensureWebhook(stripe, `${webhookUrl.replace(/\/+$/, "")}/connect`, CONNECT_EVENTS, true);
   } else {
-    console.log("\nNo --webhook-url: add the endpoint yourself, or run again with it.");
+    console.log("\nNo --webhook-url: add the endpoints yourself, or run again with it.");
   }
 }
 

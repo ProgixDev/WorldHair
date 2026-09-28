@@ -44,6 +44,8 @@ export class FakeStripe {
   portalConfigurations: { id: string; metadata: Record<string, string> }[] = [];
   /** Milliseconds each coming `subscriptions.retrieve` waits before answering, in call order. */
   retrieveDelays: number[] = [];
+  /** What was asked of `subscriptions.cancel` / `subscriptions.update`, in order. */
+  readonly subscriptionCalls: { id: string; call: 'cancel' | 'update'; params?: unknown }[] = [];
   private readonly subscriptionsById = new Map<string, Record<string, unknown>>();
   private readonly customerIdByKey = new Map<string, string>();
   private readonly sessions: FakeSession[] = [];
@@ -121,6 +123,129 @@ export class FakeStripe {
     list: async (params: Stripe.SubscriptionListParams) => ({
       data: [...this.subscriptionsById.values()].filter((subscription) => subscription.customer === params.customer),
     }),
+    cancel: async (id: string) => {
+      this.subscriptionCalls.push({ id, call: 'cancel' });
+      const subscription = this.subscriptionsById.get(id);
+      if (subscription) subscription.status = 'canceled';
+      return subscription;
+    },
+    update: async (id: string, params: Stripe.SubscriptionUpdateParams) => {
+      this.subscriptionCalls.push({ id, call: 'update', params });
+      return this.subscriptionsById.get(id);
+    },
+  };
+
+  // ─── Payments (TODO.md Phase 5) ─────────────────────────────────────────
+
+  readonly paymentIntentsCreated: { params: Stripe.PaymentIntentCreateParams; idempotencyKey?: string }[] = [];
+  readonly refundsCreated: { params: Stripe.RefundCreateParams; idempotencyKey?: string }[] = [];
+  readonly transfersCreated: { params: Stripe.TransferCreateParams; idempotencyKey?: string }[] = [];
+  readonly reversalsCreated: { transferId: string; params?: Stripe.TransferCreateReversalParams }[] = [];
+  readonly accountsCreated: { params: Stripe.AccountCreateParams; idempotencyKey?: string }[] = [];
+  readonly accountLinksCreated: Stripe.AccountLinkCreateParams[] = [];
+  private readonly intents = new Map<string, Record<string, unknown>>();
+  private readonly intentIdByKey = new Map<string, string>();
+  private readonly accountsById = new Map<string, Record<string, unknown>>();
+  private readonly accountIdByKey = new Map<string, string>();
+
+  readonly paymentIntents = {
+    create: async (params: Stripe.PaymentIntentCreateParams, options?: Stripe.RequestOptions) => {
+      const key = options?.idempotencyKey;
+      const known = key ? this.intentIdByKey.get(key) : undefined;
+      if (known) return structuredClone(this.intents.get(known));
+      this.paymentIntentsCreated.push({ params, idempotencyKey: key });
+      const id = `pi_test_${this.paymentIntentsCreated.length}`;
+      const intent = {
+        id,
+        object: 'payment_intent',
+        amount: params.amount,
+        currency: params.currency,
+        status: 'requires_payment_method',
+        client_secret: `${id}_secret_test`,
+        latest_charge: null,
+        metadata: params.metadata ?? {},
+      };
+      this.intents.set(id, intent);
+      if (key) this.intentIdByKey.set(key, id);
+      return structuredClone(intent);
+    },
+    retrieve: async (id: string) => {
+      const intent = this.intents.get(id);
+      if (!intent) throw new Error(`No such payment_intent: '${id}'`);
+      return structuredClone(intent);
+    },
+    cancel: async (id: string) => {
+      const intent = this.intents.get(id);
+      if (!intent) throw new Error(`No such payment_intent: '${id}'`);
+      if (intent.status === 'succeeded') {
+        throw new Error('You cannot cancel this PaymentIntent because it has a status of succeeded.');
+      }
+      intent.status = 'canceled';
+      return structuredClone(intent);
+    },
+  };
+
+  /** Test convenience: the client's card went through. */
+  succeedIntent(id: string): Record<string, unknown> {
+    const intent = this.intents.get(id);
+    if (!intent) throw new Error(`No such payment_intent: '${id}'`);
+    intent.status = 'succeeded';
+    intent.latest_charge = `ch_${id}`;
+    return structuredClone(intent);
+  }
+
+  intentStatus(id: string): unknown {
+    return this.intents.get(id)?.status;
+  }
+
+  readonly refunds = {
+    create: async (params: Stripe.RefundCreateParams, options?: Stripe.RequestOptions) => {
+      this.refundsCreated.push({ params, idempotencyKey: options?.idempotencyKey });
+      return { id: `re_test_${this.refundsCreated.length}`, amount: params.amount, status: 'succeeded' };
+    },
+  };
+
+  readonly transfers = {
+    create: async (params: Stripe.TransferCreateParams, options?: Stripe.RequestOptions) => {
+      this.transfersCreated.push({ params, idempotencyKey: options?.idempotencyKey });
+      return { id: `tr_test_${this.transfersCreated.length}`, amount: params.amount };
+    },
+    createReversal: async (transferId: string, params?: Stripe.TransferCreateReversalParams) => {
+      this.reversalsCreated.push({ transferId, params });
+      return { id: `trr_test_${this.reversalsCreated.length}` };
+    },
+  };
+
+  readonly accounts = {
+    create: async (params: Stripe.AccountCreateParams, options?: Stripe.RequestOptions) => {
+      const key = options?.idempotencyKey;
+      const known = key ? this.accountIdByKey.get(key) : undefined;
+      if (known) return structuredClone(this.accountsById.get(known));
+      this.accountsCreated.push({ params, idempotencyKey: key });
+      const id = `acct_test_${this.accountsCreated.length}`;
+      const account = { id, details_submitted: false, charges_enabled: false, payouts_enabled: false };
+      this.accountsById.set(id, account);
+      if (key) this.accountIdByKey.set(key, id);
+      return structuredClone(account);
+    },
+    retrieve: async (id: string) => {
+      const account = this.accountsById.get(id);
+      if (!account) throw new Error(`No such account: '${id}'`);
+      return structuredClone(account);
+    },
+    createLoginLink: async (id: string) => ({ url: `https://connect.stripe.test/express/${id}` }),
+  };
+
+  /** Test convenience: the salon finished (or not) Stripe's onboarding. */
+  putAccount(account: { id: string; details_submitted: boolean; charges_enabled: boolean; payouts_enabled: boolean }): void {
+    this.accountsById.set(account.id, { ...account });
+  }
+
+  readonly accountLinks = {
+    create: async (params: Stripe.AccountLinkCreateParams) => {
+      this.accountLinksCreated.push(params);
+      return { url: `https://connect.stripe.test/setup/${params.account}` };
+    },
   };
 
   /** Test convenience: the subscription as `subscriptions.retrieve` returns it from now on. */

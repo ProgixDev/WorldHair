@@ -1,4 +1,5 @@
 import {
+  Banknote,
   CreditCard,
   FileCheck2,
   Flag,
@@ -67,6 +68,12 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     label: "Abonnements",
     icon: CreditCard,
     keywords: ["coiffeur pro", "facturation", "plan", "essai"],
+  },
+  {
+    href: "/admin/paiements",
+    label: "Paiements",
+    icon: Banknote,
+    keywords: ["remboursement", "commission", "versements", "stripe", "litiges", "prestations"],
   },
   {
     href: "/admin/parametres",

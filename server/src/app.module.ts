@@ -25,6 +25,8 @@ import { SalonModule } from './salon/salon.module';
 import { SettingsModule } from './settings/settings.module';
 import { StripeModule } from './stripe/stripe.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { PaymentsModule } from './payments/payments.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -59,6 +61,8 @@ import { UsersModule } from './users/users.module';
     StripeModule,
     SettingsModule,
     SubscriptionsModule,
+    PaymentsModule,
+    WebhooksModule,
     AdminMediaModule,
     AdminUsersModule,
   ],

@@ -2,12 +2,16 @@ import { INestApplication, ModuleMetadata } from '@nestjs/common';
 import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { configureApp } from '../../src/bootstrap';
 import { SupabaseService } from '../../src/database/supabase.service';
+import { STRIPE_CLIENT } from '../../src/stripe/stripe.service';
+import { FakeStripe } from './fakes/fake-stripe';
 import { FakeSupabaseService } from './fakes/fake-supabase.service';
 import { applyTestEnv } from './test-env';
 
 export interface TestApp {
   app: INestApplication;
   supabase: FakeSupabaseService;
+  /** Stands in for Stripe: no network; webhook signatures stay real. */
+  stripe: FakeStripe;
   resetDb: () => Promise<void>;
   close: () => Promise<void>;
 }
@@ -39,10 +43,15 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
   const { AppModule } = await import('../../src/app.module');
 
   const supabase = new FakeSupabaseService();
+  const stripe = new FakeStripe();
 
   const builder = Test.createTestingModule({
     imports: [AppModule, ...(options.extraImports ?? [])],
-  }).overrideProvider(SupabaseService).useValue(supabase);
+  })
+    .overrideProvider(SupabaseService)
+    .useValue(supabase)
+    .overrideProvider(STRIPE_CLIENT)
+    .useValue(stripe);
 
   const moduleRef = await (options.customize?.(builder) ?? builder).compile();
 
@@ -55,6 +64,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
   return {
     app,
     supabase,
+    stripe,
     resetDb: async () => {
       supabase.reset();
     },

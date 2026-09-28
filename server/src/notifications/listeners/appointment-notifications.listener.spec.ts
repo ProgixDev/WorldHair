@@ -123,6 +123,29 @@ describe('AppointmentNotificationsListener', () => {
     expect(supabase.notifyLogFor('coiffeur-1')).toEqual([]);
   });
 
+  it("tells the particulier their request expired unanswered, and that they're refunded", async () => {
+    await listener.onExpired({
+      appointmentId: 'apt-1',
+      particulierId: 'particulier-1',
+      coiffeurId: 'coiffeur-1',
+      serviceName: 'Coupe & brushing',
+      startsAt: '2026-09-30T08:00:00Z',
+    });
+
+    const [log] = supabase.notifyLogFor('particulier-1');
+    expect(log).toMatchObject({ type: 'appointment_expired', dedupe_key: 'apt-1', title: 'Demande sans réponse' });
+    expect(log.body).toContain('mer. 30 sept. à 10:00');
+    expect(log.body).toMatch(/remboursé/);
+  });
+
+  it('tells the particulier each time money is refunded to them', async () => {
+    await listener.onRefunded({ appointmentId: 'apt-1', particulierId: 'particulier-1', amount: 15, refundedTotal: 15 });
+    await listener.onRefunded({ appointmentId: 'apt-1', particulierId: 'particulier-1', amount: 25, refundedTotal: 40 });
+
+    const log = supabase.notifyLogFor('particulier-1');
+    expect(log.map((entry) => entry.title)).toEqual(['Remboursement de 15,00 €', 'Remboursement de 25,00 €']);
+  });
+
   it('tells the coiffeur each time the particulier moves the appointment', async () => {
     const move = (startsAt: string) =>
       listener.onRescheduled({

@@ -55,6 +55,21 @@ describe('appointments (e2e)', () => {
 
   afterAll(() => harness.close());
 
+  /** Books like the app: POST holds the slot, Stripe's test card pays, then the app confirms. */
+  async function book(body: Record<string, unknown>): Promise<request.Response> {
+    const held = await request(server)
+      .post('/appointments')
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .send(body)
+      .expect(201);
+    expect(held.body.payment.clientSecret).toMatch(/_secret_/);
+    harness.stripe.succeedIntent(harness.supabase.paymentFor(held.body.appointment.id)!.payment_intent_id);
+    return request(server)
+      .post(`/appointments/${held.body.appointment.id}/payment/confirm`)
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .expect(200);
+  }
+
   async function fetchServiceId(): Promise<string> {
     const res = await request(server)
       .get('/salon/me/services')
@@ -69,11 +84,7 @@ describe('appointments (e2e)', () => {
 
   it('books a request, lists it for the particulier, and the coiffeur can accept it', async () => {
     const serviceId = await fetchServiceId();
-    const created = await request(server)
-      .post('/appointments')
-      .set('Authorization', `Bearer ${particulierToken}`)
-      .send({ coiffeurId: coiffeur.id, serviceId, startsAt: nextSlot().toISOString() })
-      .expect(201);
+    const created = await book({ coiffeurId: coiffeur.id, serviceId, startsAt: nextSlot().toISOString() });
     expect(created.body).toMatchObject({ status: 'pending', salonName: 'Studio W' });
 
     const mine = await request(server)
@@ -97,11 +108,7 @@ describe('appointments (e2e)', () => {
 
   it('blocks a particulier from the coiffeur-only routes', async () => {
     const serviceId = await fetchServiceId();
-    const created = await request(server)
-      .post('/appointments')
-      .set('Authorization', `Bearer ${particulierToken}`)
-      .send({ coiffeurId: coiffeur.id, serviceId, startsAt: nextSlot().toISOString() })
-      .expect(201);
+    const created = await book({ coiffeurId: coiffeur.id, serviceId, startsAt: nextSlot().toISOString() });
 
     await request(server).get('/appointments/salon').set('Authorization', `Bearer ${particulierToken}`).expect(403);
     await request(server)
@@ -124,11 +131,7 @@ describe('appointments (e2e)', () => {
     const slot = nextSlot();
     const day = slot.toISOString().slice(0, 10); // the suite runs in UTC; 10:00 UTC is the same day in Paris
 
-    const created = await request(server)
-      .post('/appointments')
-      .set('Authorization', `Bearer ${particulierToken}`)
-      .send({ coiffeurId: coiffeur.id, serviceIds: [serviceId], startsAt: slot.toISOString() })
-      .expect(201);
+    const created = await book({ coiffeurId: coiffeur.id, serviceIds: [serviceId], startsAt: slot.toISOString() });
     expect(created.body.services).toHaveLength(1);
 
     const slots = await request(server)
@@ -148,11 +151,7 @@ describe('appointments (e2e)', () => {
 
   it('lets the coiffeur, and only the coiffeur, move an accepted appointment and mark attendance', async () => {
     const serviceId = await fetchServiceId();
-    const created = await request(server)
-      .post('/appointments')
-      .set('Authorization', `Bearer ${particulierToken}`)
-      .send({ coiffeurId: coiffeur.id, serviceIds: [serviceId], startsAt: nextSlot().toISOString() })
-      .expect(201);
+    const created = await book({ coiffeurId: coiffeur.id, serviceIds: [serviceId], startsAt: nextSlot().toISOString() });
     await request(server)
       .patch(`/appointments/${created.body.id}/decide`)
       .set('Authorization', `Bearer ${coiffeurToken}`)
@@ -191,11 +190,7 @@ describe('appointments (e2e)', () => {
 
   it('either side can cancel', async () => {
     const serviceId = await fetchServiceId();
-    const created = await request(server)
-      .post('/appointments')
-      .set('Authorization', `Bearer ${particulierToken}`)
-      .send({ coiffeurId: coiffeur.id, serviceId, startsAt: nextSlot().toISOString() })
-      .expect(201);
+    const created = await book({ coiffeurId: coiffeur.id, serviceId, startsAt: nextSlot().toISOString() });
 
     await request(server)
       .patch(`/appointments/${created.body.id}/cancel`)

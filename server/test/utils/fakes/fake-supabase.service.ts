@@ -201,12 +201,44 @@ interface SubscriptionRow {
 interface PlatformSettingsRow {
   id: true;
   trial_days: number;
+  commission_percent: number;
   updated_at: string;
 }
 
-/** Same default as schema.sql's platform_settings row. */
+/** Same defaults as schema.sql's platform_settings row. */
 function defaultPlatformSettings(): PlatformSettingsRow {
-  return { id: true, trial_days: 30, updated_at: new Date().toISOString() };
+  return { id: true, trial_days: 30, commission_percent: 10, updated_at: new Date().toISOString() };
+}
+
+interface PayoutAccountRow {
+  profile_id: string;
+  stripe_account_id: string | null;
+  details_submitted: boolean;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  bookable_without_payouts: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PaymentRow {
+  id: string;
+  appointment_id: string;
+  particulier_id: string;
+  coiffeur_id: string;
+  payment_intent_id: string;
+  charge_id: string | null;
+  amount: number;
+  currency: string;
+  commission_rate: number;
+  commission_amount: number;
+  status: string;
+  refunded_amount: number;
+  transfer_id: string | null;
+  transfer_amount: number | null;
+  transferred_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 /** Mirrors search_salons()'s subscription join: Stripe's live statuses (period not over by 3+ days), or an offered one until its end date. */
@@ -439,6 +471,8 @@ export class FakeSupabaseService {
   private readonly appContent = new Map<string, AppContentRow>(defaultAppContent());
   private readonly subscriptions = new Map<string, SubscriptionRow>();
   private platformSettings: PlatformSettingsRow = defaultPlatformSettings();
+  private readonly payoutAccounts = new Map<string, PayoutAccountRow>();
+  private readonly payments = new Map<string, PaymentRow>();
 
   readonly client = {
     auth: {
@@ -549,6 +583,12 @@ export class FakeSupabaseService {
       if (table === 'platform_settings') {
         return this.platformSettingsTable();
       }
+      if (table === 'coiffeur_payout_accounts') {
+        return this.payoutAccountsTable();
+      }
+      if (table === 'payments') {
+        return this.paymentsTable();
+      }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
     rpc: async (fn: string, params: Record<string, unknown> = {}) => {
@@ -613,6 +653,8 @@ export class FakeSupabaseService {
     for (const [key, row] of defaultAppContent()) this.appContent.set(key, row);
     this.subscriptions.clear();
     this.platformSettings = defaultPlatformSettings();
+    this.payoutAccounts.clear();
+    this.payments.clear();
   }
 
   /**
@@ -721,8 +763,83 @@ export class FakeSupabaseService {
   }
 
   /** Test convenience: the platform_settings row as the admin left it. */
-  seedPlatformSettings(params: { trialDays: number }): void {
-    this.platformSettings = { ...this.platformSettings, trial_days: params.trialDays };
+  seedPlatformSettings(params: { trialDays?: number; commissionPercent?: number }): void {
+    this.platformSettings = {
+      ...this.platformSettings,
+      ...(params.trialDays !== undefined ? { trial_days: params.trialDays } : {}),
+      ...(params.commissionPercent !== undefined ? { commission_percent: params.commissionPercent } : {}),
+    };
+  }
+
+  /** Test convenience: a salon's Stripe Connect account as Stripe's webhooks would have left it. */
+  seedPayoutAccount(params: {
+    profileId: string;
+    stripeAccountId?: string | null;
+    detailsSubmitted?: boolean;
+    payoutsEnabled?: boolean;
+    bookableWithoutPayouts?: boolean;
+  }): void {
+    const now = new Date().toISOString();
+    const existing = this.payoutAccounts.get(params.profileId);
+    this.payoutAccounts.set(params.profileId, {
+      profile_id: params.profileId,
+      stripe_account_id: params.stripeAccountId !== undefined ? params.stripeAccountId : (existing?.stripe_account_id ?? null),
+      details_submitted: params.detailsSubmitted ?? existing?.details_submitted ?? false,
+      charges_enabled: params.payoutsEnabled ?? existing?.charges_enabled ?? false,
+      payouts_enabled: params.payoutsEnabled ?? existing?.payouts_enabled ?? false,
+      bookable_without_payouts: params.bookableWithoutPayouts ?? existing?.bookable_without_payouts ?? false,
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+    });
+  }
+
+  /** Test convenience: reads a salon's payout account back, for assertions. */
+  payoutAccountFor(profileId: string): PayoutAccountRow | undefined {
+    return this.payoutAccounts.get(profileId);
+  }
+
+  /** Test convenience: an appointment's payment row, for assertions. */
+  paymentFor(appointmentId: string): PaymentRow | undefined {
+    return [...this.payments.values()].find((payment) => payment.appointment_id === appointmentId);
+  }
+
+  /** Test convenience: a payment as the app's Checkout would have left it. */
+  seedPayment(params: {
+    appointmentId: string;
+    particulierId: string;
+    coiffeurId: string;
+    amount: number;
+    status?: string;
+    paymentIntentId?: string;
+    chargeId?: string | null;
+    commissionRate?: number;
+    refundedAmount?: number;
+    transferId?: string | null;
+    transferAmount?: number | null;
+  }): string {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const rate = params.commissionRate ?? 10;
+    this.payments.set(id, {
+      id,
+      appointment_id: params.appointmentId,
+      particulier_id: params.particulierId,
+      coiffeur_id: params.coiffeurId,
+      payment_intent_id: params.paymentIntentId ?? `pi_${id}`,
+      charge_id: params.chargeId !== undefined ? params.chargeId : `ch_${id}`,
+      amount: params.amount,
+      currency: 'eur',
+      commission_rate: rate,
+      commission_amount: Math.round(params.amount * rate) / 100,
+      status: params.status ?? 'succeeded',
+      refunded_amount: params.refundedAmount ?? 0,
+      transfer_id: params.transferId ?? null,
+      transfer_amount: params.transferAmount ?? null,
+      transferred_at: params.transferId ? now : null,
+      created_at: now,
+      updated_at: now,
+    });
+    return id;
   }
 
   /** Test convenience: reads a `coiffeur_subscriptions` row back, for assertions. */
@@ -807,7 +924,17 @@ export class FakeSupabaseService {
     services?: { name: string; price: number; durationMin: number; specialty: string }[];
     /** Listed salons need a live subscription (TODO.md Phase 4): by default an offered one, a year long. `false` = never subscribed. */
     subscribed?: boolean;
+    /** Bookable salons need Stripe payouts (TODO.md Phase 5): by default a ready Connect account. `false` = none. */
+    onlineBooking?: boolean;
   }): void {
+    if (params.onlineBooking !== false && !this.payoutAccounts.has(params.profileId)) {
+      this.seedPayoutAccount({
+        profileId: params.profileId,
+        stripeAccountId: `acct_${params.profileId}`,
+        detailsSubmitted: true,
+        payoutsEnabled: true,
+      });
+    }
     if (params.subscribed !== false && !this.subscriptions.has(params.profileId)) {
       this.seedSubscription({
         profileId: params.profileId,
@@ -1206,6 +1333,8 @@ export class FakeSupabaseService {
     // What `select('*, appointment_services(*)')` embeds for real — always attached here, harmless when not asked for.
     const withLines = (row: AppointmentRow) => ({
       ...row,
+      // One-to-one (payments.appointment_id is unique): PostgREST embeds an object, not a list.
+      payments: [...this.payments.values()].find((payment) => payment.appointment_id === row.id) ?? null,
       appointment_services: [...this.appointmentServices.values()].filter((line) => line.appointment_id === row.id),
     });
 
@@ -1256,6 +1385,9 @@ export class FakeSupabaseService {
           rows.delete(existing.id);
           for (const [lineId, line] of this.appointmentServices) {
             if (line.appointment_id === existing.id) this.appointmentServices.delete(lineId);
+          }
+          for (const [paymentId, payment] of this.payments) {
+            if (payment.appointment_id === existing.id) this.payments.delete(paymentId);
           }
           return { data: existing, count: 1 };
         }),
@@ -1451,6 +1583,83 @@ export class FakeSupabaseService {
           }
           const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
           rows.set(existing.profile_id, updated);
+          return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private payoutAccountsTable() {
+    const rows = this.payoutAccounts;
+
+    return {
+      select: () => new FakeSelectQuery<PayoutAccountRow>(() => [...rows.values()]),
+
+      /** `onConflict: 'profile_id'`, merging like PostgREST. */
+      upsert: async (row: Record<string, unknown>): Promise<QueryResult> => {
+        const now = new Date().toISOString();
+        const profileId = row.profile_id as string;
+        const existing = rows.get(profileId);
+        rows.set(profileId, {
+          stripe_account_id: null,
+          details_submitted: false,
+          charges_enabled: false,
+          payouts_enabled: false,
+          bookable_without_payouts: false,
+          created_at: now,
+          ...existing,
+          ...row,
+          updated_at: now,
+        } as PayoutAccountRow);
+        return { data: null, error: null };
+      },
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<PayoutAccountRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) return { data: null, count: 0 };
+          const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
+          rows.set(existing.profile_id, updated);
+          return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private paymentsTable() {
+    const rows = this.payments;
+
+    return {
+      select: () => new FakeSelectQuery<PaymentRow>(() => [...rows.values()]),
+
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async (): Promise<QueryResult> => {
+            const now = new Date().toISOString();
+            const id = randomUUID();
+            const created = {
+              charge_id: null,
+              currency: 'eur',
+              status: 'requires_payment',
+              refunded_amount: 0,
+              transfer_id: null,
+              transfer_amount: null,
+              transferred_at: null,
+              ...row,
+              id,
+              created_at: now,
+              updated_at: now,
+            } as PaymentRow;
+            rows.set(id, created);
+            return { data: created, error: null };
+          },
+        }),
+      }),
+
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<PaymentRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) return { data: null, count: 0 };
+          const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
+          rows.set(existing.id, updated);
           return { data: updated, count: 1 };
         }),
     };
