@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength, MinLength } from 'class-validator';
 import { Specialty, SPECIALTIES } from './update-salon-profile.dto';
 
 export class CreateServiceDto {
@@ -50,4 +50,9 @@ export class UpdateServiceDto {
   @IsOptional()
   @IsIn(SPECIALTIES)
   specialty?: Specialty;
+
+  /** false hides it from clients (TODO.md Phase 6): off the public page, the starting price and booking. */
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

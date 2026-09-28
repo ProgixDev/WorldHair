@@ -36,9 +36,12 @@ export function MapCanvasNative({
   interactive = true,
   style,
   focusCenter = false,
+  onAreaChange,
+  fitKey,
 }: MapCanvasProps) {
   const { theme, themeMode } = useTheme();
   const mapRef = useRef<MapView>(null);
+  const framedFor = useRef<string | undefined>(undefined);
 
   const isDark =
     themeMode === "dark" ||
@@ -67,8 +70,12 @@ export function MapCanvasNative({
       );
       return;
     }
+    if (fitKey !== undefined) {
+      if (framedFor.current === fitKey) return;
+      framedFor.current = fitKey;
+    }
     mapRef.current.animateToRegion(regionForSalons(salons, center), 500);
-  }, [selectedId, salons, center, focusCenter]);
+  }, [selectedId, salons, center, focusCenter, fitKey]);
 
   return (
     <View style={[{ flex: 1, overflow: "hidden" }, style]}>
@@ -92,6 +99,16 @@ export function MapCanvasNative({
         zoomEnabled={interactive}
         rotateEnabled={false}
         pitchEnabled={false}
+        onRegionChangeComplete={(region, details) => {
+          // Only the client's own moves: framing or following a pin never searches again.
+          if (!details?.isGesture) return;
+          onAreaChange?.([
+            region.latitude - region.latitudeDelta / 2,
+            region.longitude - region.longitudeDelta / 2,
+            region.latitude + region.latitudeDelta / 2,
+            region.longitude + region.longitudeDelta / 2,
+          ]);
+        }}
       >
         {USE_OSM_TILES ? (
           <UrlTile

@@ -1,4 +1,5 @@
 import { isAxiosError } from "axios";
+import { socialLink } from "../features/pro/links";
 import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import {
@@ -66,18 +67,22 @@ const REFUSALS: [string, string][] = [
   ["left to refund", "Montant trop élevé : il reste moins que ça à rembourser."],
   ["Nothing was paid in the app", "Ce rendez-vous n'a pas été payé dans l'application."],
   ["Finish setting up payouts", "Terminez d'abord la configuration de vos paiements."],
+  ["instagramUrl", "Ce lien Instagram ne mène pas à Instagram."],
+  ["facebookUrl", "Ce lien Facebook ne mène pas à Facebook."],
+  ["tiktokUrl", "Ce lien TikTok ne mène pas à TikTok."],
+  ["websiteUrl", "L'adresse du site web n'est pas valide."],
   ["already over", "Cette fermeture est déjà passée."],
 ];
 
-/** A French, coiffeur-facing message for a failed agenda action. */
-export function proErrorMessage(err: unknown): string {
+/** A French, coiffeur-facing message for a failed action; `fallback` when the server's reason isn't one of these. */
+export function proErrorMessage(err: unknown, fallback = "Une erreur est survenue. Réessayez."): string {
   if (isAxiosError(err)) {
     const body = err.response?.data as { message?: string | string[] } | undefined;
     const message = Array.isArray(body?.message) ? body.message.join(" ") : (body?.message ?? "");
     const match = REFUSALS.find(([key]) => message.includes(key));
     if (match) return match[1];
   }
-  return "Une erreur est survenue. Réessayez.";
+  return fallback;
 }
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -98,6 +103,12 @@ interface SalonProfileResponse {
   confirmationMode: ConfirmationMode;
   bookingNoticeMinutes: number;
   cancellationNoticeMinutes: number;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  tiktokUrl?: string | null;
+  websiteUrl?: string | null;
+  rating?: number;
+  reviewCount?: number;
 }
 
 /**
@@ -131,6 +142,12 @@ function toProProfile(
     confirmationMode: data.confirmationMode ?? "manual",
     bookingNoticeMinutes: data.bookingNoticeMinutes ?? 60,
     cancellationNoticeMinutes: data.cancellationNoticeMinutes ?? 1440,
+    instagramUrl: data.instagramUrl ?? "",
+    facebookUrl: data.facebookUrl ?? "",
+    tiktokUrl: data.tiktokUrl ?? "",
+    websiteUrl: data.websiteUrl ?? "",
+    rating: Number(data.rating ?? 0),
+    reviewCount: data.reviewCount ?? 0,
   };
 }
 
@@ -178,6 +195,10 @@ export async function saveProProfile(profile: ProProfile): Promise<ProProfile> {
     confirmationMode: profile.confirmationMode,
     bookingNoticeMinutes: profile.bookingNoticeMinutes,
     cancellationNoticeMinutes: profile.cancellationNoticeMinutes,
+    instagramUrl: socialLink("instagram", profile.instagramUrl),
+    facebookUrl: socialLink("facebook", profile.facebookUrl),
+    tiktokUrl: socialLink("tiktok", profile.tiktokUrl),
+    websiteUrl: socialLink("website", profile.websiteUrl),
   });
 
   return toProProfile(data, profile.salonId, profile.stylist);
@@ -192,6 +213,7 @@ interface SalonServiceResponse {
   price: number;
   durationMin: number;
   specialty: ProService["specialty"];
+  isActive?: boolean;
 }
 
 function fromResponse(service: SalonServiceResponse): ProService {
@@ -202,6 +224,7 @@ function fromResponse(service: SalonServiceResponse): ProService {
     durationMin: service.durationMin,
     specialty: service.specialty,
     description: service.description ?? undefined,
+    isActive: service.isActive !== false,
   };
 }
 
@@ -227,9 +250,11 @@ export async function saveProService(service: ProService): Promise<ProService[]>
   };
 
   if (isNew) {
-    await apiClient.post("/salon/me/services", body);
+    const { data } = await apiClient.post<SalonServiceResponse>("/salon/me/services", body);
+    // Created visible; hidden straight away when the coiffeur switched it off first.
+    if (service.isActive === false) await apiClient.patch(`/salon/me/services/${data.id}`, { isActive: false });
   } else {
-    await apiClient.patch(`/salon/me/services/${service.id}`, body);
+    await apiClient.patch(`/salon/me/services/${service.id}`, { ...body, isActive: service.isActive !== false });
   }
   return listProServices();
 }
@@ -418,6 +443,8 @@ interface ReviewApiResponse {
   comment: string;
   reply?: string;
   createdAt: string;
+  status?: Review["status"];
+  reportedByMe?: boolean;
 }
 
 function toReview(review: ReviewApiResponse): Review {
@@ -428,6 +455,8 @@ function toReview(review: ReviewApiResponse): Review {
     date: review.createdAt,
     comment: review.comment,
     reply: review.reply,
+    status: review.status ?? "visible",
+    reportedByMe: review.reportedByMe ?? false,
   };
 }
 

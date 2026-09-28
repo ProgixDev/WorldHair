@@ -18,7 +18,7 @@ import { SupabaseService } from '../database/supabase.service';
 import { PaymentRow, PaymentsService, RefundReason } from '../payments/payments.service';
 import { PayoutAccountsService } from '../payments/payout-accounts.service';
 import { SalonProfile, SalonService, SalonServiceItem } from '../salon/salon.service';
-import { BookingRules, BusyBooking, DaySlots, refusalFor, SlotRefusal, slotsForDay } from './booking-rules';
+import { BookingRules, BusyBooking, closedAfter, DaySlots, refusalFor, SlotRefusal, slotsForDay } from './booking-rules';
 
 /**
  * "done" is NOT a stored status (see schema.sql's appointments table) — it's
@@ -295,7 +295,7 @@ export class AppointmentsService {
     if (!(await this.payouts.isBookable(input.coiffeurId))) {
       throw new BadRequestException('This salon does not take online bookings yet');
     }
-    const services = await this.salon.listServices(input.coiffeurId);
+    const services = await this.salon.listServices(input.coiffeurId, { activeOnly: true });
     const lines = serviceIds.map((id) => {
       const service = services.find((item) => item.id === id);
       if (!service) {
@@ -696,7 +696,7 @@ export class AppointmentsService {
       excludeAppointmentId = row.id;
       if (callerId === row.coiffeur_id) bookingNoticeMinutes = 0;
     } else if (query.serviceIds && query.serviceIds.length > 0) {
-      const services = await this.salon.listServices(coiffeurId);
+      const services = await this.salon.listServices(coiffeurId, { activeOnly: true });
       durationMin = query.serviceIds.reduce((sum, id) => {
         const service = services.find((item) => item.id === id);
         if (!service) {
@@ -878,13 +878,9 @@ export class AppointmentsService {
       holdsSlot(row) &&
       row.id !== options.excludeAppointmentId &&
       !(row.status === 'awaiting_payment' && row.particulier_id === options.ignoreHoldsOf);
-    // Past the end of a subscription on its way out (cancelled, or an offered one), the
-    // salon leaves WorldHair: no time after it can be booked or moved to.
-    const subscriptionEnd = subscriptionEndsAt(subscription);
-    const afterSubscription = subscriptionEnd ? [{ startsAt: subscriptionEnd, endsAt: '9999-12-31T00:00:00.000Z' }] : [];
     return {
       availability,
-      closures: [...closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })), ...afterSubscription],
+      closures: [...closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })), ...closedAfter(subscriptionEndsAt(subscription))],
       salonBookings: salonRows.filter(counts).map(toBusy),
       // The client's bookings at this same salon are already in salonBookings.
       clientBookings: clientRows.filter((row) => counts(row) && row.coiffeur_id !== coiffeurId).map(toBusy),

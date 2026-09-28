@@ -1,6 +1,18 @@
-import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AppointmentRow, derivedStatus } from '../appointments/appointments.service';
+import { slices } from '../common/utils/slices';
 import { SupabaseService } from '../database/supabase.service';
+
+/** Why a review is reported — the app's picker (TODO.md Phase 6); the admins read it with the details. */
+export const REPORT_REASONS = ['offensive', 'fake', 'personal_info', 'spam', 'other'] as const;
+export type ReportReason = (typeof REPORT_REASONS)[number];
 
 export interface ReviewDto {
   id: string;
@@ -13,6 +25,8 @@ export interface ReviewDto {
   reply?: string;
   createdAt: string;
   status: 'visible' | 'reported' | 'hidden';
+  /** The reader already reported it: the app shows « Signalé » instead of the button. */
+  reportedByMe: boolean;
 }
 
 export interface CreateReviewInput {
@@ -106,9 +120,9 @@ export class ReviewsService {
    * before an admin ever looks at it. Only an admin's `hide` decision
    * actually removes something from public view.
    */
-  async listForSalon(coiffeurId: string): Promise<ReviewDto[]> {
+  async listForSalon(coiffeurId: string, viewerId?: string): Promise<ReviewDto[]> {
     const rows = (await this.select({ coiffeurId })).filter((row) => row.status !== 'hidden');
-    return this.mapAll(rows);
+    return this.mapAll(rows, await this.reportedBy(viewerId, rows));
   }
 
   /** The particulier's own submitted reviews. */
@@ -118,7 +132,8 @@ export class ReviewsService {
 
   /** The coiffeur's own reviews to manage/reply to — every status, not just visible. */
   async listForCoiffeurOwner(coiffeurId: string): Promise<ReviewDto[]> {
-    return this.mapAll(await this.select({ coiffeurId }));
+    const rows = await this.select({ coiffeurId });
+    return this.mapAll(rows, await this.reportedBy(coiffeurId, rows));
   }
 
   async reply(coiffeurId: string, reviewId: string, text: string): Promise<void> {
@@ -137,13 +152,30 @@ export class ReviewsService {
     await this.updateRow(reviewId, { coiffeur_reply: null, replied_at: null });
   }
 
-  /** Any authenticated caller — flags a review for admin attention. */
-  async report(reviewId: string, reason?: string): Promise<void> {
+  /**
+   * "Signaler" (TODO.md Phase 6): anyone reading a review — a client, the
+   * salon — reports it once, with a reason. It joins the admins' queue and
+   * stays visible until they decide; one they already hid stays hidden, the
+   * report kept. The author can't report their own review.
+   */
+  async report(reviewId: string, reporterId: string, input: { reason: ReportReason; details?: string }): Promise<void> {
     const row = await this.reviewOrThrow(reviewId);
-    if (row.status === 'hidden') return; // already actioned — nothing to do
+    if (row.particulier_id === reporterId) {
+      throw new BadRequestException("You can't report your own review");
+    }
+    const details = input.details?.trim() || null;
+    const { error } = await this.supabase.client
+      .from('review_reports')
+      .insert({ review_id: reviewId, reporter_id: reporterId, reason: input.reason, details });
+    if (error) {
+      if (error.code === '23505') {
+        throw new ConflictException('You already reported this review');
+      }
+      throw new InternalServerErrorException(error.message);
+    }
     await this.updateRow(reviewId, {
-      status: 'reported',
-      report_reason: reason?.trim() || null,
+      ...(row.status === 'hidden' ? {} : { status: 'reported' }),
+      report_reason: details ? `${input.reason}: ${details}` : input.reason,
       reported_at: new Date().toISOString(),
     });
   }
@@ -219,15 +251,33 @@ export class ReviewsService {
     return [firstName, lastInitial].filter(Boolean).join(' ').trim() || 'Client';
   }
 
-  private async mapAll(rows: ReviewRow[]): Promise<ReviewDto[]> {
+  /** Which of `rows` `viewerId` already reported. */
+  private async reportedBy(viewerId: string | undefined, rows: ReviewRow[]): Promise<Set<string>> {
+    const reported = new Set<string>();
+    if (!viewerId || rows.length === 0) return reported;
+    for (const slice of slices(rows.map((row) => row.id))) {
+      const { data, error } = await this.supabase.client
+        .from('review_reports')
+        .select('review_id')
+        .eq('reporter_id', viewerId)
+        .in('review_id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const report of data as { review_id: string }[]) reported.add(report.review_id);
+    }
+    return reported;
+  }
+
+  private async mapAll(rows: ReviewRow[], reportedByMe = new Set<string>()): Promise<ReviewDto[]> {
     const names = await this.authorNamesFor([...new Set(rows.map((row) => row.particulier_id))]);
     return rows
       .slice()
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .map((row) => this.map(row, names.get(row.particulier_id) ?? 'Client'));
+      .map((row) => this.map(row, names.get(row.particulier_id) ?? 'Client', reportedByMe.has(row.id)));
   }
 
-  private map(row: ReviewRow, authorName: string): ReviewDto {
+  private map(row: ReviewRow, authorName: string, reportedByMe = false): ReviewDto {
     return {
       id: row.id,
       appointmentId: row.appointment_id,
@@ -239,6 +289,7 @@ export class ReviewsService {
       reply: row.coiffeur_reply ?? undefined,
       createdAt: row.created_at,
       status: row.status as ReviewDto['status'],
+      reportedByMe,
     };
   }
 }

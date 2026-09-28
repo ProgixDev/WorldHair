@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Switch, Text, View } from "react-native";
 import { BottomSheet } from "../ui/BottomSheet";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -128,6 +128,23 @@ export function ServiceEditor({
         multiline
         maxLength={140}
       />
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[typography.bodyMedium, { color: theme.foreground.white }]}>Visible par les clients</Text>
+          <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+            {draft.isActive === false
+              ? "Masquée : elle reste ici, mais ne s'affiche plus sur votre page et ne se réserve plus."
+              : "Affichée sur votre page et réservable."}
+          </Text>
+        </View>
+        <Switch
+          value={draft.isActive !== false}
+          onValueChange={(visible) => setDraft({ ...draft, isActive: visible })}
+          trackColor={{ true: theme.primary.main, false: theme.border }}
+          accessibilityLabel="Visible par les clients"
+        />
+      </View>
     </BottomSheet>
   );
 }

@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -21,15 +22,15 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { fetchSalons } from "../../features/salons/api";
+import { countSalons } from "../../features/salons/api";
 import {
   activeFilterCount,
-  applyFilters,
   DEFAULT_FILTERS,
   type SalonFilters,
 } from "../../features/salons/filters";
 import { withDistance } from "../../features/salons/geo";
-import { SPECIALTIES, type Salon, type SalonWithDistance } from "../../features/salons/types";
+import { SPECIALTIES, type SalonWithDistance } from "../../features/salons/types";
+import { useSalonSearch } from "../../features/salons/useSalonSearch";
 import { useAdSlot } from "../../services/ads";
 
 /** How often the ad banner is interleaved among search results. */
@@ -42,7 +43,8 @@ type ResultItem =
 /**
  * Text-first search: no map, a dense ranked list with a distance rail. The
  * heavy filters live in a bottom sheet so the page itself stays a single
- * scrolling column.
+ * scrolling column. The server filters, sorts and pages (TODO.md Phase 6):
+ * more results load as the list scrolls.
  */
 export default function Search() {
   const router = useRouter();
@@ -53,31 +55,15 @@ export default function Search() {
 
   const [filters, setFilters] = useState<SalonFilters>(DEFAULT_FILTERS);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [allSalons, setAllSalons] = useState<Salon[]>([]);
+  const search = useSalonSearch(filters, coords);
 
   // Refetches on focus and polls every 15s while focused — see useAdSlot's
   // doc comment in services/ads.ts.
   const resultsBanner = useAdSlot("search_results");
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchSalons().then((salons) => {
-      if (!cancelled) setAllSalons(salons);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const salonsWithDistance = useMemo(
-    () => withDistance(allSalons, coords),
-    [allSalons, coords],
-  );
-  const results = useMemo(
-    () => applyFilters(salonsWithDistance, filters),
-    [salonsWithDistance, filters],
-  );
+  const results = useMemo(() => withDistance(search.items, coords), [search.items, coords]);
   const filterCount = activeFilterCount(filters);
+  const countFor = useCallback((draft: SalonFilters) => countSalons(draft, coords), [coords]);
 
   const listData = useMemo<ResultItem[]>(() => {
     if (!resultsBanner?.active)
@@ -106,6 +92,13 @@ export default function Search() {
         }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        onEndReached={search.loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          search.loadingMore ? (
+            <ActivityIndicator color={theme.primary.main} style={{ marginVertical: spacing.lg }} />
+          ) : null
+        }
         ItemSeparatorComponent={() => (
           <View style={{ height: 1, backgroundColor: theme.border + "55" }} />
         )}
@@ -218,10 +211,12 @@ export default function Search() {
               <Text
                 style={[typography.overline, { color: theme.foreground.gray }]}
               >
-                {results.length +
-                  (results.length > 1 ? " SALONS" : " SALON") +
-                  " TROUVÉ" +
-                  (results.length > 1 ? "S" : "")}
+                {search.loading
+                  ? "RECHERCHE…"
+                  : search.total +
+                    (search.total > 1 ? " SALONS" : " SALON") +
+                    " TROUVÉ" +
+                    (search.total > 1 ? "S" : "")}
               </Text>
               {filterCount > 0 ? (
                 <Pressable
@@ -242,15 +237,26 @@ export default function Search() {
           </View>
         }
         ListEmptyComponent={
-          <EmptyState
-            icon="magnify-close"
-            title="Aucun salon trouvé"
-            message="Élargissez la distance ou retirez un filtre de prestation."
-            action={{
-              label: "Réinitialiser les filtres",
-              onPress: () => setFilters(DEFAULT_FILTERS),
-            }}
-          />
+          search.loading ? (
+            <ActivityIndicator color={theme.primary.main} style={{ marginTop: spacing.xl }} />
+          ) : search.error ? (
+            <EmptyState
+              icon="wifi-off"
+              title="Recherche impossible"
+              message={search.error}
+              action={{ label: "Réessayer", onPress: search.retry }}
+            />
+          ) : (
+            <EmptyState
+              icon="magnify-close"
+              title="Aucun salon trouvé"
+              message="Élargissez la distance ou retirez un filtre."
+              action={{
+                label: "Réinitialiser les filtres",
+                onPress: () => setFilters(DEFAULT_FILTERS),
+              }}
+            />
+          )
         }
         renderItem={({ item }) =>
           item.kind === "ad" && resultsBanner ? (
@@ -269,7 +275,7 @@ export default function Search() {
       <FilterSheet
         visible={sheetOpen}
         filters={filters}
-        countFor={(draft) => applyFilters(salonsWithDistance, draft).length}
+        countFor={countFor}
         onApply={(next) => {
           setFilters(next);
           setSheetOpen(false);

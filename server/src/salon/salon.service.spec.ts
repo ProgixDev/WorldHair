@@ -33,7 +33,38 @@ describe('SalonService', () => {
         confirmationMode: 'manual',
         bookingNoticeMinutes: 60,
         cancellationNoticeMinutes: 1440,
+        practiceZone: 'salon',
+        travelRadiusKm: null,
+        instagramUrl: null,
+        facebookUrl: null,
+        tiktokUrl: null,
+        websiteUrl: null,
+        rating: 0,
+        reviewCount: 0,
       });
+    });
+
+    it('updateProfile() saves the social links, and a null clears one', async () => {
+      await service.updateProfile(USER_ID, {
+        instagramUrl: 'https://instagram.com/studio.w',
+        facebookUrl: 'https://facebook.com/studiow',
+        tiktokUrl: 'https://www.tiktok.com/@studiow',
+        websiteUrl: 'https://studio-w.fr',
+      });
+      const updated = await service.updateProfile(USER_ID, { facebookUrl: null });
+
+      expect(updated).toMatchObject({
+        instagramUrl: 'https://instagram.com/studio.w',
+        facebookUrl: null,
+        tiktokUrl: 'https://www.tiktok.com/@studiow',
+        websiteUrl: 'https://studio-w.fr',
+      });
+    });
+
+    it("getProfile() says how the salon is rated, as clients see it", async () => {
+      supabase.seedValidatedSalon({ profileId: USER_ID, firstName: 'Sofia', lastName: 'Benali', salonName: 'Studio W', rating: 4.6, reviewCount: 12 });
+
+      await expect(service.getProfile(USER_ID)).resolves.toMatchObject({ rating: 4.6, reviewCount: 12 });
     });
 
     it('updateProfile() saves the booking rules: instant confirmation and both deadlines', async () => {
@@ -89,6 +120,21 @@ describe('SalonService', () => {
         postalCode: '75011',
         city: 'Paris',
       });
+    });
+
+    it('seedProfileFromApplication() copies how the coiffeur works: at home, and how far they travel', async () => {
+      await service.seedProfileFromApplication(USER_ID, {
+        salonName: 'Sofia à domicile',
+        description: '',
+        phone: '',
+        addressLine: null,
+        postalCode: null,
+        city: null,
+        practiceZone: 'domicile',
+        travelRadiusKm: 15,
+      });
+
+      await expect(service.getProfile(USER_ID)).resolves.toMatchObject({ practiceZone: 'domicile', travelRadiusKm: 15 });
     });
 
     it('seedProfileFromApplication() never overwrites an existing profile', async () => {
@@ -202,6 +248,19 @@ describe('SalonService', () => {
 
       await service.deleteService(USER_ID, created.id);
       await expect(service.listServices(USER_ID)).resolves.toEqual([]);
+    });
+
+    it('a new service shows to clients; hiding it keeps it in the list for the coiffeur only', async () => {
+      const created = await service.createService(USER_ID, { name: 'Coupe', price: 30, durationMin: 30, specialty: 'coupe' });
+      expect(created.isActive).toBe(true);
+
+      const hidden = await service.updateService(USER_ID, created.id, { isActive: false });
+
+      expect(hidden).toMatchObject({ id: created.id, isActive: false });
+      await expect(service.listServices(USER_ID)).resolves.toEqual([hidden]);
+      await expect(service.listServices(USER_ID, { activeOnly: true })).resolves.toEqual([]);
+      await service.updateService(USER_ID, created.id, { isActive: true });
+      await expect(service.listServices(USER_ID, { activeOnly: true })).resolves.toHaveLength(1);
     });
 
     it("deleteService() 404s on another coiffeur's service", async () => {

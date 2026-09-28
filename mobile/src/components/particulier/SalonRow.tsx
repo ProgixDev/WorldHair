@@ -12,6 +12,8 @@ import {
 import { formatDistance } from "../../features/salons/geo";
 import type { SalonWithDistance } from "../../features/salons/types";
 import { formatPrice } from "../../utils/date";
+import { HeartButton } from "./HeartButton";
+import { HomeServiceTag, NextSlotLine } from "./SalonAvailability";
 import { SalonRating } from "./SalonRating";
 
 interface SalonRowProps {
@@ -74,18 +76,23 @@ export function SalonRow({ salon, onPress }: SalonRowProps) {
       />
 
       <View style={{ flex: 1, gap: spacing.xs, paddingRight: spacing.xs }}>
-        <Text
-          style={[typography.bodyMedium, { color: theme.foreground.white }]}
-          numberOfLines={1}
-        >
-          {salon.name}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+          <Text
+            style={[typography.bodyMedium, { color: theme.foreground.white, flex: 1 }]}
+            numberOfLines={1}
+          >
+            {salon.name}
+          </Text>
+          <HeartButton salon={salon} size={18} />
+        </View>
         <Text
           style={[typography.caption, { color: theme.foreground.gray }]}
           numberOfLines={2}
         >
           {salon.tagline}
         </Text>
+        <HomeServiceTag salon={salon} />
+        <NextSlotLine salon={salon} />
 
         <View
           style={{

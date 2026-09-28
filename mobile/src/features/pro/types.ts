@@ -27,6 +27,14 @@ export interface ProProfile {
   bookingNoticeMinutes: number;
   /** How late before its start a client can still cancel or move an accepted booking (0 = anytime). */
   cancellationNoticeMinutes: number;
+  /** The salon's pages elsewhere as typed ("" for none); saved as links (features/pro/links.ts). */
+  instagramUrl: string;
+  facebookUrl: string;
+  tiktokUrl: string;
+  websiteUrl: string;
+  /** As clients see it — hidden reviews left out. Read-only. */
+  rating: number;
+  reviewCount: number;
 }
 
 /** A congé or exceptional closure: whole days, or a few hours of one day. */

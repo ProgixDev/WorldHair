@@ -11,6 +11,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { AuthProvider } from "../contexts/AuthContext";
+import { FavoritesProvider } from "../contexts/FavoritesContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { ThemeProvider, useTheme } from "../contexts/ThemeContext";
 import { useNotificationRouting } from "../features/notifications/useNotificationRouting";
@@ -27,9 +28,11 @@ export default function RootLayout() {
         <ThemeProvider>
           <AuthProvider>
             <LocationProvider>
-              <SafeAreaProvider>
-                <RootLayoutWithTheme />
-              </SafeAreaProvider>
+              <FavoritesProvider>
+                <SafeAreaProvider>
+                  <RootLayoutWithTheme />
+                </SafeAreaProvider>
+              </FavoritesProvider>
             </LocationProvider>
           </AuthProvider>
         </ThemeProvider>

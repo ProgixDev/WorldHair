@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { slices } from '../common/utils/slices';
 import { SupabaseService } from '../database/supabase.service';
 import { AvailabilityDayDto } from './dto/availability-day.dto';
 import { AddGalleryPhotoDto } from './dto/gallery-photo.dto';
@@ -27,7 +28,23 @@ export interface SalonProfile {
   bookingNoticeMinutes: number;
   /** How late before its start a client can still cancel or move an accepted booking (0 = anytime). */
   cancellationNoticeMinutes: number;
+  /** In a salon, or at the client's home within `travelRadiusKm` — from the application (TODO.md Phase 6). */
+  practiceZone: PracticeZone;
+  travelRadiusKm: number | null;
+  /** The salon's pages elsewhere, shown as icons on its public page. */
+  instagramUrl: string | null;
+  facebookUrl: string | null;
+  tiktokUrl: string | null;
+  websiteUrl: string | null;
+  /** As clients see it: hidden reviews left out (refresh_salon_rating in schema.sql). Read-only here. */
+  rating: number;
+  reviewCount: number;
 }
+
+export type PracticeZone = 'salon' | 'domicile';
+
+/** What the coiffeur can change from "Mon salon"; the rest comes from the application or the reviews. */
+export type SalonProfilePatch = Partial<Omit<SalonProfile, 'practiceZone' | 'travelRadiusKm' | 'rating' | 'reviewCount'>>;
 
 /** Same defaults as schema.sql's coiffeur_profiles columns. */
 const EMPTY_PROFILE: SalonProfile = {
@@ -46,6 +63,14 @@ const EMPTY_PROFILE: SalonProfile = {
   confirmationMode: 'manual',
   bookingNoticeMinutes: 60,
   cancellationNoticeMinutes: 1440,
+  practiceZone: 'salon',
+  travelRadiusKm: null,
+  instagramUrl: null,
+  facebookUrl: null,
+  tiktokUrl: null,
+  websiteUrl: null,
+  rating: 0,
+  reviewCount: 0,
 };
 
 /** A congé or exceptional closure: whole days, or a few hours of one day. */
@@ -105,6 +130,8 @@ export interface SalonServiceItem {
   price: number;
   durationMin: number;
   specialty: Specialty;
+  /** Shown to clients and bookable; a hidden one stays in the coiffeur's list only. */
+  isActive: boolean;
 }
 
 export interface UpdateServiceInput {
@@ -113,6 +140,7 @@ export interface UpdateServiceInput {
   price?: number;
   durationMin?: number;
   specialty?: Specialty;
+  isActive?: boolean;
 }
 
 interface ProfileRow {
@@ -131,9 +159,18 @@ interface ProfileRow {
   confirmation_mode: string;
   booking_notice_minutes: number;
   cancellation_notice_minutes: number;
+  practice_zone?: string | null;
+  travel_radius_km?: number | null;
+  instagram_url?: string | null;
+  facebook_url?: string | null;
+  tiktok_url?: string | null;
+  website_url?: string | null;
+  rating?: number | string | null;
+  review_count?: number | null;
 }
 
 interface AvailabilityRow {
+  profile_id?: string;
   weekday: number;
   is_open: boolean;
   opens_minute: number;
@@ -149,6 +186,7 @@ interface ServiceRow {
   price: string | number;
   duration_min: number;
   specialty: string;
+  is_active?: boolean | null;
 }
 
 export interface SalonGalleryPhoto {
@@ -186,6 +224,14 @@ function mapProfile(row: ProfileRow): SalonProfile {
     confirmationMode: row.confirmation_mode as ConfirmationMode,
     bookingNoticeMinutes: row.booking_notice_minutes,
     cancellationNoticeMinutes: row.cancellation_notice_minutes,
+    practiceZone: (row.practice_zone ?? 'salon') as PracticeZone,
+    travelRadiusKm: row.travel_radius_km ?? null,
+    instagramUrl: row.instagram_url ?? null,
+    facebookUrl: row.facebook_url ?? null,
+    tiktokUrl: row.tiktok_url ?? null,
+    websiteUrl: row.website_url ?? null,
+    rating: Number(row.rating ?? 0),
+    reviewCount: row.review_count ?? 0,
   };
 }
 
@@ -209,6 +255,7 @@ function mapService(row: ServiceRow): SalonServiceItem {
     price: Number(row.price),
     durationMin: row.duration_min,
     specialty: row.specialty as Specialty,
+    isActive: row.is_active !== false,
   };
 }
 
@@ -256,6 +303,9 @@ export class SalonService {
       addressLine: string | null;
       postalCode: string | null;
       city: string | null;
+      /** How they work, from the application: search filters on it (TODO.md Phase 6). */
+      practiceZone?: PracticeZone;
+      travelRadiusKm?: number | null;
     },
   ): Promise<void> {
     // No `.select()` chained: with `ignoreDuplicates`, PostgREST returns no
@@ -271,6 +321,8 @@ export class SalonService {
         address_line: application.addressLine ?? '',
         postal_code: application.postalCode ?? '',
         city: application.city ?? '',
+        practice_zone: application.practiceZone ?? 'salon',
+        travel_radius_km: application.practiceZone === 'domicile' ? (application.travelRadiusKm ?? null) : null,
       },
       { onConflict: 'profile_id', ignoreDuplicates: true },
     );
@@ -279,7 +331,7 @@ export class SalonService {
     }
   }
 
-  async updateProfile(userId: string, patch: Partial<SalonProfile>): Promise<SalonProfile> {
+  async updateProfile(userId: string, patch: SalonProfilePatch): Promise<SalonProfile> {
     const row: Record<string, unknown> = { profile_id: userId };
     if (patch.salonName !== undefined) row.salon_name = patch.salonName;
     if (patch.tagline !== undefined) row.tagline = patch.tagline;
@@ -296,6 +348,10 @@ export class SalonService {
     if (patch.confirmationMode !== undefined) row.confirmation_mode = patch.confirmationMode;
     if (patch.bookingNoticeMinutes !== undefined) row.booking_notice_minutes = patch.bookingNoticeMinutes;
     if (patch.cancellationNoticeMinutes !== undefined) row.cancellation_notice_minutes = patch.cancellationNoticeMinutes;
+    if (patch.instagramUrl !== undefined) row.instagram_url = patch.instagramUrl || null;
+    if (patch.facebookUrl !== undefined) row.facebook_url = patch.facebookUrl || null;
+    if (patch.tiktokUrl !== undefined) row.tiktok_url = patch.tiktokUrl || null;
+    if (patch.websiteUrl !== undefined) row.website_url = patch.websiteUrl || null;
 
     const { data, error } = await this.supabase.client
       .from('coiffeur_profiles')
@@ -323,6 +379,22 @@ export class SalonService {
     return rows.length > 0 ? rows.map(mapAvailability) : defaultAvailability();
   }
 
+  /** Several salons' weeks in a few queries (search's next free slots) — the default for one never saved. */
+  async availabilityFor(userIds: string[]): Promise<Map<string, AvailabilityDay[]>> {
+    const byProfile = new Map<string, AvailabilityDay[]>(userIds.map((id) => [id, []]));
+    for (const slice of slices(userIds)) {
+      const { data, error } = await this.supabase.client.from('coiffeur_availability').select().in('profile_id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as AvailabilityRow[]) byProfile.get(row.profile_id!)?.push(mapAvailability(row));
+    }
+    for (const [id, days] of byProfile) {
+      byProfile.set(id, days.length > 0 ? days.sort((a, b) => a.weekday - b.weekday) : defaultAvailability());
+    }
+    return byProfile;
+  }
+
   async replaceAvailability(userId: string, days: AvailabilityDayDto[]): Promise<AvailabilityDay[]> {
     const rows = days.map((day) => ({
       profile_id: userId,
@@ -347,12 +419,11 @@ export class SalonService {
 
   // ─── Services (prestations) ─────────────────────────────────────────────
 
-  async listServices(userId: string): Promise<SalonServiceItem[]> {
-    const { data, error } = await this.supabase.client
-      .from('coiffeur_services')
-      .select()
-      .eq('profile_id', userId)
-      .order('created_at', { ascending: true });
+  /** Every service for the coiffeur's own editor; `activeOnly` for what clients see and book. */
+  async listServices(userId: string, options: { activeOnly?: boolean } = {}): Promise<SalonServiceItem[]> {
+    let query = this.supabase.client.from('coiffeur_services').select().eq('profile_id', userId);
+    if (options.activeOnly) query = query.eq('is_active', true);
+    const { data, error } = await query.order('created_at', { ascending: true });
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
@@ -388,6 +459,7 @@ export class SalonService {
     if (patch.price !== undefined) row.price = patch.price;
     if (patch.durationMin !== undefined) row.duration_min = patch.durationMin;
     if (patch.specialty !== undefined) row.specialty = patch.specialty;
+    if (patch.isActive !== undefined) row.is_active = patch.isActive;
 
     const { data, error } = await this.supabase.client
       .from('coiffeur_services')
@@ -473,6 +545,23 @@ export class SalonService {
   }
 
   // ─── Closures (congés, fermetures exceptionnelles) ───────────────────────
+
+  /** Several salons' closures not over yet at `from`, in a few queries (search's next free slots). */
+  async timeOffFor(userIds: string[], from: Date): Promise<Map<string, TimeOff[]>> {
+    const byProfile = new Map<string, TimeOff[]>(userIds.map((id) => [id, []]));
+    for (const slice of slices(userIds)) {
+      const { data, error } = await this.supabase.client
+        .from('coiffeur_time_off')
+        .select()
+        .in('profile_id', slice)
+        .gte('ends_at', from.toISOString());
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as TimeOffRow[]) byProfile.get(row.profile_id)?.push(mapTimeOff(row));
+    }
+    return byProfile;
+  }
 
   /** Closures not over yet at `from` (now by default), soonest first. Also read by booking and the public salon page. */
   async listTimeOff(userId: string, from: Date = new Date()): Promise<TimeOff[]> {

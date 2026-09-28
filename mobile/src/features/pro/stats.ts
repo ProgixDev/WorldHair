@@ -1,5 +1,5 @@
 import { addDays, startOfDay } from "../../utils/date";
-import type { ProAppointment, ProService } from "./types";
+import type { AvailabilityDay, ProAppointment, ProService } from "./types";
 
 /** Pure aggregations over the coiffeur's bookings — no React, no storage. */
 
@@ -186,6 +186,73 @@ export function appointmentsForDay(
       );
     })
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+export interface FillRate {
+  bookedMinutes: number;
+  openMinutes: number;
+  /** 0-100, rounded. */
+  percent: number;
+}
+
+const MINUTE_MS = 60_000;
+
+/** Minutes of [start, end) inside [from, to). */
+function overlapMinutes(start: number, end: number, from: number, to: number): number {
+  return Math.max(0, Math.min(end, to) - Math.max(start, from)) / MINUTE_MS;
+}
+
+/**
+ * "Taux de remplissage" (TODO.md Phase 6): how full this week (Monday to
+ * Sunday) is — accepted bookings' minutes over the salon's open minutes,
+ * lunch breaks and closures left out.
+ */
+export function weeklyFillRate(
+  appointments: ProAppointment[],
+  availability: AvailabilityDay[],
+  closures: { startsAt: string; endsAt: string }[],
+  now = new Date(),
+): FillRate {
+  const weekStart = startOfWeek(now);
+  const weekEnd = addDays(weekStart, 7);
+
+  let openMinutes = 0;
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = addDays(weekStart, offset);
+    const hours = availability.find((entry) => entry.weekday === day.getDay());
+    if (!hours?.open) continue;
+    const windows =
+      hours.breakStart !== null && hours.breakEnd !== null
+        ? [
+            [hours.opens, hours.breakStart],
+            [hours.breakEnd, hours.closes],
+          ]
+        : [[hours.opens, hours.closes]];
+    for (const [from, to] of windows) {
+      if (to <= from) continue;
+      const start = day.getTime() + from * MINUTE_MS;
+      const end = day.getTime() + to * MINUTE_MS;
+      const closed = closures.reduce(
+        (sum, closure) =>
+          sum + overlapMinutes(new Date(closure.startsAt).getTime(), new Date(closure.endsAt).getTime(), start, end),
+        0,
+      );
+      openMinutes += Math.max(0, (end - start) / MINUTE_MS - closed);
+    }
+  }
+
+  const bookedMinutes = appointments
+    .filter((appointment) => {
+      const startsAt = new Date(appointment.startsAt);
+      return isBillable(appointment) && startsAt >= weekStart && startsAt < weekEnd;
+    })
+    .reduce((sum, appointment) => sum + appointment.durationMin, 0);
+
+  return {
+    bookedMinutes,
+    openMinutes: Math.round(openMinutes),
+    percent: openMinutes <= 0 ? 0 : Math.min(100, Math.round((bookedMinutes / openMinutes) * 100)),
+  };
 }
 
 /** How full a day is, as a percentage of its open minutes. */

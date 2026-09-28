@@ -18,6 +18,7 @@ import { EnvironmentVariables } from './config/env.validation';
 import { ContentModule } from './content/content.module';
 import { DatabaseModule } from './database/database.module';
 import { DiscoveryModule } from './discovery/discovery.module';
+import { FavoritesModule } from './favorites/favorites.module';
 import { HealthModule } from './health/health.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
@@ -53,6 +54,7 @@ import { UsersModule } from './users/users.module';
     CoiffeurModule,
     SalonModule,
     DiscoveryModule,
+    FavoritesModule,
     AppointmentsModule,
     ReviewsModule,
     NotificationsModule,

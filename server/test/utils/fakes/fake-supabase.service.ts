@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { parisParts, parisTime } from '../../../src/common/utils/paris-time';
 
 export interface FakeAuthUser {
   id: string;
@@ -63,6 +64,12 @@ interface SalonProfileRow {
   confirmation_mode: string;
   booking_notice_minutes: number;
   cancellation_notice_minutes: number;
+  practice_zone: string;
+  travel_radius_km: number | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
+  website_url: string | null;
 }
 
 interface TimeOffRow {
@@ -104,6 +111,7 @@ interface ServiceRow {
   price: number;
   duration_min: number;
   specialty: string;
+  is_active: boolean;
 }
 
 interface GalleryPhotoRow {
@@ -244,6 +252,20 @@ interface PaymentRow {
   locked_until: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface ReviewReportRow {
+  review_id: string;
+  reporter_id: string;
+  reason: string;
+  details: string | null;
+  created_at: string;
+}
+
+interface FavoriteRow {
+  particulier_id: string;
+  coiffeur_id: string;
+  created_at: string;
 }
 
 /** Mirrors search_salons()'s subscription join: Stripe's live statuses (period not over by 3+ days), or an offered one until its end date. */
@@ -497,6 +519,9 @@ export class FakeSupabaseService {
   private platformSettings: PlatformSettingsRow = defaultPlatformSettings();
   private readonly payoutAccounts = new Map<string, PayoutAccountRow>();
   private readonly payments = new Map<string, PaymentRow>();
+  private readonly favorites = new Map<string, FavoriteRow>();
+  private readonly reviewReports: ReviewReportRow[] = [];
+  private lastFavoriteAt = 0;
 
   readonly client = {
     auth: {
@@ -613,6 +638,12 @@ export class FakeSupabaseService {
       if (table === 'payments') {
         return this.paymentsTable();
       }
+      if (table === 'favorites') {
+        return this.favoritesTable();
+      }
+      if (table === 'review_reports') {
+        return this.reviewReportsTable();
+      }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
     rpc: async (fn: string, params: Record<string, unknown> = {}) => {
@@ -686,6 +717,18 @@ export class FakeSupabaseService {
     this.platformSettings = defaultPlatformSettings();
     this.payoutAccounts.clear();
     this.payments.clear();
+    this.favorites.clear();
+    this.reviewReports.length = 0;
+  }
+
+  /** Test convenience: a review's reports, in the order they came. */
+  reportsOf(reviewId: string): ReviewReportRow[] {
+    return this.reviewReports.filter((report) => report.review_id === reviewId);
+  }
+
+  /** Test convenience: a client's favorites, for assertions. */
+  favoritesOf(particulierId: string): string[] {
+    return [...this.favorites.values()].filter((row) => row.particulier_id === particulierId).map((row) => row.coiffeur_id);
   }
 
   /**
@@ -921,6 +964,8 @@ export class FakeSupabaseService {
     city?: string | null;
     status?: string;
     shopProfileComplete?: boolean;
+    practiceZone?: 'salon' | 'domicile';
+    travelRadiusKm?: number | null;
   }): void {
     const existing = this.coiffeurApplications.get(params.profileId);
     this.coiffeurApplications.set(params.profileId, {
@@ -931,12 +976,12 @@ export class FakeSupabaseService {
       phone: params.phone ?? existing?.phone ?? '',
       salon_name: params.salonName ?? existing?.salon_name ?? '',
       description: params.description ?? existing?.description ?? '',
-      practice_zone: existing?.practice_zone ?? 'salon',
+      practice_zone: params.practiceZone ?? existing?.practice_zone ?? 'salon',
       address_line: params.addressLine !== undefined ? params.addressLine : (existing?.address_line ?? null),
       postal_code: params.postalCode !== undefined ? params.postalCode : (existing?.postal_code ?? null),
       city: params.city !== undefined ? params.city : (existing?.city ?? null),
       invoice_document_path: existing?.invoice_document_path ?? null,
-      travel_radius_km: existing?.travel_radius_km ?? null,
+      travel_radius_km: params.travelRadiusKm !== undefined ? params.travelRadiusKm : (existing?.travel_radius_km ?? null),
       identity_document_path: existing?.identity_document_path ?? 'x',
       diploma_document_path: existing?.diploma_document_path ?? 'x',
       kbis_document_path: existing?.kbis_document_path ?? 'x',
@@ -976,7 +1021,10 @@ export class FakeSupabaseService {
     confirmationMode?: 'manual' | 'instant';
     bookingNoticeMinutes?: number;
     cancellationNoticeMinutes?: number;
-    services?: { name: string; price: number; durationMin: number; specialty: string }[];
+    practiceZone?: 'salon' | 'domicile';
+    travelRadiusKm?: number | null;
+    instagramUrl?: string | null;
+    services?: { name: string; price: number; durationMin: number; specialty: string; isActive?: boolean }[];
     /** Listed salons need a live subscription (TODO.md Phase 4): by default an offered one, a year long. `false` = never subscribed. */
     subscribed?: boolean;
     /** Bookable salons need Stripe payouts (TODO.md Phase 5): by default a ready Connect account. `false` = none. */
@@ -1036,6 +1084,12 @@ export class FakeSupabaseService {
       confirmation_mode: params.confirmationMode ?? 'manual',
       booking_notice_minutes: params.bookingNoticeMinutes ?? 60,
       cancellation_notice_minutes: params.cancellationNoticeMinutes ?? 1440,
+      practice_zone: params.practiceZone ?? 'salon',
+      travel_radius_km: params.travelRadiusKm ?? null,
+      instagram_url: params.instagramUrl ?? null,
+      facebook_url: null,
+      tiktok_url: null,
+      website_url: null,
     });
     for (const service of params.services ?? []) {
       const id = randomUUID();
@@ -1047,6 +1101,7 @@ export class FakeSupabaseService {
         price: service.price,
         duration_min: service.durationMin,
         specialty: service.specialty,
+        is_active: service.isActive ?? true,
       });
     }
   }
@@ -1092,16 +1147,74 @@ export class FakeSupabaseService {
     return { data: owed.slice(0, params.p_limit as number), error: null };
   }
 
+  /** Mirrors search_salons() (schema.sql): visibility, every filter, the sorts and a stable order for pages. */
   private searchSalonsRpc(params: Record<string, unknown>): QueryResult {
-    const lat = params.p_lat as number | null | undefined;
-    const lng = params.p_lng as number | null | undefined;
-    const radiusKm = (params.p_radius_km as number | null | undefined) ?? null;
-    const specialty = (params.p_specialty as string | null | undefined) ?? null;
-    const city = (params.p_city as string | null | undefined) ?? null;
-    const query = (params.p_query as string | null | undefined) ?? null;
+    const param = <T>(key: string): T | null => (params[key] ?? null) as T | null;
+    const lat = param<number>('p_lat');
+    const lng = param<number>('p_lng');
+    const radiusKm = param<number>('p_radius_km');
+    const specialties = param<string[]>('p_specialties');
+    const city = param<string>('p_city');
+    const query = param<string>('p_query');
+    const priceMin = param<number>('p_price_min');
+    const priceMax = param<number>('p_price_max');
+    const openNow = params.p_open_now === true;
+    const openOn = param<string>('p_open_on');
+    const openAfter = param<number>('p_open_after');
+    const practiceZone = param<string>('p_practice_zone');
+    const bounds = param<number[]>('p_bounds');
+    const ids = param<string[]>('p_ids');
+    const sort = param<string>('p_sort') ?? 'distance';
+    const now = new Date(param<string>('p_now') ?? Date.now());
     const limit = (params.p_limit as number | undefined) ?? 20;
     const offset = (params.p_offset as number | undefined) ?? 0;
     const origin = lat != null && lng != null ? { lat, lng } : null;
+
+    const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const activeServices = (profileId: string) =>
+      [...this.services.values()].filter((service) => service.profile_id === profileId && service.is_active);
+    // Each salon's week: its own hours, or the default a new salon starts with.
+    const weekOf = (profileId: string) => {
+      const own = [...this.availability.values()].filter((day) => day.profile_id === profileId);
+      if (own.length > 0) return own;
+      return [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        profile_id: profileId,
+        weekday,
+        is_open: weekday !== 0,
+        opens_minute: 540,
+        closes_minute: 1140,
+        break_start_minute: weekday === 0 ? null : 780,
+        break_end_minute: weekday === 0 ? null : 840,
+      }));
+    };
+    const closuresOf = (profileId: string) => [...this.timeOff.values()].filter((closure) => closure.profile_id === profileId);
+    const isOpenNow = (profileId: string) => {
+      const paris = parisParts(now);
+      const minute = paris.hour * 60 + paris.minute;
+      const inHours = weekOf(profileId).some(
+        (day) =>
+          day.is_open &&
+          day.weekday === paris.weekday &&
+          minute >= day.opens_minute &&
+          minute < day.closes_minute &&
+          !(day.break_start_minute != null && minute >= day.break_start_minute && minute < (day.break_end_minute ?? 0)),
+      );
+      const closed = closuresOf(profileId).some(
+        (closure) => new Date(closure.starts_at) <= now && new Date(closure.ends_at) > now,
+      );
+      return inHours && !closed;
+    };
+    const isOpenOn = (profileId: string, date: string) => {
+      const [year, month, dayOfMonth] = date.split('-').map(Number);
+      const weekday = new Date(Date.UTC(year, month - 1, dayOfMonth)).getUTCDay();
+      return weekOf(profileId).some((day) => {
+        if (!day.is_open || day.weekday !== weekday) return false;
+        if (openAfter != null && day.closes_minute <= openAfter) return false;
+        const from = parisTime(year, month, dayOfMonth, 0, Math.max(day.opens_minute, openAfter ?? 0));
+        const to = parisTime(year, month, dayOfMonth, 0, day.closes_minute);
+        return !closuresOf(profileId).some((closure) => new Date(closure.starts_at) <= from && new Date(closure.ends_at) >= to);
+      });
+    };
 
     const rows = [...this.salonProfiles.values()]
       .map((profile) => ({
@@ -1113,16 +1226,58 @@ export class FakeSupabaseService {
       .filter(({ profile }) => this.profiles.get(profile.profile_id)?.account_status === 'active')
       // ...and its join on a live subscription.
       .filter(({ profile }) => isListedSubscription(this.subscriptions.get(profile.profile_id)))
-      .filter(({ profile }) => specialty == null || profile.specialties.includes(specialty))
+      .filter(({ profile }) => ids == null || ids.includes(profile.profile_id))
+      .filter(({ profile }) => specialties == null || specialties.length === 0 || profile.specialties.some((s) => specialties.includes(s)))
       .filter(({ profile }) => city == null || profile.city.toLowerCase() === city.toLowerCase())
-      .filter(({ profile }) => query == null || profile.salon_name.toLowerCase().includes(query.toLowerCase()))
+      .filter(({ profile }) => practiceZone == null || profile.practice_zone === practiceZone)
+      .filter(({ profile, application }) => {
+        const words = normalize(query?.trim() ?? '').split(/\s+/).filter(Boolean);
+        const haystack = normalize(
+          [
+            profile.salon_name,
+            application?.first_name,
+            application?.last_name,
+            profile.tagline,
+            profile.city,
+            profile.postal_code,
+            profile.address_line,
+            ...activeServices(profile.profile_id).map((service) => service.name),
+          ].join(' '),
+        );
+        return words.every((word) => haystack.includes(word));
+      })
+      .filter(
+        ({ profile }) =>
+          (priceMin == null && priceMax == null) ||
+          activeServices(profile.profile_id).some(
+            (service) => (priceMin == null || service.price >= priceMin) && (priceMax == null || service.price <= priceMax),
+          ),
+      )
+      .filter(({ profile }) => !openNow || isOpenNow(profile.profile_id))
+      .filter(({ profile }) => openOn == null || isOpenOn(profile.profile_id, openOn))
+      .filter(
+        ({ profile }) =>
+          openAfter == null ||
+          openOn != null ||
+          weekOf(profile.profile_id).some((day) => day.is_open && day.closes_minute > openAfter),
+      )
+      .filter(
+        ({ profile }) =>
+          bounds == null ||
+          (profile.latitude != null &&
+            profile.longitude != null &&
+            profile.latitude >= bounds[0] &&
+            profile.latitude <= bounds[2] &&
+            profile.longitude >= bounds[1] &&
+            profile.longitude <= bounds[3]),
+      )
       .map(({ profile, application }) => {
         const distanceKm =
           origin && profile.latitude != null && profile.longitude != null
             ? haversineKm(origin, { lat: profile.latitude, lng: profile.longitude })
             : null;
-        const services = [...this.services.values()].filter((s) => s.profile_id === profile.profile_id);
-        const priceFrom = services.length > 0 ? Math.min(...services.map((s) => Number(s.price))) : null;
+        const services = activeServices(profile.profile_id);
+        const account = this.payoutAccounts.get(profile.profile_id);
         return {
           profile_id: profile.profile_id,
           salon_name: profile.salon_name,
@@ -1141,7 +1296,12 @@ export class FakeSupabaseService {
           rating: profile.rating,
           review_count: profile.review_count,
           cover_url: profile.cover_url,
-          price_from: priceFrom,
+          price_from: services.length > 0 ? Math.min(...services.map((s) => Number(s.price))) : null,
+          shortest_duration_min: services.length > 0 ? Math.min(...services.map((s) => s.duration_min)) : null,
+          practice_zone: profile.practice_zone,
+          travel_radius_km: profile.travel_radius_km,
+          booking_notice_minutes: profile.booking_notice_minutes,
+          online_booking: Boolean((account?.stripe_account_id && account.payouts_enabled) || account?.bookable_without_payouts),
           distance_km: distanceKm,
         };
       })
@@ -1151,12 +1311,24 @@ export class FakeSupabaseService {
         (row) =>
           radiusKm == null || origin == null || (row.distance_km != null && row.distance_km <= radiusKm),
       )
+      // A home-service coiffeur only shows to clients they'd travel to.
+      .filter(
+        (row) =>
+          row.practice_zone !== 'domicile' ||
+          row.travel_radius_km == null ||
+          row.distance_km == null ||
+          row.distance_km <= row.travel_radius_km,
+      )
       .sort((a, b) => {
-        if ((a.distance_km == null) !== (b.distance_km == null)) return a.distance_km == null ? 1 : -1;
-        if (a.distance_km != null && b.distance_km != null && a.distance_km !== b.distance_km) {
-          return a.distance_km - b.distance_km;
-        }
-        return b.rating - a.rating;
+        const nullsLast = (x: number | null, y: number | null, direction: 1 | -1) =>
+          x === y ? 0 : x == null ? 1 : y == null ? -1 : (x - y) * direction;
+        return (
+          (sort === 'price' ? nullsLast(a.price_from, b.price_from, 1) : 0) ||
+          (sort === 'rating' ? nullsLast(a.rating, b.rating, -1) || b.review_count - a.review_count : 0) ||
+          nullsLast(a.distance_km, b.distance_km, 1) ||
+          b.rating - a.rating ||
+          (a.profile_id < b.profile_id ? -1 : a.profile_id > b.profile_id ? 1 : 0)
+        );
       });
 
     const totalCount = rows.length;
@@ -1276,6 +1448,12 @@ export class FakeSupabaseService {
               confirmation_mode: 'manual',
               booking_notice_minutes: 60,
               cancellation_notice_minutes: 1440,
+              practice_zone: 'salon',
+              travel_radius_km: null,
+              instagram_url: null,
+              facebook_url: null,
+              tiktok_url: null,
+              website_url: null,
             };
         const merged = skip ? (existing as SalonProfileRow) : ({ ...defaults, ...existing, ...row } as SalonProfileRow);
         if (!skip) rows.set(profileId, merged);
@@ -1330,7 +1508,7 @@ export class FakeSupabaseService {
         select: () => ({
           single: async (): Promise<QueryResult> => {
             const id = randomUUID();
-            const created = { ...row, id } as ServiceRow;
+            const created = { is_active: true, ...row, id } as ServiceRow;
             rows.set(id, created);
             return { data: created, error: null };
           },
@@ -1765,6 +1943,52 @@ export class FakeSupabaseService {
           const updated = { ...existing, ...patch, updated_at: new Date().toISOString() };
           rows.set(existing.id, updated);
           return { data: updated, count: 1 };
+        }),
+    };
+  }
+
+  private reviewReportsTable() {
+    const rows = this.reviewReports;
+
+    return {
+      select: () => new FakeSelectQuery<ReviewReportRow>(() => [...rows]),
+
+      /** The (review_id, reporter_id) primary key: one report per person per review. */
+      insert: async (row: Record<string, unknown>): Promise<QueryResult> => {
+        if (rows.some((report) => report.review_id === row.review_id && report.reporter_id === row.reporter_id)) {
+          return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+        }
+        rows.push({ ...(row as unknown as ReviewReportRow), details: (row.details as string | null | undefined) ?? null, created_at: new Date().toISOString() });
+        return { data: null, error: null };
+      },
+    };
+  }
+
+  private favoritesTable() {
+    const rows = this.favorites;
+    const key = (row: { particulier_id: unknown; coiffeur_id: unknown }) => `${row.particulier_id as string}:${row.coiffeur_id as string}`;
+
+    return {
+      select: () => new FakeSelectQuery<FavoriteRow>(() => [...rows.values()]),
+
+      /** `onConflict: 'particulier_id,coiffeur_id'` with `ignoreDuplicates`, like PostgREST. Each new row a moment after the last. */
+      upsert: async (row: Record<string, unknown>, options?: { ignoreDuplicates?: boolean }): Promise<QueryResult> => {
+        const existing = rows.get(key(row as { particulier_id: unknown; coiffeur_id: unknown }));
+        if (existing && options?.ignoreDuplicates) return { data: null, error: null };
+        this.lastFavoriteAt = Math.max(Date.now(), this.lastFavoriteAt + 1);
+        rows.set(key(row as { particulier_id: unknown; coiffeur_id: unknown }), {
+          ...(row as unknown as FavoriteRow),
+          created_at: existing?.created_at ?? new Date(this.lastFavoriteAt).toISOString(),
+        });
+        return { data: null, error: null };
+      },
+
+      delete: () =>
+        new FakeMutationQuery<FavoriteRow>((matches) => {
+          const existing = [...rows.values()].find(matches);
+          if (!existing) return { data: null, count: 0 };
+          rows.delete(key(existing));
+          return { data: existing, count: 1 };
         }),
     };
   }

@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
   DEFAULT_FILTERS,
   DISTANCE_OPTIONS,
+  OPEN_AFTER_OPTIONS,
+  PRACTICE_ZONE_OPTIONS,
+  PRICE_OPTIONS,
   SORT_OPTIONS,
+  dayOptions,
   type SalonFilters,
 } from "../../features/salons/filters";
 import { SPECIALTIES } from "../../features/salons/types";
@@ -17,11 +21,14 @@ import { Chip } from "../ui/Chip";
 interface FilterSheetProps {
   visible: boolean;
   filters: SalonFilters;
-  /** Live count for the current draft, so the CTA can say what it will show. */
-  countFor: (filters: SalonFilters) => number;
+  /** How many salons a draft would show — asked from the server, so the CTA can say it. */
+  countFor: (filters: SalonFilters) => Promise<number>;
   onApply: (filters: SalonFilters) => void;
   onClose: () => void;
 }
+
+/** A pause while chips are tapped in a row: one count per settled draft. */
+const COUNT_DELAY_MS = 350;
 
 /** Bottom sheet holding the search filters; edits are staged until "Voir". */
 export function FilterSheet({
@@ -33,10 +40,33 @@ export function FilterSheet({
 }: FilterSheetProps) {
   const { theme } = useTheme();
   const [draft, setDraft] = useState<SalonFilters>(filters);
+  /** `null` while the server is counting. */
+  const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (visible) setDraft(filters);
   }, [visible, filters]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    setCount(null);
+    const timer = setTimeout(() => {
+      countFor(draft)
+        .then((total) => {
+          if (!cancelled) setCount(total);
+        })
+        .catch(() => {
+          if (!cancelled) setCount(-1);
+        });
+    }, COUNT_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [visible, draft, countFor]);
+
+  const set = (patch: Partial<SalonFilters>) => setDraft((current) => ({ ...current, ...patch }));
 
   const toggleSpecialty = (id: SalonFilters["specialties"][number]) =>
     setDraft((current) => ({
@@ -46,7 +76,14 @@ export function FilterSheet({
         : [...current.specialties, id],
     }));
 
-  const count = countFor(draft);
+  const cta =
+    count === null
+      ? "Voir les salons"
+      : count === 0
+        ? "Aucun salon"
+        : count < 0
+          ? "Voir les salons"
+          : "Voir " + count + (count > 1 ? " salons" : " salon");
 
   return (
     <BottomSheet
@@ -62,11 +99,7 @@ export function FilterSheet({
             style={{ flex: 1 }}
           />
           <Button
-            label={
-              count === 0
-                ? "Aucun salon"
-                : "Voir " + count + (count > 1 ? " salons" : " salon")
-            }
+            label={cta}
             onPress={() => onApply(draft)}
             disabled={count === 0}
             style={{ flex: 1.4 }}
@@ -75,13 +108,7 @@ export function FilterSheet({
       }
     >
       <Section title="Prestation">
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: spacing.sm,
-          }}
-        >
+        <Wrap>
           {SPECIALTIES.map((specialty) => (
             <Chip
               key={specialty.id}
@@ -90,31 +117,83 @@ export function FilterSheet({
               onPress={() => toggleSpecialty(specialty.id)}
             />
           ))}
-        </View>
+        </Wrap>
+      </Section>
+
+      <Section title="Budget">
+        <Wrap>
+          <Chip
+            label="Tous les prix"
+            selected={draft.priceMin === null && draft.priceMax === null}
+            onPress={() => set({ priceMin: null, priceMax: null })}
+          />
+          {PRICE_OPTIONS.map((option) => (
+            <Chip
+              key={option.label}
+              label={option.label}
+              selected={draft.priceMin === option.min && draft.priceMax === option.max}
+              onPress={() => set({ priceMin: option.min, priceMax: option.max })}
+            />
+          ))}
+        </Wrap>
+      </Section>
+
+      <Section title="Quand">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+          <Chip label="Peu importe" selected={draft.openWhen === null} onPress={() => set({ openWhen: null })} />
+          <Chip
+            label="Ouvert maintenant"
+            icon="clock-outline"
+            selected={draft.openWhen === "now"}
+            onPress={() => set({ openWhen: "now", openAfter: null })}
+          />
+          {dayOptions(7).map((day) => (
+            <Chip key={day.key} label={day.label} selected={draft.openWhen === day.key} onPress={() => set({ openWhen: day.key })} />
+          ))}
+        </ScrollView>
+      </Section>
+
+      {draft.openWhen !== "now" ? (
+        <Section title="Ouvert après">
+          <Wrap>
+            <Chip label="Peu importe" selected={draft.openAfter === null} onPress={() => set({ openAfter: null })} />
+            {OPEN_AFTER_OPTIONS.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                selected={draft.openAfter === option.value}
+                onPress={() => set({ openAfter: option.value })}
+              />
+            ))}
+          </Wrap>
+        </Section>
+      ) : null}
+
+      <Section title="Où">
+        <Wrap>
+          {PRACTICE_ZONE_OPTIONS.map((option) => (
+            <Chip
+              key={option.label}
+              label={option.label}
+              icon={option.value === "domicile" ? "home-outline" : undefined}
+              selected={draft.practiceZone === option.value}
+              onPress={() => set({ practiceZone: option.value })}
+            />
+          ))}
+        </Wrap>
       </Section>
 
       <Section title="Distance maximale">
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: spacing.sm,
-          }}
-        >
+        <Wrap>
           {DISTANCE_OPTIONS.map((option) => (
             <Chip
               key={option.label}
               label={option.label}
               selected={draft.maxDistanceKm === option.value}
-              onPress={() =>
-                setDraft((current) => ({
-                  ...current,
-                  maxDistanceKm: option.value,
-                }))
-              }
+              onPress={() => set({ maxDistanceKm: option.value })}
             />
           ))}
-        </View>
+        </Wrap>
       </Section>
 
       <Section title="Trier par">
@@ -124,12 +203,7 @@ export function FilterSheet({
             return (
               <Pressable
                 key={option.value}
-                onPress={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    sort: option.value,
-                  }))
-                }
+                onPress={() => set({ sort: option.value })}
                 accessibilityRole="radio"
                 accessibilityState={{ selected }}
                 style={{
@@ -178,6 +252,10 @@ export function FilterSheet({
       </Section>
     </BottomSheet>
   );
+}
+
+function Wrap({ children }: { children: React.ReactNode }) {
+  return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>{children}</View>;
 }
 
 function Section({

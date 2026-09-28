@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../lib/apiClient";
 import type { DaySlots } from "./slots";
-import type { Closure, ConfirmationMode, OpeningDay, Review, Salon, Service, SpecialtyId } from "./types";
+import type { Coordinates } from "./geo";
+import { searchParams, type MapBounds, type SalonFilters } from "./filters";
+import type { Closure, ConfirmationMode, OpeningDay, Review, Salon, Service, SocialLinks, SpecialtyId } from "./types";
 
 /**
  * Real search/detail (server/src/discovery/) replacing the old mock
@@ -26,6 +28,10 @@ interface SalonSummaryResponse {
   reviewCount: number;
   coverUrl: string | null;
   priceFrom: number | null;
+  onlineBooking?: boolean;
+  nextSlot?: string | null;
+  practiceZone?: "salon" | "domicile";
+  travelRadiusKm?: number | null;
 }
 
 interface SalonServiceResponse {
@@ -55,6 +61,10 @@ interface SalonDetailResponse extends SalonSummaryResponse {
   cancellationNoticeMinutes: number;
   closures: Closure[];
   onlineBooking: boolean;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  tiktokUrl?: string | null;
+  websiteUrl?: string | null;
 }
 
 interface SalonExtra {
@@ -66,7 +76,7 @@ interface SalonExtra {
   bookingNoticeMinutes: number;
   cancellationNoticeMinutes: number;
   closures: Closure[];
-  onlineBooking: boolean;
+  socialLinks: SocialLinks;
 }
 
 interface SalonSearchResponse {
@@ -102,6 +112,7 @@ interface ReviewResponse {
   comment: string;
   reply?: string;
   createdAt: string;
+  reportedByMe?: boolean;
 }
 
 function toReview(review: ReviewResponse): Review {
@@ -112,8 +123,11 @@ function toReview(review: ReviewResponse): Review {
     date: review.createdAt,
     comment: review.comment,
     reply: review.reply,
+    reportedByMe: review.reportedByMe ?? false,
   };
 }
+
+const NO_LINKS: SocialLinks = { instagram: null, facebook: null, tiktok: null, website: null };
 
 function toSalon(summary: SalonSummaryResponse, extra?: SalonExtra): Salon {
   return {
@@ -143,19 +157,57 @@ function toSalon(summary: SalonSummaryResponse, extra?: SalonExtra): Salon {
     bookingNoticeMinutes: extra?.bookingNoticeMinutes ?? 0,
     cancellationNoticeMinutes: extra?.cancellationNoticeMinutes ?? 0,
     closures: extra?.closures ?? [],
-    onlineBooking: extra?.onlineBooking ?? false,
+    onlineBooking: summary.onlineBooking ?? false,
+    practiceZone: summary.practiceZone ?? "salon",
+    travelRadiusKm: summary.travelRadiusKm ?? null,
+    nextSlot: summary.nextSlot ?? null,
+    socialLinks: extra?.socialLinks ?? NO_LINKS,
   };
 }
 
+export interface SalonPage {
+  items: Salon[];
+  /** Every match, beyond this page. */
+  total: number;
+}
+
 /**
- * Every visible salon. Distance, specialty/text filters and sorting all
- * stay client-side (see features/salons/geo.ts, filters.ts) so re-filtering
- * or moving the map never needs a round trip — this is the discover/search
- * screens' one shared fetch.
+ * One page of the search, filtered and sorted by the server (TODO.md Phase
+ * 6) — the list pages through them; the map passes the area it shows.
  */
-export async function fetchSalons(): Promise<Salon[]> {
-  const { data } = await apiClient.get<SalonSearchResponse>("/salons", { params: { limit: 100 } });
-  return data.items.map((item) => toSalon(item));
+export async function searchSalons(
+  filters: SalonFilters,
+  from: Coordinates | null,
+  page: { limit: number; offset: number },
+  bounds?: MapBounds,
+): Promise<SalonPage> {
+  const { data } = await apiClient.get<SalonSearchResponse>("/salons", {
+    params: searchParams(filters, from, page, bounds),
+  });
+  return { items: data.items.map((item) => toSalon(item)), total: data.total };
+}
+
+/** How many salons these filters would show — the filter sheet's « Voir N salons ». */
+export async function countSalons(filters: SalonFilters, from: Coordinates | null): Promise<number> {
+  return (await searchSalons(filters, from, { limit: 1, offset: 0 })).total;
+}
+
+// ─── Favorites ─────────────────────────────────────────────────────────────
+
+/** The client's favorite salons, the latest first; distances from `from`. */
+export async function fetchFavorites(from?: Coordinates): Promise<Salon[]> {
+  const { data } = await apiClient.get<SalonSummaryResponse[]>("/favorites", {
+    params: from ? { lat: from.latitude, lng: from.longitude } : undefined,
+  });
+  return data.map((item) => toSalon(item));
+}
+
+export async function addFavorite(salonId: string): Promise<void> {
+  await apiClient.post("/favorites", { coiffeurId: salonId });
+}
+
+export async function removeFavorite(salonId: string): Promise<void> {
+  await apiClient.delete(`/favorites/${salonId}`);
 }
 
 export async function fetchSalonById(id: string): Promise<Salon | undefined> {
@@ -173,7 +225,12 @@ export async function fetchSalonById(id: string): Promise<Salon | undefined> {
       bookingNoticeMinutes: data.bookingNoticeMinutes ?? 0,
       cancellationNoticeMinutes: data.cancellationNoticeMinutes ?? 0,
       closures: data.closures ?? [],
-      onlineBooking: data.onlineBooking ?? false,
+      socialLinks: {
+        instagram: data.instagramUrl ?? null,
+        facebook: data.facebookUrl ?? null,
+        tiktok: data.tiktokUrl ?? null,
+        website: data.websiteUrl ?? null,
+      },
     });
   } catch {
     return undefined;

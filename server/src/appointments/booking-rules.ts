@@ -19,6 +19,15 @@ export interface BusyBooking {
   durationMin: number;
 }
 
+/**
+ * Past the end of a subscription on its way out (cancelled, or an offered
+ * one), the salon leaves WorldHair: nothing after it can be booked or moved
+ * to. A closure with no end, or none.
+ */
+export function closedAfter(endsAt: string | null): TimeRange[] {
+  return endsAt ? [{ startsAt: endsAt, endsAt: '9999-12-31T00:00:00.000Z' }] : [];
+}
+
 export interface BookingRules {
   availability: AvailabilityDay[];
   /** Congés and exceptional closures. */

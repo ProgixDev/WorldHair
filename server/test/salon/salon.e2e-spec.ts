@@ -51,6 +51,45 @@ describe('salon (e2e)', () => {
     expect(updated.body).toMatchObject({ salonName: 'Studio W', specialties: ['coupe', 'afro'] });
   });
 
+  it("saves the salon's social links, empties one, and refuses a link to the wrong site", async () => {
+    const auth = { Authorization: `Bearer ${coiffeurToken}` };
+
+    await request(server)
+      .patch('/salon/me')
+      .set(auth)
+      .send({ instagramUrl: 'https://instagram.com/studio.w', tiktokUrl: 'https://www.tiktok.com/@studiow', websiteUrl: '' })
+      .expect(200)
+      .expect((res) =>
+        expect(res.body).toMatchObject({
+          instagramUrl: 'https://instagram.com/studio.w',
+          tiktokUrl: 'https://www.tiktok.com/@studiow',
+          websiteUrl: null,
+        }),
+      );
+
+    for (const bad of [{ instagramUrl: 'https://facebook.com/studiow' }, { websiteUrl: 'pas un lien' }, { facebookUrl: 'facebook.com/x' }]) {
+      await request(server).patch('/salon/me').set(auth).send(bad).expect(400);
+    }
+  });
+
+  it('hides a service from clients, and shows it again', async () => {
+    const auth = { Authorization: `Bearer ${coiffeurToken}` };
+    const created = await request(server)
+      .post('/salon/me/services')
+      .set(auth)
+      .send({ name: 'Coupe', price: 30, durationMin: 30, specialty: 'coupe' })
+      .expect(201);
+    expect(created.body.isActive).toBe(true);
+
+    await request(server)
+      .patch(`/salon/me/services/${created.body.id}`)
+      .set(auth)
+      .send({ isActive: false })
+      .expect(200)
+      .expect((res) => expect(res.body.isActive).toBe(false));
+    await request(server).patch(`/salon/me/services/${created.body.id}`).set(auth).send({ isActive: 'no' }).expect(400);
+  });
+
   it('rejects an unknown specialty', async () => {
     await request(server)
       .patch('/salon/me')

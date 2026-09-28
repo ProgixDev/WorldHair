@@ -410,6 +410,11 @@ async function seedSalonWorkspace(
       longitude: 2.3765,
       phone: "06 12 34 56 78",
       specialties: salon.specialties,
+      // Demo handles — shown as icons on the salon page (TODO.md Phase 6).
+      instagram_url: "https://instagram.com/studio.w.demo",
+      tiktok_url: "https://www.tiktok.com/@studio.w.demo",
+      facebook_url: null,
+      website_url: null,
     },
     { onConflict: "profile_id" },
   );
@@ -439,15 +444,18 @@ async function seedSalonWorkspace(
     .eq("profile_id", userId);
   if (deleteError) throw deleteError;
 
-  const { error: servicesError } = await supabase.from("coiffeur_services").insert(
-    salon.services.map((service) => ({
+  const { error: servicesError } = await supabase.from("coiffeur_services").insert([
+    ...salon.services.map((service) => ({
       profile_id: userId,
       name: service.name,
       price: service.price,
       duration_min: service.durationMin,
       specialty: service.specialty,
+      is_active: true,
     })),
-  );
+    // Hidden (TODO.md Phase 6): in the coiffeur's list, nowhere for clients.
+    { profile_id: userId, name: "Lissage brésilien", price: 150, duration_min: 150, specialty: "soins", is_active: false },
+  ]);
   if (servicesError) throw servicesError;
 
   await offerSubscription(supabase, userId);
@@ -459,7 +467,25 @@ async function seedSalonWorkspace(
     .upsert({ profile_id: userId, bookable_without_payouts: true }, { onConflict: "profile_id" });
   if (payoutError) throw payoutError;
 
-  console.log(`  ${userId}: salon workspace seeded (${salon.services.length} services, offered subscription)`);
+  console.log(`  ${userId}: salon workspace seeded (${salon.services.length} services + 1 hidden, offered subscription)`);
+}
+
+/** Hearts on Studio W and two catalogue salons, when `seed:catalogue` has run (TODO.md Phase 6). */
+async function seedDemoFavorites(particulierId: string, coiffeurId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("coiffeur_profiles")
+    .select("profile_id")
+    .in("salon_name", ["Racines", "Maison Tresse"]);
+  if (error) throw error;
+  const ids = [coiffeurId, ...(data as { profile_id: string }[]).map((row) => row.profile_id)];
+  const { error: favoritesError } = await supabase
+    .from("favorites")
+    .upsert(
+      ids.map((id) => ({ particulier_id: particulierId, coiffeur_id: id })),
+      { onConflict: "particulier_id,coiffeur_id", ignoreDuplicates: true },
+    );
+  if (favoritesError) throw favoritesError;
+  return ids.length;
 }
 
 async function main(): Promise<void> {
@@ -483,6 +509,7 @@ async function main(): Promise<void> {
       reviewerIds: await upsertReviewers(supabase),
     });
     console.log(`  demo salon reviews seeded (${reviews})`);
+    console.log(`  demo client favorites seeded (${await seedDemoFavorites(particulierId, coiffeurId)})`);
   }
 
   console.log("\nDone. All demo accounts share the password:", DEMO_PASSWORD);

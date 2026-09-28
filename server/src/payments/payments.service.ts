@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type Stripe from 'stripe';
+import { slices } from '../common/utils/slices';
 import { paymentReturnPageUrl } from '../common/utils/web-links';
 import { EnvironmentVariables } from '../config/env.validation';
 import { SupabaseService } from '../database/supabase.service';
@@ -105,8 +106,6 @@ const PAYOUT_BATCH = 200;
 const OWED_BATCH = 100;
 /** PostgREST's max rows per answer. */
 const PAGE_ROWS = 1000;
-/** Ids per `in` filter: a longer list would overflow the request's URL. */
-const IDS_PER_QUERY = 100;
 
 const toCents = (euros: number) => Math.round(euros * 100);
 const round2 = (euros: number) => Math.round(euros * 100) / 100;
@@ -114,12 +113,6 @@ const round2 = (euros: number) => Math.round(euros * 100) / 100;
 /** The salon's share of what the client kept: the commission comes off, to the cent. */
 function salonShare(kept: number, commissionRate: number): number {
   return round2(kept - round2((kept * commissionRate) / 100));
-}
-
-function slices<T>(items: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let start = 0; start < items.length; start += size) result.push(items.slice(start, start + size));
-  return result;
 }
 
 /**
@@ -619,7 +612,7 @@ export class PaymentsService {
 
   private async namesFor(ids: string[]): Promise<Map<string, string>> {
     const names = new Map<string, string>();
-    for (const slice of slices(ids, IDS_PER_QUERY)) {
+    for (const slice of slices(ids)) {
       const { data, error } = await this.supabase.client.from('profiles').select().in('id', slice);
       if (error) {
         throw new InternalServerErrorException(error.message);
@@ -633,7 +626,7 @@ export class PaymentsService {
 
   private async salonNamesFor(ids: string[]): Promise<Map<string, string>> {
     const names = new Map<string, string>();
-    for (const slice of slices(ids, IDS_PER_QUERY)) {
+    for (const slice of slices(ids)) {
       const { data, error } = await this.supabase.client.from('coiffeur_profiles').select().in('profile_id', slice);
       if (error) {
         throw new InternalServerErrorException(error.message);

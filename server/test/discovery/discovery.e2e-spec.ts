@@ -78,6 +78,53 @@ describe('discovery (e2e)', () => {
     expect(nearParis.body.items.map((item: { id: string }) => item.id)).toEqual(['paris-salon']);
   });
 
+  it('takes the new filters and sorts as query parameters', async () => {
+    harness.supabase.seedValidatedSalon({
+      profileId: 'paris-afro',
+      firstName: 'Awa',
+      lastName: 'Diallo',
+      salonName: 'Afro Paris',
+      latitude: 48.8606,
+      longitude: 2.3376,
+      specialties: ['afro'],
+      services: [{ name: 'Tresses', price: 45, durationMin: 60, specialty: 'afro' }],
+    });
+    harness.supabase.seedValidatedSalon({
+      profileId: 'paris-barbier',
+      firstName: 'Karim',
+      lastName: 'Haddad',
+      salonName: 'Barbier Paris',
+      latitude: 48.87,
+      longitude: 2.34,
+      specialties: ['barbier'],
+      services: [{ name: 'Barbe', price: 90, durationMin: 30, specialty: 'barbier' }],
+    });
+
+    const res = await request(server)
+      .get('/salons')
+      .query({
+        specialties: 'afro,barbier',
+        priceMax: 50,
+        openAfter: '10:00',
+        practiceZone: 'salon',
+        bounds: '48,2,49.5,3',
+        sort: 'availability',
+        query: 'tresses',
+      })
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .expect(200);
+
+    expect(res.body.items).toEqual([
+      expect.objectContaining({ id: 'paris-afro', onlineBooking: true, practiceZone: 'salon', nextSlot: expect.any(String) }),
+    ]);
+  });
+
+  it('refuses a bad sort, time, day or map area', async () => {
+    for (const query of [{ sort: 'cheapest' }, { openAfter: '25:00' }, { openOn: '03/10/2026' }, { bounds: '48,2,49' }, { openNow: 'maybe' }]) {
+      await request(server).get('/salons').query(query).set('Authorization', `Bearer ${particulierToken}`).expect(400);
+    }
+  });
+
   it('rejects an unknown specialty', async () => {
     await request(server)
       .get('/salons')

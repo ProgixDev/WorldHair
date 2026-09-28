@@ -46,6 +46,22 @@ describe('CoiffeurProfileSeedListener', () => {
     });
   });
 
+  it('copies how a home-service coiffeur works: search filters on it', async () => {
+    supabase.seedApplication({
+      profileId: PROFILE_ID,
+      firstName: 'Sofia',
+      lastName: 'Benali',
+      salonName: 'Sofia à domicile',
+      practiceZone: 'domicile',
+      travelRadiusKm: 20,
+      status: 'validated',
+    });
+
+    await listener.onDecided({ applicationId: 'app-1', profileId: PROFILE_ID, status: 'validated' });
+
+    await expect(salon.getProfile(PROFILE_ID)).resolves.toMatchObject({ practiceZone: 'domicile', travelRadiusKm: 20 });
+  });
+
   it('never overwrites a profile the coiffeur has already customized', async () => {
     supabase.seedApplication({ profileId: PROFILE_ID, firstName: 'Sofia', lastName: 'Benali', status: 'validated' });
     await salon.updateProfile(PROFILE_ID, { salonName: 'Already renamed' });

@@ -80,6 +80,8 @@ export interface Review {
   reply?: string;
   createdAt: string;
   status: "visible" | "reported" | "hidden";
+  /** Whether the reader reported it — always false in the admin's lists. */
+  reportedByMe: boolean;
 }
 
 export async function listReportedReviews(): Promise<Review[]> {

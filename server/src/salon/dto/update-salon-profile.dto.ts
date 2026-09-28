@@ -1,3 +1,5 @@
+import { applyDecorators } from '@nestjs/common';
+import { Transform } from 'class-transformer';
 import {
   IsArray,
   IsIn,
@@ -7,6 +9,7 @@ import {
   IsLongitude,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
   Max,
   MaxLength,
@@ -24,6 +27,19 @@ export type ConfirmationMode = (typeof CONFIRMATION_MODES)[number];
 
 /** Two weeks — the longest deadline the app offers is two days, this only bounds nonsense values. */
 export const MAX_NOTICE_MINUTES = 20160;
+
+/**
+ * A link to the salon's own page on a network (`hosts`), or anywhere for
+ * its website; "" or null removes it.
+ */
+function SocialUrl(hosts?: string[]): PropertyDecorator {
+  return applyDecorators(
+    Transform(({ value }: { value: unknown }) => (value === '' ? null : value)),
+    IsOptional(),
+    IsUrl({ protocols: ['https', 'http'], require_protocol: true, ...(hosts ? { host_whitelist: hosts } : {}) }),
+    MaxLength(300),
+  );
+}
 
 export class UpdateSalonProfileDto {
   @IsOptional()
@@ -114,4 +130,16 @@ export class UpdateSalonProfileDto {
   @Min(0)
   @Max(MAX_NOTICE_MINUTES)
   cancellationNoticeMinutes?: number;
+
+  @SocialUrl(['instagram.com', 'www.instagram.com'])
+  instagramUrl?: string | null;
+
+  @SocialUrl(['facebook.com', 'www.facebook.com', 'm.facebook.com', 'fb.com', 'www.fb.com'])
+  facebookUrl?: string | null;
+
+  @SocialUrl(['tiktok.com', 'www.tiktok.com', 'vm.tiktok.com'])
+  tiktokUrl?: string | null;
+
+  @SocialUrl()
+  websiteUrl?: string | null;
 }

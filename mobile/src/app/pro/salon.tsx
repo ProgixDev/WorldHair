@@ -35,7 +35,7 @@ import {
   type ConfirmationMode,
   type SpecialtyId,
 } from "../../features/salons/types";
-import { newServiceId } from "../../services/pro";
+import { newServiceId, proErrorMessage } from "../../services/pro";
 import { formatDuration, formatPrice, minutesToTime } from "../../utils/date";
 import { isValidPostalCodeFr } from "../../utils/validation";
 
@@ -198,8 +198,8 @@ export default function ProSalonPage() {
       // normalizes (uploaded cover URL, phone format), and a leftover
       // mismatch kept the save bar up forever, as if nothing had saved.
       setDraft(await saveProfile(draft));
-    } catch {
-      Alert.alert("Enregistrement impossible", "Vérifiez vos informations et réessayez.");
+    } catch (err) {
+      Alert.alert("Enregistrement impossible", proErrorMessage(err, "Vérifiez vos informations et réessayez."));
     } finally {
       setSaving(false);
     }
@@ -395,6 +395,41 @@ export default function ProSalonPage() {
                   />
                 ))}
               </View>
+            </View>
+
+            {/* Social links: icons on the public page (TODO.md Phase 6). */}
+            <View style={{ gap: spacing.md }}>
+              <Text style={[typography.label, { color: theme.foreground.gray }]}>
+                Réseaux sociaux (facultatif)
+              </Text>
+              <TextField
+                label="Instagram"
+                value={draft.instagramUrl}
+                onChangeText={(instagramUrl) => patch({ instagramUrl })}
+                placeholder="@votre.salon ou lien"
+                keyboardType="url"
+              />
+              <TextField
+                label="Facebook"
+                value={draft.facebookUrl}
+                onChangeText={(facebookUrl) => patch({ facebookUrl })}
+                placeholder="@votresalon ou lien"
+                keyboardType="url"
+              />
+              <TextField
+                label="TikTok"
+                value={draft.tiktokUrl}
+                onChangeText={(tiktokUrl) => patch({ tiktokUrl })}
+                placeholder="@votresalon ou lien"
+                keyboardType="url"
+              />
+              <TextField
+                label="Site web"
+                value={draft.websiteUrl}
+                onChangeText={(websiteUrl) => patch({ websiteUrl })}
+                placeholder="www.votresalon.fr"
+                keyboardType="url"
+              />
             </View>
           </View>
 
@@ -631,6 +666,8 @@ export default function ProSalonPage() {
                       backgroundColor: theme.surface.raised,
                       borderWidth: 1,
                       borderColor: theme.divider,
+                      // Hidden from clients: still here, visibly set aside.
+                      opacity: service.isActive === false ? 0.6 : 1,
                     },
                     elevation(1, theme.shadow),
                   ]}
@@ -653,7 +690,8 @@ export default function ProSalonPage() {
                     >
                       {formatDuration(service.durationMin) +
                         " · " +
-                        specialtyLabel(service.specialty)}
+                        specialtyLabel(service.specialty) +
+                        (service.isActive === false ? " · Masquée" : "")}
                     </Text>
                   </View>
 

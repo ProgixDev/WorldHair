@@ -10,6 +10,8 @@ import { formatDistance } from "../../features/salons/geo";
 import { specialtyLabel } from "../../features/salons/types";
 import type { SalonWithDistance } from "../../features/salons/types";
 import { formatPrice } from "../../utils/date";
+import { HeartButton } from "./HeartButton";
+import { HomeServiceTag, NextSlotLine } from "./SalonAvailability";
 import { SalonRating } from "./SalonRating";
 
 interface SalonCardProps {
@@ -63,12 +65,15 @@ export function SalonCard({ salon, width, onPress, active }: SalonCardProps) {
         style={{ flex: 1, justifyContent: "space-between", gap: spacing.xs }}
       >
         <View style={{ gap: 2 }}>
-          <Text
-            style={[typography.bodyMedium, { color: theme.foreground.white }]}
-            numberOfLines={1}
-          >
-            {salon.name}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+            <Text
+              style={[typography.bodyMedium, { color: theme.foreground.white, flex: 1 }]}
+              numberOfLines={1}
+            >
+              {salon.name}
+            </Text>
+            <HeartButton salon={salon} size={18} />
+          </View>
           <Text
             style={[typography.caption, { color: theme.foreground.gray }]}
             numberOfLines={1}
@@ -77,6 +82,8 @@ export function SalonCard({ salon, width, onPress, active }: SalonCardProps) {
               ? salon.badges[0]
               : salon.specialties.map(specialtyLabel).slice(0, 2).join(" · ")}
           </Text>
+          <HomeServiceTag salon={salon} />
+          <NextSlotLine salon={salon} />
         </View>
 
         <View

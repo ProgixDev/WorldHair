@@ -408,33 +408,60 @@ Stripe's native SDK (migration `phase5_web_checkout`).
 
 ## Phase 6 — Discovery, salon page and profile
 
-- [ ] **Search filtering on the server**: `fetchSalons` downloads at most 100
+Done 2026-09-28 in code, tests, the dev database (migration
+`phase6_discovery`) and the demo data. Decided on the way: the price filter
+keeps salons with a visible prestation in the range; « Ouvert après » without
+a day means on any day; a home-service coiffeur only shows to clients within
+their travel radius; « Disponible au plus tôt » ranks the 200 nearest
+matches; the map searches the area only after the client moves it; a
+client's or a salon's report flags a review for the admins, it stays visible
+until they decide.
+
+- [x] **Search filtering on the server**: `fetchSalons` downloads at most 100
       salons and filters them on the phone, so salon 101 and beyond silently
       disappear. Move filters and sorts into `search_salons()` / `GET /salons`
       with pagination; the map asks for the visible area.
-- [ ] **Missing filters** (devis, filtres utiles): price range, opening hours
+      Done: every filter, sort and page in `search_salons()` (accents
+      folded with `unaccent`, a stable order for pages); the list loads 20
+      at a time as it scrolls; the filter sheet counts on the server.
+- [x] **Missing filters** (devis, filtres utiles): price range, opening hours
       (open now, a given day, after a given time), salon or home service (copy
       `practice_zone` and the travel radius from the application into
       `coiffeur_profiles`, in `CoiffeurProfileSeedListener`).
-- [ ] **Sort by availability** (devis: tri par distance, note et
+      Done: « Budget », « Quand » (maintenant, a day), « Ouvert après »,
+      « Où » (en salon / à domicile); salons already validated got their
+      zone from their application in the migration.
+- [x] **Sort by availability** (devis: tri par distance, note et
       disponibilité): next free slot per salon from the Phase 2 engine, shown
       on the cards ("Dispo aujourd'hui 14:30").
-- [ ] **Favorites**: `favorites` table (particulier_id, coiffeur_id), `GET`,
+      Done: the booking grid's own rules for the shortest visible
+      prestation, within two weeks, in a few batched queries; on the cards
+      and the salon page. Only salons bookable online have one.
+- [x] **Favorites**: `favorites` table (particulier_id, coiffeur_id), `GET`,
       `POST` and `DELETE /favorites`, a heart on salon cards and the salon
       page, a "Favoris" list in the profile tab.
-- [ ] **Social links** on the salon page: Instagram, Facebook, TikTok and
+      Done; a salon that leaves WorldHair drops out of the list by itself.
+- [x] **Social links** on the salon page: Instagram, Facebook, TikTok and
       website columns on `coiffeur_profiles` (validated URLs), pro edit form,
       icons on the public page.
-- [ ] **Hide a service** (devis: prestation active ou masquée):
+      Done: each link must point to its own site; « @handle » is turned into
+      the link in the app.
+- [x] **Hide a service** (devis: prestation active ou masquée):
       `coiffeur_services.is_active`. Hidden services are excluded from the
       public page, from `price_from` and from booking. Toggle in the service
       editor.
-- [ ] **"Signaler" on reviews**: a button on each review on the salon page
+      Done: « Visible par les clients » in the editor; the row dims and reads
+      « Masquée ».
+- [x] **"Signaler" on reviews**: a button on each review on the salon page
       (client) and in `/pro/reviews` (coiffeur), with a reason picker, calling
       the existing `POST /reviews/:id/report`. One report per user per review.
-- [ ] **Complete coiffeur stats** (devis: réservations, taux de remplissage,
+      Done: `review_reports` keeps who reported and why (for Phase 7's admin
+      view); the author can't report their own review; « Signalé » once sent.
+- [x] **Complete coiffeur stats** (devis: réservations, taux de remplissage,
       CA, avis reçus): add reviews received (count and average) and the weekly
       fill rate to the dashboard.
+      Done: « Remplissage cette semaine » (accepted bookings over open hours,
+      lunch and closures left out) and « N avis reçus » with the average.
 
 ## Phase 7 — Back-office completion
 

@@ -62,6 +62,8 @@ interface SalonSeed {
   reviewCount: number;
   specialties: SpecialtyId[];
   badges?: string[];
+  /** Comes to the client's home within this many km instead of receiving in a salon (TODO.md Phase 6). */
+  travelRadiusKm?: number;
 }
 
 // ─── Ported verbatim from mobile/src/features/salons/data.ts ───────────────
@@ -194,7 +196,7 @@ const SEEDS: SalonSeed[] = [
   { id: "le-comptoir-barbier", name: "Le Comptoir Barbier", stylist: "Yanis Kaced", tagline: "Barbe travaillée, serviette chaude", description: "Barbier traditionnel : rasage au coupe-chou, dégradés américains et entretien de barbe à l'huile chaude.", addressLine: "7 rue Oberkampf", postalCode: "75011", city: "Paris", latitude: 48.8649, longitude: 2.3689, rating: 4.7, reviewCount: 96, specialties: ["barbier", "coupe"] },
   { id: "atelier-nuance", name: "Atelier Nuance", stylist: "Claire Fontaine", tagline: "Colorations végétales & blond froid", description: "Coloriste exclusive. Blonds polaires, patines sur-mesure et couleurs végétales pour les cuirs chevelus sensibles.", addressLine: "23 rue de Turenne", postalCode: "75003", city: "Paris", latitude: 48.8595, longitude: 2.3629, rating: 4.6, reviewCount: 74, specialties: ["coloration", "soins"] },
   { id: "racines", name: "Racines", stylist: "Nadia Oumar", tagline: "Cheveux texturés, coupe à sec", description: "Coupe à sec boucle par boucle, diagnostic de porosité et routine personnalisée. Produits sans silicone.", addressLine: "5 rue du Faubourg Saint-Denis", postalCode: "75010", city: "Paris", latitude: 48.8705, longitude: 2.3538, rating: 4.9, reviewCount: 158, specialties: ["afro", "coupe", "soins"], badges: ["Coup de cœur"] },
-  { id: "salon-celeste", name: "Salon Céleste", stylist: "Marie Lambert", tagline: "Chignons et coiffures de mariage", description: "Essais mariage, chignons tressés et coiffures d'invitées. Déplacement possible le jour J.", addressLine: "31 avenue Victor Hugo", postalCode: "75116", city: "Paris", latitude: 48.8709, longitude: 2.2861, rating: 4.8, reviewCount: 62, specialties: ["mariage", "coupe"] },
+  { id: "salon-celeste", name: "Salon Céleste", stylist: "Marie Lambert", tagline: "Chignons et coiffures de mariage", description: "Essais mariage, chignons tressés et coiffures d'invitées. Déplacement possible le jour J.", addressLine: "31 avenue Victor Hugo", postalCode: "75116", city: "Paris", latitude: 48.8709, longitude: 2.2861, rating: 4.8, reviewCount: 62, specialties: ["mariage", "coupe"], travelRadiusKm: 25 },
   { id: "coupe-carre", name: "Coupe Carré", stylist: "Léo Mercier", tagline: "Coupes graphiques, sans chichi", description: "Coupe franche, carré court, mulet moderne. Trente minutes chrono, tarif unique.", addressLine: "88 rue de Charonne", postalCode: "75011", city: "Paris", latitude: 48.8541, longitude: 2.3835, rating: 4.5, reviewCount: 187, specialties: ["coupe"] },
   { id: "onde", name: "Onde", stylist: "Chloé Rivière", tagline: "Ondulations douces & soins bio", description: "Permanentes modernes, brushings texturés et soins à base d'huiles froides pressées.", addressLine: "14 rue Daguerre", postalCode: "75014", city: "Paris", latitude: 48.8339, longitude: 2.3271, rating: 4.7, reviewCount: 91, specialties: ["coupe", "soins", "coloration"] },
   { id: "atelier-montmartre", name: "Atelier Montmartre", stylist: "Julien Roche", tagline: "Coiffeur de quartier, esprit atelier", description: "Un fauteuil, un client à la fois. Coupes classiques revisitées et conseils sans jargon.", addressLine: "3 rue des Abbesses", postalCode: "75018", city: "Paris", latitude: 48.8845, longitude: 2.3383, rating: 4.6, reviewCount: 143, specialties: ["coupe", "barbier"] },
@@ -206,7 +208,7 @@ const SEEDS: SalonSeed[] = [
   { id: "tresses-guillotiere", name: "Tresses Guillotière", stylist: "Mariam Sy", tagline: "Tresses, twists et perruques", description: "Poses longues sans tension, entretien de perruques et closures sur mesure.", addressLine: "5 rue Paul Bert", postalCode: "69003", city: "Lyon", latitude: 45.7592, longitude: 4.8492, rating: 4.8, reviewCount: 167, specialties: ["tresses", "afro"], badges: ["Expert cheveux texturés"] },
   { id: "vieux-port-coiffure", name: "Vieux-Port Coiffure", stylist: "Nina Ferrari", tagline: "Coupes solaires, cheveux de mer", description: "Réparation post-soleil et sel, coupes longues aérées, soins hydratants intenses.", addressLine: "18 quai de Rive Neuve", postalCode: "13007", city: "Marseille", latitude: 43.2919, longitude: 5.3706, rating: 4.5, reviewCount: 154, specialties: ["coupe", "soins"] },
   { id: "cours-julien-studio", name: "Cours Julien Studio", stylist: "Tarek Bouzid", tagline: "Barbier & coupes urbaines", description: "Dégradés, tracés nets et barbes sculptées au cœur du quartier des artistes.", addressLine: "40 cours Julien", postalCode: "13006", city: "Marseille", latitude: 43.2933, longitude: 5.3841, rating: 4.7, reviewCount: 221, specialties: ["barbier", "coupe"] },
-  { id: "azur-mariage", name: "Azur Mariage", stylist: "Laura Sabbah", tagline: "Coiffures d'événement en Provence", description: "Chignons bohèmes, tresses couronne et essais à domicile dans tout le département.", addressLine: "7 rue Sainte", postalCode: "13001", city: "Marseille", latitude: 43.2932, longitude: 5.3721, rating: 4.9, reviewCount: 58, specialties: ["mariage", "coupe"], badges: ["Coup de cœur"] },
+  { id: "azur-mariage", name: "Azur Mariage", stylist: "Laura Sabbah", tagline: "Coiffures d'événement en Provence", description: "Chignons bohèmes, tresses couronne et essais à domicile dans tout le département.", addressLine: "7 rue Sainte", postalCode: "13001", city: "Marseille", latitude: 43.2932, longitude: 5.3721, rating: 4.9, reviewCount: 58, specialties: ["mariage", "coupe"], badges: ["Coup de cœur"], travelRadiusKm: 40 },
   { id: "chartrons-atelier", name: "Chartrons Atelier", stylist: "Hélène Duval", tagline: "Couleur naturelle & coupe fluide", description: "Salon éco-responsable : colorations végétales, eau filtrée et produits rechargeables.", addressLine: "56 rue Notre-Dame", postalCode: "33000", city: "Bordeaux", latitude: 44.8514, longitude: -0.5729, rating: 4.8, reviewCount: 112, specialties: ["coloration", "coupe", "soins"], badges: ["Éco-responsable"] },
   { id: "saint-michel-barber", name: "Saint-Michel Barber", stylist: "Ryan Costa", tagline: "Barbier rapide, finition nette", description: "Coupes rapides et barbes précises, deux fauteuils, playlist assumée.", addressLine: "11 place Canteloup", postalCode: "33800", city: "Bordeaux", latitude: 44.8339, longitude: -0.5646, rating: 4.4, reviewCount: 189, specialties: ["barbier", "coupe"] },
   { id: "vieux-lille-coiffure", name: "Vieux-Lille Coiffure", stylist: "Manon Delattre", tagline: "Coupe classique, finition parfaite", description: "Maison de quartier depuis 1998, reprise par la nouvelle génération. Brushings tenue longue durée.", addressLine: "22 rue Basse", postalCode: "59800", city: "Lille", latitude: 50.6414, longitude: 3.0631, rating: 4.6, reviewCount: 146, specialties: ["coupe", "coloration"] },
@@ -262,7 +264,8 @@ async function seedSalon(seed: SalonSeed, reviewerIds: string[]): Promise<void> 
       phone,
       salon_name: seed.name,
       description: seed.tagline,
-      practice_zone: "salon",
+      practice_zone: seed.travelRadiusKm ? "domicile" : "salon",
+      travel_radius_km: seed.travelRadiusKm ?? null,
       address_line: seed.addressLine,
       postal_code: seed.postalCode,
       city: seed.city,
@@ -294,6 +297,8 @@ async function seedSalon(seed: SalonSeed, reviewerIds: string[]): Promise<void> 
       longitude: seed.longitude,
       specialties: seed.specialties,
       badges: seed.badges ?? [],
+      practice_zone: seed.travelRadiusKm ? "domicile" : "salon",
+      travel_radius_km: seed.travelRadiusKm ?? null,
     },
     { onConflict: "profile_id" },
   );

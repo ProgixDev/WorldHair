@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { HeartButton } from "../../components/particulier/HeartButton";
 import { SalonRating } from "../../components/particulier/SalonRating";
 import { Group, Row, ToggleRow } from "../../components/ui/SettingsList";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
@@ -12,6 +13,7 @@ import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
+import { useFavorites } from "../../contexts/FavoritesContext";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
@@ -53,6 +55,8 @@ export default function Profile() {
   const { gutter } = useResponsive();
   const { session, signOut } = useAuth();
   const { status, isFallback, manualLabel, enable } = useLocation();
+  const favorites = useFavorites();
+  const refreshFavorites = favorites.refresh;
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
@@ -73,10 +77,12 @@ export default function Profile() {
         setReviewCount(reviews.length);
         setNotifications(prefs);
       });
+      // Fresh availability on the favorites' tiles each visit.
+      refreshFavorites().catch(() => {});
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [refreshFavorites]),
   );
 
   const [visitedSalons, setVisitedSalons] = useState<Salon[]>([]);
@@ -397,6 +403,39 @@ export default function Profile() {
           </View>
         ) : null}
 
+        {/* ── Favorites (TODO.md Phase 6) ──────────────────────────────── */}
+        <View style={{ gap: spacing.md }}>
+          <Text style={[typography.overline, { color: theme.foreground.gray }]}>
+            FAVORIS
+          </Text>
+          {favorites.salons.length === 0 ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.md,
+                padding: spacing.lg,
+                borderRadius: radius.xl,
+                backgroundColor: theme.surface.base,
+                borderWidth: 1,
+                borderColor: theme.divider,
+              }}
+            >
+              <MaterialCommunityIcons name="heart-outline" size={20} color={theme.foreground.gray} />
+              <Text style={[typography.bodySmall, { color: theme.foreground.gray, flex: 1 }]}>
+                Touchez le cœur d&apos;un salon pour le retrouver ici.
+              </Text>
+            </View>
+          ) : (
+            <SalonStrip
+              salons={favorites.salons}
+              gutter={gutter}
+              withHeart
+              onOpen={(salon) => router.push(("/salon/" + salon.id) as never)}
+            />
+          )}
+        </View>
+
         {/* ── Salons visited ───────────────────────────────────────────── */}
         {visitedSalons.length > 0 ? (
           <View style={{ gap: spacing.md }}>
@@ -405,70 +444,11 @@ export default function Profile() {
             >
               VOS SALONS
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: spacing.md }}
-              style={{ marginHorizontal: -gutter }}
-            >
-              <View style={{ width: gutter }} />
-              {visitedSalons.map((salon) => (
-                <Pressable
-                  key={salon.id}
-                  onPress={() => router.push(("/salon/" + salon.id) as never)}
-                  accessibilityRole="button"
-                  accessibilityLabel={salon.name}
-                  style={({ pressed }) => ({
-                    width: 148,
-                    gap: spacing.sm,
-                    opacity: pressed ? 0.75 : 1,
-                  })}
-                >
-                  <Image
-                    source={coverFor(salon, 400)}
-                    placeholder={coverPlaceholder(salon.id)}
-                    placeholderContentFit="cover"
-                    cachePolicy="memory-disk"
-                    style={{
-                      width: 148,
-                      height: 108,
-                      borderRadius: radius.lg,
-                      backgroundColor: theme.surface.sunken,
-                    }}
-                    contentFit="cover"
-                    transition={200}
-                  />
-                  <Text
-                    style={[
-                      typography.label,
-                      { color: theme.foreground.white },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {salon.name}
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: spacing.xs,
-                    }}
-                  >
-                    <SalonRating salon={salon} size={11} />
-                    <Text
-                      style={[
-                        typography.caption,
-                        { color: theme.foreground.gray },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {salon.city}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-              <View style={{ width: gutter }} />
-            </ScrollView>
+            <SalonStrip
+              salons={visitedSalons}
+              gutter={gutter}
+              onOpen={(salon) => router.push(("/salon/" + salon.id) as never)}
+            />
           </View>
         ) : null}
 
@@ -603,5 +583,73 @@ function Stat({
         {label}
       </Text>
     </View>
+  );
+}
+
+/** A horizontal strip of salon tiles: cover, name, rating and city — a heart on each when asked. */
+function SalonStrip({
+  salons,
+  gutter,
+  withHeart = false,
+  onOpen,
+}: {
+  salons: Salon[];
+  gutter: number;
+  withHeart?: boolean;
+  onOpen: (salon: Salon) => void;
+}) {
+  const { theme } = useTheme();
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ gap: spacing.md }}
+      style={{ marginHorizontal: -gutter }}
+    >
+      <View style={{ width: gutter }} />
+      {salons.map((salon) => (
+        <Pressable
+          key={salon.id}
+          onPress={() => onOpen(salon)}
+          accessibilityRole="button"
+          accessibilityLabel={salon.name}
+          style={({ pressed }) => ({
+            width: 148,
+            gap: spacing.sm,
+            opacity: pressed ? 0.75 : 1,
+          })}
+        >
+          <View>
+            <Image
+              source={coverFor(salon, 400)}
+              placeholder={coverPlaceholder(salon.id)}
+              placeholderContentFit="cover"
+              cachePolicy="memory-disk"
+              style={{
+                width: 148,
+                height: 108,
+                borderRadius: radius.lg,
+                backgroundColor: theme.surface.sunken,
+              }}
+              contentFit="cover"
+              transition={200}
+            />
+            {withHeart ? (
+              <HeartButton salon={salon} size={18} onImage style={{ position: "absolute", top: 6, right: 6 }} />
+            ) : null}
+          </View>
+          <Text style={[typography.label, { color: theme.foreground.white }]} numberOfLines={1}>
+            {salon.name}
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+            <SalonRating salon={salon} size={11} />
+            <Text style={[typography.caption, { color: theme.foreground.gray }]} numberOfLines={1}>
+              {salon.city}
+            </Text>
+          </View>
+        </Pressable>
+      ))}
+      <View style={{ width: gutter }} />
+    </ScrollView>
   );
 }

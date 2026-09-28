@@ -34,8 +34,11 @@ export class ReviewsController {
   }
 
   @Get('salon/:coiffeurId')
-  listForSalon(@Param('coiffeurId', ParseUUIDPipe) coiffeurId: string): Promise<ReviewDto[]> {
-    return this.reviews.listForSalon(coiffeurId);
+  listForSalon(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('coiffeurId', ParseUUIDPipe) coiffeurId: string,
+  ): Promise<ReviewDto[]> {
+    return this.reviews.listForSalon(coiffeurId, current.id);
   }
 
   @Roles('coiffeur')
@@ -54,9 +57,13 @@ export class ReviewsController {
     return this.reviews.deleteReply(current.id, id);
   }
 
-  /** Any authenticated caller may report a review they're reading. */
+  /** Any authenticated caller may report a review they're reading — once. */
   @Post(':id/report')
-  report(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReportReviewDto): Promise<void> {
-    return this.reviews.report(id, dto.reason);
+  report(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReportReviewDto,
+  ): Promise<void> {
+    return this.reviews.report(id, current.id, dto);
   }
 }

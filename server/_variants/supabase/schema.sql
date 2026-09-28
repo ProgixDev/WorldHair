@@ -246,6 +246,8 @@ create policy "Admins can view every coiffeur document"
 -- PostGIS powers real radius search (ST_DWithin/ST_Distance on a geography
 -- point) for search_salons() below, instead of hand-rolled Haversine SQL.
 create extension if not exists postgis with schema extensions;
+-- Search matches words with or without accents ("élégance" = "elegance").
+create extension if not exists unaccent with schema extensions;
 
 create table public.coiffeur_profiles (
   profile_id uuid primary key references public.profiles (id) on delete cascade,
@@ -291,6 +293,17 @@ create table public.coiffeur_profiles (
   confirmation_mode text not null default 'manual' check (confirmation_mode in ('manual', 'instant')),
   booking_notice_minutes integer not null default 60 check (booking_notice_minutes between 0 and 20160),
   cancellation_notice_minutes integer not null default 1440 check (cancellation_notice_minutes between 0 and 20160),
+  -- How the coiffeur works, copied from their application when it's
+  -- validated (CoiffeurProfileSeedListener): in a salon, or at the client's
+  -- home within travel_radius_km. Search filters on it (TODO.md Phase 6).
+  practice_zone text not null default 'salon' check (practice_zone in ('salon', 'domicile')),
+  travel_radius_km integer check (travel_radius_km between 1 and 100),
+  -- The salon's pages elsewhere, icons on its public page
+  -- (UpdateSalonProfileDto checks each points to its own site).
+  instagram_url text,
+  facebook_url text,
+  tiktok_url text,
+  website_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint coiffeur_profiles_specialties_valid check (
@@ -343,6 +356,9 @@ create table public.coiffeur_services (
   specialty text not null check (
     specialty in ('coupe', 'coloration', 'afro', 'tresses', 'barbier', 'soins', 'mariage')
   ),
+  -- A hidden prestation (TODO.md Phase 6) stays in the coiffeur's list, off
+  -- the public page, the starting price and booking.
+  is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -727,6 +743,34 @@ create trigger refresh_salon_rating
 after insert or update of rating, status, coiffeur_id or delete on public.reviews
 for each row execute procedure public.refresh_salon_rating_on_review_change ();
 
+-- "Signaler" (TODO.md Phase 6): who reported a review and why — once per
+-- person and review. The review itself goes to the admins' queue
+-- (status 'reported'). API only.
+create table public.review_reports (
+  review_id uuid not null references public.reviews (id) on delete cascade,
+  reporter_id uuid not null references public.profiles (id) on delete cascade,
+  reason text not null check (reason in ('offensive', 'fake', 'personal_info', 'spam', 'other')),
+  details text,
+  created_at timestamptz not null default now(),
+  primary key (review_id, reporter_id)
+);
+
+create index review_reports_reporter_id_idx on public.review_reports (reporter_id);
+
+alter table public.review_reports enable row level security;
+
+-- "Favoris" (TODO.md Phase 6): the salons a client keeps a heart on. API only.
+create table public.favorites (
+  particulier_id uuid not null references public.profiles (id) on delete cascade,
+  coiffeur_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (particulier_id, coiffeur_id)
+);
+
+create index favorites_coiffeur_id_idx on public.favorites (coiffeur_id);
+
+alter table public.favorites enable row level security;
+
 -- ── Public photo storage ─────────────────────────────────────────────────────
 --
 -- Unlike coiffeur-documents, this bucket is PUBLIC: a particulier's avatar
@@ -971,22 +1015,44 @@ before update on public.platform_settings for each row
 execute procedure public.set_updated_at ();
 
 -- Defined after every table it reads (salon profiles, applications, services,
--- subscriptions): a SQL function's body is checked when it's created.
+-- hours, closures, subscriptions, payout accounts): a SQL function's body is
+-- checked when it's created.
 --
--- Backs both geo-radius search and manual-location/filter-only search (see
--- TODO.md "Recherche & géolocalisation" and src/discovery/) —
--- p_lat/p_lng/p_radius_km null means "no distance filter, no distance
--- column", which is exactly the manual-location and filter-only cases.
+-- Search does every filter, sort and page here (TODO.md Phase 6), so a
+-- salon never goes missing past a download cap. p_lat/p_lng null means no
+-- distance, which is the manual-location and filter-only cases.
+-- "Open" filters read Paris wall-clock hours at p_now: a salon's week in
+-- coiffeur_availability, or the default a new salon starts with
+-- (SalonService.defaultAvailability: Mon-Sat 9-19, lunch 13-14).
+-- Mirrored by FakeSupabaseService's searchSalonsRpc for the offline tests.
 -- SECURITY INVOKER (the default): callers are always this app's server
 -- using the service-role key, so RLS never actually applies here, but there
 -- is no reason to reach for DEFINER when INVOKER already works.
-create or replace function public.search_salons(
+create function public.search_salons(
   p_lat double precision default null,
   p_lng double precision default null,
   p_radius_km double precision default null,
-  p_specialty text default null,
+  -- Any of them.
+  p_specialties text[] default null,
   p_city text default null,
+  -- Every word, accents aside: salon, coiffeur, tagline, address, city, prestations.
   p_query text default null,
+  -- A visible prestation priced within the range.
+  p_price_min numeric default null,
+  p_price_max numeric default null,
+  p_open_now boolean default false,
+  -- Open that Paris day.
+  p_open_on date default null,
+  -- Still open after this minute of the day: on p_open_on, or any day.
+  p_open_after integer default null,
+  p_practice_zone text default null,
+  -- The map's visible area: {min_lat, min_lng, max_lat, max_lng}.
+  p_bounds double precision[] default null,
+  -- Only these salons (a client's favorites).
+  p_ids uuid[] default null,
+  -- 'distance' | 'rating' | 'price'; availability is sorted by the API.
+  p_sort text default 'distance',
+  p_now timestamptz default now(),
   p_limit int default 20,
   p_offset int default 0
 )
@@ -1009,6 +1075,11 @@ returns table (
   review_count integer,
   cover_url text,
   price_from numeric,
+  shortest_duration_min integer,
+  practice_zone text,
+  travel_radius_km integer,
+  booking_notice_minutes integer,
+  online_booking boolean,
   distance_km double precision,
   total_count bigint
 )
@@ -1021,6 +1092,23 @@ as $$
       case when p_lat is not null and p_lng is not null
         then extensions.ST_SetSRID(extensions.ST_MakePoint(p_lng, p_lat), 4326)::extensions.geography
       end as point
+  ),
+  paris as (
+    select
+      extract(dow from (p_now at time zone 'Europe/Paris'))::int as weekday,
+      (extract(hour from (p_now at time zone 'Europe/Paris')) * 60
+        + extract(minute from (p_now at time zone 'Europe/Paris')))::int as minute
+  ),
+  hours as (
+    select a.profile_id, a.weekday, a.is_open, a.opens_minute, a.closes_minute, a.break_start_minute, a.break_end_minute
+    from public.coiffeur_availability a
+    union all
+    select cp.profile_id, d.weekday, d.weekday <> 0, 540, 1140,
+      case when d.weekday <> 0 then 780 end,
+      case when d.weekday <> 0 then 840 end
+    from public.coiffeur_profiles cp
+    cross join generate_series(0, 6) as d (weekday)
+    where not exists (select 1 from public.coiffeur_availability a where a.profile_id = cp.profile_id)
   ),
   matches as (
     select
@@ -1041,7 +1129,12 @@ as $$
       cp.rating,
       cp.review_count,
       cp.cover_url,
-      (select min(cs.price) from public.coiffeur_services cs where cs.profile_id = cp.profile_id) as price_from,
+      (select min(cs.price) from public.coiffeur_services cs where cs.profile_id = cp.profile_id and cs.is_active) as price_from,
+      (select min(cs.duration_min) from public.coiffeur_services cs where cs.profile_id = cp.profile_id and cs.is_active) as shortest_duration_min,
+      cp.practice_zone,
+      cp.travel_radius_km,
+      cp.booking_notice_minutes,
+      coalesce((pa.stripe_account_id is not null and pa.payouts_enabled) or pa.bookable_without_payouts, false) as online_booking,
       case
         when (select point from origin) is not null and cp.location is not null
         then extensions.ST_Distance(cp.location, (select point from origin)) / 1000.0
@@ -1069,22 +1162,106 @@ as $$
           and (s.current_period_end is null or s.current_period_end > now() - interval '3 days'))
         or (s.stripe_subscription_id is null and s.current_period_end > now())
       )
+    left join public.coiffeur_payout_accounts pa on pa.profile_id = cp.profile_id
     where
-      (p_specialty is null or p_specialty = any (cp.specialties))
+      (p_ids is null or cp.profile_id = any (p_ids))
+      and (p_specialties is null or cardinality(p_specialties) = 0 or cp.specialties && p_specialties)
       and (p_city is null or cp.city ilike p_city)
-      and (p_query is null or cp.salon_name ilike '%' || p_query || '%')
+      and (p_practice_zone is null or cp.practice_zone = p_practice_zone)
+      and (
+        p_query is null
+        or not exists (
+          select 1
+          from regexp_split_to_table(extensions.unaccent(lower(btrim(p_query))), '\s+') as w (word)
+          where w.word <> ''
+            and position(w.word in extensions.unaccent(lower(concat_ws(' ',
+              cp.salon_name, ca.first_name, ca.last_name, cp.tagline, cp.city, cp.postal_code, cp.address_line,
+              (select string_agg(cs.name, ' ') from public.coiffeur_services cs where cs.profile_id = cp.profile_id and cs.is_active)
+            )))) = 0
+        )
+      )
+      and (
+        (p_price_min is null and p_price_max is null)
+        or exists (
+          select 1 from public.coiffeur_services cs
+          where cs.profile_id = cp.profile_id
+            and cs.is_active
+            and (p_price_min is null or cs.price >= p_price_min)
+            and (p_price_max is null or cs.price <= p_price_max)
+        )
+      )
+      and (
+        not p_open_now
+        or (
+          exists (
+            select 1 from hours h, paris
+            where h.profile_id = cp.profile_id
+              and h.is_open
+              and h.weekday = paris.weekday
+              and paris.minute >= h.opens_minute
+              and paris.minute < h.closes_minute
+              and not (h.break_start_minute is not null and paris.minute >= h.break_start_minute and paris.minute < h.break_end_minute)
+          )
+          and not exists (
+            select 1 from public.coiffeur_time_off t
+            where t.profile_id = cp.profile_id and t.starts_at <= p_now and t.ends_at > p_now
+          )
+        )
+      )
+      and (
+        p_open_on is null
+        or exists (
+          select 1 from hours h
+          where h.profile_id = cp.profile_id
+            and h.is_open
+            and h.weekday = extract(dow from p_open_on)::int
+            and (p_open_after is null or h.closes_minute > p_open_after)
+            -- A closure over the whole of it (from p_open_after, when given) closes the day.
+            and not exists (
+              select 1 from public.coiffeur_time_off t
+              where t.profile_id = cp.profile_id
+                and t.starts_at <= ((p_open_on + make_interval(mins => greatest(h.opens_minute, coalesce(p_open_after, 0)))) at time zone 'Europe/Paris')
+                and t.ends_at >= ((p_open_on + make_interval(mins => h.closes_minute)) at time zone 'Europe/Paris')
+            )
+        )
+      )
+      and (
+        p_open_after is null
+        or p_open_on is not null
+        or exists (select 1 from hours h where h.profile_id = cp.profile_id and h.is_open and h.closes_minute > p_open_after)
+      )
+      and (
+        p_bounds is null
+        or (
+          cp.latitude between p_bounds[1] and p_bounds[3]
+          and cp.longitude between p_bounds[2] and p_bounds[4]
+        )
+      )
       and (
         -- A salon with no known location is excluded from a radius search,
         -- not passed through by virtue of "we can't check".
         p_radius_km is null or (select point from origin) is null
         or (cp.location is not null and extensions.ST_DWithin(cp.location, (select point from origin), p_radius_km * 1000))
       )
+      and (
+        -- A home-service coiffeur only shows to clients they'd travel to.
+        cp.practice_zone <> 'domicile'
+        or cp.travel_radius_km is null
+        or (select point from origin) is null
+        or cp.location is null
+        or extensions.ST_DWithin(cp.location, (select point from origin), cp.travel_radius_km * 1000)
+      )
   )
   select *, count(*) over () as total_count
   from matches
+  -- profile_id last: equals keep one order, so pages never repeat or skip a salon.
   order by
+    case when p_sort = 'price' then price_from end asc nulls last,
+    case when p_sort = 'rating' then rating end desc nulls last,
+    case when p_sort = 'rating' then review_count end desc nulls last,
     distance_km asc nulls last,
-    rating desc
+    rating desc,
+    profile_id
   limit p_limit offset p_offset;
 $$;
 

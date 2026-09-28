@@ -107,8 +107,23 @@ describe('reviews (e2e)', () => {
     await request(server)
       .post(`/reviews/${created.body.id}/report`)
       .set('Authorization', `Bearer ${coiffeurToken}`)
-      .send({ reason: 'Faux avis' })
+      .send({ reason: 'fake', details: "Cette cliente n'est jamais venue." })
       .expect(201);
+    await request(server)
+      .post(`/reviews/${created.body.id}/report`)
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .send({ reason: 'fake' })
+      .expect(409);
+    await request(server)
+      .post(`/reviews/${created.body.id}/report`)
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .send({ reason: 'not-a-reason' })
+      .expect(400);
+    await request(server)
+      .get('/reviews/salon/mine')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .expect(200)
+      .expect((res) => expect(res.body[0]).toMatchObject({ id: created.body.id, reportedByMe: true }));
 
     const reported = await request(server)
       .get('/admin/reviews/reported')

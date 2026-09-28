@@ -1,5 +1,5 @@
-import { computeStats } from "./stats";
-import type { ProAppointment } from "./types";
+import { computeStats, weeklyFillRate } from "./stats";
+import type { AvailabilityDay, ProAppointment } from "./types";
 
 const NOW = new Date(2026, 8, 30, 12, 0);
 
@@ -76,5 +76,46 @@ describe("computeStats", () => {
 
   it("has no no-show rate before any appointment has taken place", () => {
     expect(computeStats([appointment({ status: "pending" })], NOW).noShowRate).toBeNull();
+  });
+});
+
+describe("weeklyFillRate", () => {
+  // Wednesday 30 September 2026: its week runs Monday 28 to Sunday 4 October.
+  const WEEK: AvailabilityDay[] = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+    weekday,
+    open: weekday !== 0,
+    opens: 9 * 60,
+    closes: 19 * 60,
+    breakStart: 13 * 60,
+    breakEnd: 14 * 60,
+  }));
+  const BOOKINGS = [
+    appointment({ startsAt: new Date(2026, 8, 29, 10, 0).toISOString(), durationMin: 60, status: "confirmed" }),
+    appointment({ startsAt: new Date(2026, 8, 30, 10, 0).toISOString(), durationMin: 120, status: "done" }),
+    // Not booked yet, or not this week: left out.
+    appointment({ startsAt: new Date(2026, 8, 30, 15, 0).toISOString(), durationMin: 60, status: "pending" }),
+    appointment({ startsAt: new Date(2026, 9, 5, 10, 0).toISOString(), durationMin: 60, status: "confirmed" }),
+  ];
+
+  it("booked minutes over open minutes, lunch breaks left out: 3 h of 54 h", () => {
+    expect(weeklyFillRate(BOOKINGS, WEEK, [], NOW)).toEqual({ bookedMinutes: 180, openMinutes: 3240, percent: 6 });
+  });
+
+  it("takes a closed day out of the open time", () => {
+    const saturdayOff = [
+      {
+        id: "off",
+        startsAt: new Date(2026, 9, 3, 0, 0).toISOString(),
+        endsAt: new Date(2026, 9, 4, 0, 0).toISOString(),
+        label: "",
+      },
+    ];
+
+    expect(weeklyFillRate(BOOKINGS, WEEK, saturdayOff, NOW)).toEqual({ bookedMinutes: 180, openMinutes: 2700, percent: 7 });
+  });
+
+  it("is 0 % for a week the salon is closed", () => {
+    const closed = WEEK.map((day) => ({ ...day, open: false }));
+    expect(weeklyFillRate(BOOKINGS, closed, [], NOW)).toEqual({ bookedMinutes: 180, openMinutes: 0, percent: 0 });
   });
 });

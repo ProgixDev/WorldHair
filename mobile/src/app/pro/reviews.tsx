@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ReportReviewSheet } from "../../components/ReportReviewSheet";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
@@ -42,6 +43,9 @@ export default function ProReviews() {
   const [answering, setAnswering] = useState<Review | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  /** The review being reported (« Signaler »), and those reported from here since the screen opened. */
+  const [reporting, setReporting] = useState<string | null>(null);
+  const [reportedHere, setReportedHere] = useState<Set<string>>(new Set());
 
   const replyFor = (reviewId: string) =>
     reviews.find((review) => review.id === reviewId)?.reply;
@@ -49,19 +53,21 @@ export default function ProReviews() {
   const unanswered = reviews.filter((review) => !replyFor(review.id));
   const visible = filter === "all" ? reviews : unanswered;
 
+  // What clients see: a review WorldHair hid no longer counts.
+  const counted = useMemo(() => reviews.filter((review) => review.status !== "hidden"), [reviews]);
   const average =
-    reviews.length === 0
+    counted.length === 0
       ? 0
-      : reviews.reduce((sum, review) => sum + review.rating, 0) /
-        reviews.length;
+      : counted.reduce((sum, review) => sum + review.rating, 0) /
+        counted.length;
 
   const breakdown = useMemo(() => {
     const counts = [0, 0, 0, 0, 0];
-    reviews.forEach((review) => {
+    counted.forEach((review) => {
       counts[Math.min(Math.max(Math.round(review.rating), 1), 5) - 1] += 1;
     });
     return counts;
-  }, [reviews]);
+  }, [counted]);
 
   const openAnswer = (review: Review) => {
     setDraft(review.reply ?? "");
@@ -260,6 +266,20 @@ export default function ProReviews() {
                         </Text>
                       </View>
                     </View>
+                    {review.status === "hidden" ? (
+                      <Text style={[typography.caption, { color: theme.foreground.gray }]}>Masqué par WorldHair</Text>
+                    ) : review.reportedByMe || reportedHere.has(review.id) ? (
+                      <Text style={[typography.caption, { color: theme.foreground.gray }]}>Signalé</Text>
+                    ) : (
+                      <Pressable
+                        onPress={() => setReporting(review.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Signaler cet avis"
+                        hitSlop={10}
+                      >
+                        <MaterialCommunityIcons name="flag-outline" size={18} color={theme.foreground.gray} />
+                      </Pressable>
+                    )}
                   </View>
 
                   <Text
@@ -361,6 +381,12 @@ export default function ProReviews() {
       </ScrollView>
 
       {/* ── Reply composer ─────────────────────────────────────────────── */}
+      <ReportReviewSheet
+        reviewId={reporting}
+        onClose={() => setReporting(null)}
+        onReported={(reviewId) => setReportedHere((current) => new Set(current).add(reviewId))}
+      />
+
       <BottomSheet
         visible={answering !== null}
         title="Répondre à l'avis"

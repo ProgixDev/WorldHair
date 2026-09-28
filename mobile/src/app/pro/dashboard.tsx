@@ -23,6 +23,7 @@ import {
   computeStats,
   serviceName,
   servicesLabel,
+  weeklyFillRate,
   weeklySeries,
 } from "../../features/pro/stats";
 import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
@@ -53,9 +54,13 @@ export default function ProDashboard() {
   const kpiColumns = isExpanded ? 4 : 2;
   const kpiWidth =
     (width - gutter * 2 - spacing.md * (kpiColumns - 1)) / kpiColumns;
-  const { profile, services, appointments, subscription, payoutStatus, isLoading } = usePro();
+  const { profile, services, appointments, availability, timeOff, subscription, payoutStatus, isLoading } = usePro();
 
   const stats = useMemo(() => computeStats(appointments), [appointments]);
+  const fill = useMemo(
+    () => weeklyFillRate(appointments, availability, timeOff),
+    [appointments, availability, timeOff],
+  );
   const series = useMemo(() => weeklySeries(appointments, 8), [appointments]);
   const today = useMemo(
     () => appointmentsForDay(appointments, new Date()),
@@ -244,6 +249,18 @@ export default function ProDashboard() {
             label="Taux d'acceptation"
             value={stats.acceptanceRate + " %"}
             icon="check-decagram-outline"
+            width={kpiWidth}
+          />
+          <Kpi
+            label="Remplissage cette semaine"
+            value={fill.percent + " %"}
+            icon="chart-donut"
+            width={kpiWidth}
+          />
+          <Kpi
+            label={profile.reviewCount === 0 ? "Avis reçus" : profile.reviewCount + (profile.reviewCount > 1 ? " avis reçus" : " avis reçu")}
+            value={profile.reviewCount === 0 ? "—" : profile.rating.toFixed(1).replace(".", ",") + " ★"}
+            icon="star-outline"
             width={kpiWidth}
           />
         </View>

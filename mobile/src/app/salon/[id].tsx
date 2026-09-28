@@ -1,11 +1,14 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ReportReviewSheet } from "../../components/ReportReviewSheet";
+import { HeartButton } from "../../components/particulier/HeartButton";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
+import { HomeServiceTag, NextSlotLine } from "../../components/particulier/SalonAvailability";
 import { SalonRating } from "../../components/particulier/SalonRating";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
@@ -24,6 +27,7 @@ import {
   specialtyLabel,
   type Review,
   type Salon,
+  type SocialLinks,
 } from "../../features/salons/types";
 import { listUserReviews } from "../../services/booking";
 import {
@@ -61,6 +65,9 @@ export default function SalonDetail() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [myReviewIds, setMyReviewIds] = useState<Set<string>>(new Set());
   const [salon, setSalon] = useState<Salon | null | undefined>(undefined);
+  /** The review being reported (« Signaler »), and those reported from here since the page opened. */
+  const [reporting, setReporting] = useState<string | null>(null);
+  const [reportedHere, setReportedHere] = useState<Set<string>>(new Set());
 
   // Reviews are real and shared (server/src/reviews/) — the particulier's
   // own submitted review already comes back in salon.reviews below, this
@@ -252,6 +259,9 @@ export default function SalonDetail() {
               </Text>
             </View>
 
+            <HomeServiceTag salon={salon} />
+            <NextSlotLine salon={salon} />
+
             <View
               style={{
                 flexDirection: "row",
@@ -296,6 +306,8 @@ export default function SalonDetail() {
             <Text style={[typography.body, { color: theme.foreground.gray }]}>
               {salon.description}
             </Text>
+
+            <SocialLinksRow links={salon.socialLinks} />
           </View>
 
           {/* Galerie — omitted rather than filled with stock photos when the
@@ -533,6 +545,18 @@ export default function SalonDetail() {
                     >
                       {timeAgo(review.date)}
                     </Text>
+                    {myReviewIds.has(review.id) ? null : review.reportedByMe || reportedHere.has(review.id) ? (
+                      <Text style={[typography.caption, { color: theme.foreground.gray }]}>· Signalé</Text>
+                    ) : (
+                      <Pressable
+                        onPress={() => setReporting(review.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Signaler cet avis"
+                        hitSlop={10}
+                      >
+                        <MaterialCommunityIcons name="flag-outline" size={16} color={theme.foreground.gray} />
+                      </Pressable>
+                    )}
                   </View>
 
                   <Text
@@ -786,6 +810,27 @@ export default function SalonDetail() {
         />
       </Pressable>
 
+      {/* Floating heart (clients only) */}
+      <HeartButton
+        salon={salon}
+        style={{
+          position: "absolute",
+          top: insets.top + spacing.sm,
+          right: gutter,
+          width: 44,
+          height: 44,
+          backgroundColor: theme.surface.glass,
+          borderWidth: 1,
+          borderColor: theme.border,
+        }}
+      />
+
+      <ReportReviewSheet
+        reviewId={reporting}
+        onClose={() => setReporting(null)}
+        onReported={(reviewId) => setReportedHere((current) => new Set(current).add(reviewId))}
+      />
+
       {/* Docked booking bar */}
       <View
         style={{
@@ -821,6 +866,45 @@ export default function SalonDetail() {
           style={{ flex: 1 }}
         />
       </View>
+    </View>
+  );
+}
+
+/** The salon's pages elsewhere, as round icons; nothing when it has none. */
+function SocialLinksRow({ links }: { links: SocialLinks }) {
+  const { theme } = useTheme();
+  const items = (
+    [
+      { url: links.instagram, icon: "logo-instagram", label: "Instagram" },
+      { url: links.facebook, icon: "logo-facebook", label: "Facebook" },
+      { url: links.tiktok, icon: "logo-tiktok", label: "TikTok" },
+      { url: links.website, icon: "globe-outline", label: "Site web" },
+    ] as const
+  ).filter((item) => item.url);
+  if (items.length === 0) return null;
+  return (
+    <View style={{ flexDirection: "row", gap: spacing.sm }}>
+      {items.map((item) => (
+        <Pressable
+          key={item.label}
+          onPress={() => void Linking.openURL(item.url!)}
+          accessibilityRole="link"
+          accessibilityLabel={item.label}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            borderRadius: radius.full,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: theme.surface.base,
+            borderWidth: 1,
+            borderColor: theme.divider,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Ionicons name={item.icon} size={20} color={theme.foreground.white} />
+        </Pressable>
+      ))}
     </View>
   );
 }

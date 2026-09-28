@@ -3,6 +3,12 @@ import { toPaginationOptions } from '../common/dto/pagination-query.dto';
 import { DiscoveryService, SalonDetail, SalonSearchResult } from './discovery.service';
 import { SearchSalonsQueryDto } from './dto/search-salons-query.dto';
 
+/** "18:30" → 1110: minutes after midnight. */
+function minuteOfDay(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
 /**
  * Particulier-facing salon search/discovery — TODO.md "Recherche &
  * géolocalisation". No `@Roles()`: open to any authenticated caller, same as
@@ -20,13 +26,22 @@ export class DiscoveryController {
 
   @Get()
   search(@Query() query: SearchSalonsQueryDto): Promise<SalonSearchResult> {
+    const specialties = [...new Set([...(query.specialties ?? []), ...(query.specialty ? [query.specialty] : [])])];
     return this.discovery.search({
       lat: query.lat,
       lng: query.lng,
       radiusKm: query.radiusKm,
-      specialty: query.specialty,
+      specialties,
       city: query.city,
       query: query.query,
+      priceMin: query.priceMin,
+      priceMax: query.priceMax,
+      openNow: query.openNow,
+      openOn: query.openOn,
+      openAfter: query.openAfter ? minuteOfDay(query.openAfter) : undefined,
+      practiceZone: query.practiceZone,
+      bounds: query.bounds,
+      sort: query.sort,
       ...toPaginationOptions(query),
     });
   }

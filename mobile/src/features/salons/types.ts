@@ -29,6 +29,8 @@ export interface Service {
   durationMin: number;
   specialty: SpecialtyId;
   description?: string;
+  /** The coiffeur's own list only: `false` when hidden from clients. Public services are always visible. */
+  isActive?: boolean;
 }
 
 export interface Review {
@@ -40,6 +42,10 @@ export interface Review {
   comment: string;
   /** Coiffeur's public answer, when there is one. */
   reply?: string;
+  /** The reader already reported it: « Signalé » instead of the button. */
+  reportedByMe?: boolean;
+  /** The salon's own list only: `hidden` once WorldHair's moderation took it down. */
+  status?: "visible" | "reported" | "hidden";
 }
 
 export interface OpeningDay {
@@ -55,6 +61,14 @@ export interface OpeningDay {
 
 /** `instant`: a booking is confirmed straight away; `manual`: the salon accepts or refuses it. */
 export type ConfirmationMode = "manual" | "instant";
+
+/** The salon's pages elsewhere — icons on its page. */
+export interface SocialLinks {
+  instagram: string | null;
+  facebook: string | null;
+  tiktok: string | null;
+  website: string | null;
+}
 
 /** A congé or exceptional closure — nothing can be booked inside it. */
 export interface Closure {
@@ -94,8 +108,15 @@ export interface Salon {
   cancellationNoticeMinutes: number;
   /** Upcoming closures; empty for list items. */
   closures: Closure[];
-  /** Bookable and payable in the app (the salon's Stripe payouts are set up); only known from its own page. */
+  /** Bookable and payable in the app (the salon's Stripe payouts are set up). */
   onlineBooking: boolean;
+  /** In a salon, or at the client's home within `travelRadiusKm`. */
+  practiceZone: "salon" | "domicile";
+  travelRadiusKm: number | null;
+  /** When it can next take its shortest prestation (ISO), within two weeks; `null` if not bookable online, or full. */
+  nextSlot: string | null;
+  /** Only known from its own page; all `null` for list items. */
+  socialLinks: SocialLinks;
 }
 
 /** Salon + everything the UI derives from the user's position. */

@@ -143,6 +143,16 @@ async function main(): Promise<void> {
       run: () => insertIncompleteRow(particulier.client, "payments", { payment_intent_id: "check:rls" }),
     },
     {
+      name: "particulier adds a favorite (favorites) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(particulier.client, "favorites", { particulier_id: particulier.userId }),
+    },
+    {
+      name: "coiffeur files a review report (review_reports) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(coiffeur.client, "review_reports", { reason: "spam" }),
+    },
+    {
       // The one row already exists: were the insert let through, its primary key would refuse it anyway.
       name: "coiffeur writes platform_settings (the trial length) directly",
       expect: "blocked",

@@ -34,9 +34,14 @@ export function MapCanvasMapbox({
   interactive = true,
   style,
   focusCenter = false,
+  onAreaChange,
+  fitKey,
 }: MapCanvasProps) {
   const { theme, themeMode } = useTheme();
   const cameraRef = useRef<Camera>(null);
+  const framedFor = useRef<string | undefined>(undefined);
+  /** Set while the client drags or pinches; the next idle then searches the new area. */
+  const movedByClient = useRef(false);
 
   const isDark =
     themeMode === "dark" ||
@@ -65,6 +70,11 @@ export function MapCanvasMapbox({
       return;
     }
 
+    if (fitKey !== undefined) {
+      if (framedFor.current === fitKey) return;
+      framedFor.current = fitKey;
+    }
+
     if (salons.length === 0) {
       camera.setCamera({
         centerCoordinate: [center.longitude, center.latitude],
@@ -86,7 +96,7 @@ export function MapCanvasMapbox({
       [140, 60, 220, 60],
       500,
     );
-  }, [salons, selectedId, center, focusCenter]);
+  }, [salons, selectedId, center, focusCenter, fitKey]);
 
   return (
     <View style={[{ flex: 1, overflow: "hidden" }, style]}>
@@ -102,6 +112,16 @@ export function MapCanvasMapbox({
         // Mapbox terms require the logo and attribution to stay visible.
         logoPosition={{ bottom: 6, left: 6 }}
         attributionPosition={{ bottom: 6, left: 88 }}
+        onCameraChanged={(state) => {
+          if (state.gestures.isGestureActive) movedByClient.current = true;
+        }}
+        onMapIdle={(state) => {
+          // Only the client's own moves: framing or following a pin never searches again.
+          if (!movedByClient.current) return;
+          movedByClient.current = false;
+          const { ne, sw } = state.properties.bounds;
+          onAreaChange?.([sw[1], sw[0], ne[1], ne[0]]);
+        }}
       >
         <Camera
           ref={cameraRef}

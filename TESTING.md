@@ -44,6 +44,9 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Specialty chips filter the list (Tout / coupe / coloration / afro / tresses / barbier / soins / mariage)
 - [x] No GPS → shows "Paris (approx.)" + "Activer ma position" block
 - [x] Ad banner appears only when `home_banner` is enabled in admin
+- [ ] Opens framed on the nearest salons; drag or zoom the map to another city (e.g. Lyon) → its salons appear on the map and in the carousel a moment after the map settles
+- [ ] Tapping a pin or swiping the carousel moves the map but doesn't reshuffle the cards
+- [ ] Cards: heart (fills red, stays after reopening the app), « Dispo aujourd'hui 14:30 » line on Studio W (catalogue salons can't be booked online yet: no line), « À domicile · 25 km » on Salon Céleste
 
 ### `/search`
 - [x] Text search is accent-insensitive (e.g. "beaute" finds "beauté")
@@ -55,6 +58,12 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Ad appears every 6 results when `search_results` is enabled
 - [ ] Ratings are real: each catalogue salon shows its average and review count (e.g. "4,8 (6)"); a salon with no review shows « Nouveau »
 - [ ] "Mieux notés" puts salons without reviews last
+- [ ] Filters run on the server (TODO.md Phase 6): « Voir N salons » counts a moment after each change; the list pages in as you scroll (no cap at 100)
+- [ ] Several prestation chips at once show salons offering any of them; the text also finds a coiffeur's first name, a city or a prestation ("balayage lyon")
+- [ ] « Budget »: « Moins de 30 € » keeps salons with a visible prestation under 30 € (Studio W's hidden « Lissage brésilien » never counts)
+- [ ] « Quand »: « Ouvert maintenant » (none on Sunday), a day (a salon closed that day, or on leave all of it, drops out), « Ouvert après 19 h »
+- [ ] « Où »: « À domicile » from Paris shows Salon Céleste only (Azur Mariage doesn't travel that far)
+- [ ] « Disponible au plus tôt » puts Studio W first (the only salon bookable online), with its « Dispo … » line
 
 ### Salon page
 - [x] Parallax cover scroll effect
@@ -63,6 +72,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [ ] A salon with no review shows « Nouveau » in the header and "Pas encore d'avis…" instead of the rating summary
 - [ ] "Réservation" block lists the salon's 3 rules — for Studio W with default settings: "Réservable jusqu'à 1 h avant", "Annulation ou modification jusqu'à 1 jour avant", "Le salon confirme chaque demande"
 - [ ] Change the rules in `/pro/salon` → the block follows ("Réservable jusqu'au dernier moment", "Confirmation immédiate"…)
+- [ ] Heart at the top right adds or removes the salon from « Favoris » (clients only)
+- [ ] Studio W: Instagram and TikTok icons under the description open the links; « Dispo … » under the rating; a home-service salon reads « À domicile · N km »
+- [ ] A hidden service (Studio W's « Lissage brésilien ») is nowhere: not in the list, not in « dès … »
+- [ ] Flag on someone else's review → « Signaler cet avis »: a reason (+ optional words) → « Envoyer le signalement » → it reads « · Signalé », also after reopening; your own review has no flag; it appears in `/admin/avis`
 
 ### Booking (4 steps)
 - [x] Service → Slot → Payment → Confirmation, all 4 steps reachable
@@ -116,6 +129,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 ### `/profile`
 - [x] Counters, next appointment, visited salons all populate
+- [ ] « FAVORIS » (after `seed:demo`: Studio W, Racines, Maison Tresse), the latest first; the heart on a tile removes it; empty → « Touchez le cœur d'un salon pour le retrouver ici. »
 - [x] J-1 / H-1 reminder toggles persist after app restart
 - [x] Theme switch: light / dark / system
 - [x] Sign out works
@@ -141,6 +155,7 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 ### `/pro/dashboard`
 - [x] 4 KPIs populate
+- [ ] Two more: « Remplissage cette semaine » (accepted bookings over this week's open hours, lunch and closures left out) and « N avis reçus » with the average (the same as clients see)
 - [x] 8-week bar chart renders
 - [ ] Caption shows "Absences : X %" once a past booking is marked; top services count each prestation of a 2-prestation booking on its own
 - [x] Pending requests + today's appointments show
@@ -171,12 +186,15 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 - [x] Service CRUD (create / edit / delete)
 - [x] Price change here reflects immediately on the client side
 - [ ] "RÉSERVATION": « Je valide » / « Confirmées d'office », then both deadlines with the presets (À tout moment, 30 min, 1 h, 2 h, 12 h, 1 jour, 2 jours) → saved, and shown on the client's salon page
+- [ ] « Réseaux sociaux »: « @studio.w » for Instagram saves as its link; a Facebook link in the Instagram field → « Ce lien Instagram ne mène pas à Instagram. »; emptying a field removes its icon from the public page
+- [ ] Edit a service → « Visible par les clients » off → saved, the row dims and reads « · Masquée »; gone from the public page, « dès … » and booking; switch it back on → back
 
 ### `/pro/reviews`
 - [x] Reply to a review
 - [x] Edit an existing reply
 - [x] Delete a reply
-- [x] Hidden reviews still visible here (unlike the public page)
+- [x] Hidden reviews still visible here (unlike the public page), marked « Masqué par WorldHair », and left out of the average
+- [ ] Flag on a review → reason → sent → « Signalé »; a second report of the same review isn't possible
 
 ### `/pro/payments` (Compte → Encaissements → Paiements)
 - [ ] Demo salon: « Salon de démonstration » + « Configurer mes paiements »
@@ -314,10 +332,10 @@ After `seed:demo`, Studio W (demo.coiffeur.active) has: a pending request at J+2
 
 | Command | Expected |
 |---|---|
-| `cd server && bun run test` | 368 ✅ (runs in UTC, like Render) |
-| `cd server && bun run test:e2e` | 68 ✅ |
+| `cd server && bun run test` | 393 ✅ (runs in UTC, like Render) |
+| `cd server && bun run test:e2e` | 74 ✅ |
 | `cd server && bun run check:rls` | "All checks passed" — the app's public key can't write around the API (live dev database) |
-| `cd mobile && bun run test` | 82 ✅ |
+| `cd mobile && bun run test` | 95 ✅ |
 | `cd web && bun run test` | 25 ✅ |
 
 `typecheck` + `lint` green on all three packages.

@@ -24,15 +24,22 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocation } from "../../contexts/LocationContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { fetchSalons } from "../../features/salons/api";
+import { searchSalons } from "../../features/salons/api";
+import { DEFAULT_FILTERS, type MapBounds, type SalonFilters } from "../../features/salons/filters";
 import { withDistance } from "../../features/salons/geo";
 import { SPECIALTIES, type Salon, type SpecialtyId } from "../../features/salons/types";
 import { useAdSlot } from "../../services/ads";
 
+/** Salons first shown around the client, framed by the map. */
+const NEAREST = 30;
+/** A pan or a pinch settles this long before the area is searched. */
+const AREA_DELAY_MS = 400;
+
 /**
  * Map-first home. The map owns the whole screen; everything else floats over
  * it — header, specialty chips, the salon carousel — so this tab reads nothing
- * like the list-driven search tab.
+ * like the list-driven search tab. It shows the salons nearest the client,
+ * then those in whatever area the client moves the map to (TODO.md Phase 6).
  */
 export default function Discover() {
   const router = useRouter();
@@ -54,7 +61,11 @@ export default function Discover() {
   const [specialty, setSpecialty] = useState<SpecialtyId | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
-  const [allSalons, setAllSalons] = useState<Salon[]>([]);
+  const [found, setFound] = useState<Salon[]>([]);
+  /** Changes once the salons around a new position (or for a new specialty) are in: the map frames them. */
+  const [fitKey, setFitKey] = useState<string | undefined>(undefined);
+  const latest = useRef(0);
+  const areaTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const listRef = useRef<FlatList>(null);
 
   // Refetches on focus and polls every 15s while focused — see useAdSlot's
@@ -62,23 +73,45 @@ export default function Discover() {
   // an admin toggling the banner without a full app restart).
   const homeBanner = useAdSlot("home_banner");
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchSalons().then((salons) => {
-      if (!cancelled) setAllSalons(salons);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const filters = useMemo<SalonFilters>(
+    () => ({ ...DEFAULT_FILTERS, specialties: specialty ? [specialty] : [] }),
+    [specialty],
+  );
 
-  const salons = useMemo(() => {
-    const withKm = withDistance(allSalons, coords);
-    const filtered = specialty
-      ? withKm.filter((salon) => salon.specialties.includes(specialty))
-      : withKm;
-    return filtered.sort((a, b) => a.distanceKm - b.distanceKm);
-  }, [allSalons, coords, specialty]);
+  // The nearest salons around the position: the map frames them.
+  useEffect(() => {
+    const request = ++latest.current;
+    const key = coords.latitude + "," + coords.longitude + "," + (specialty ?? "");
+    searchSalons(filters, coords, { limit: NEAREST, offset: 0 })
+      .then((page) => {
+        if (latest.current !== request) return;
+        setFound(page.items);
+        setFitKey(key);
+      })
+      .catch(() => {});
+  }, [filters, coords, specialty]);
+
+  // Then the salons in whatever area the client moves the map to.
+  const handleAreaChange = useCallback(
+    (bounds: MapBounds) => {
+      clearTimeout(areaTimer.current);
+      areaTimer.current = setTimeout(() => {
+        const request = ++latest.current;
+        searchSalons(filters, coords, { limit: 100, offset: 0 }, bounds)
+          .then((page) => {
+            if (latest.current === request) setFound(page.items);
+          })
+          .catch(() => {});
+      }, AREA_DELAY_MS);
+    },
+    [filters, coords],
+  );
+  useEffect(() => () => clearTimeout(areaTimer.current), []);
+
+  const salons = useMemo(
+    () => withDistance(found, coords).sort((a, b) => a.distanceKm - b.distanceKm),
+    [found, coords],
+  );
 
   const cardWidth = width - gutter * 2;
   const snapInterval = cardWidth + spacing.md;
@@ -111,6 +144,8 @@ export default function Discover() {
         selectedId={selectedId}
         onSelect={handlePinSelect}
         showsUserLocation={status === "granted" && !isFallback}
+        onAreaChange={handleAreaChange}
+        fitKey={fitKey}
       />
 
       {/* Top scrim keeps the floating header legible over any map tile. */}
