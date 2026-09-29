@@ -6,14 +6,16 @@ import {
   type AdminAccount,
   type CoiffeurApplication,
   type DocumentUrls,
+  deleteAccount,
   getAccount,
   getApplicationDocumentUrls,
   getCoiffeurApplicationByProfileId,
   setAccountStatus,
 } from "@/services/adminApi";
+import { isAxiosError } from "axios";
 import { ArrowLeft, FileText } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 const STATUS_STYLES: Record<AdminAccount["accountStatus"], string> = {
@@ -56,6 +58,8 @@ export default function AdminAccountProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actioning, setActioning] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const router = useRouter();
 
   const load = useCallback(() => {
     getAccount(id)
@@ -78,6 +82,34 @@ export default function AdminAccountProfilePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleDelete = async () => {
+    if (!account) return;
+    const consequences =
+      account.role === "coiffeur"
+        ? "Ses rendez-vous à venir seront annulés et ses clients remboursés et prévenus ; ce qui lui est dû lui sera versé ; son abonnement prendra fin ; son salon, ses photos et ses justificatifs seront supprimés."
+        : "Ses rendez-vous qu'il pouvait encore annuler seront annulés et remboursés, et les salons prévenus ; son profil et ses favoris seront supprimés.";
+    if (!window.confirm(`Supprimer définitivement ce compte ?\n\n${consequences}\n\nCette action est irréversible.`)) return;
+    setActioning(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(id);
+      router.push("/admin/comptes");
+    } catch (err) {
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      setDeleteError(
+        status === 403
+          ? "Réservé aux administrateurs principaux."
+          : status === 409
+            ? "Des paiements sont dus à ce salon mais ses encaissements ne sont pas actifs : il doit d'abord les activer."
+            : status === 503
+              ? "La suppression n'a pas pu aller jusqu'au bout : réessayez dans quelques minutes. Ce qui a déjà été fait ne sera pas refait."
+              : "Suppression impossible. Réessayez.",
+      );
+    } finally {
+      setActioning(false);
+    }
+  };
 
   const handleSetStatus = async (status: AdminAccount["accountStatus"]) => {
     setActioning(true);
@@ -175,7 +207,17 @@ export default function AdminAccountProfilePage() {
                     Bannir
                   </button>
                 )}
+                {/* A deletion requested by e-mail (TODO.md Phase 8): the same as the app's own button. */}
+                <button
+                  type="button"
+                  disabled={actioning}
+                  onClick={() => void handleDelete()}
+                  className="rounded-full border border-[#ff7a70]/40 px-4 py-2 text-xs text-[#ff7a70] transition-colors hover:bg-[#ff7a70]/10 disabled:opacity-50"
+                >
+                  Supprimer le compte
+                </button>
               </div>
+              {deleteError && <p className="text-sm text-[#ff7a70]">{deleteError}</p>}
 
               {account.role === "coiffeur" && (
                 <div className="rounded-2xl bg-[#111c2e] p-5">

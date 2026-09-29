@@ -1,7 +1,14 @@
-import { CGU } from "@/content/legal/cgu";
-import { PRIVACY_POLICY } from "@/content/legal/confidentialite";
-import { LEGAL_NOTICE } from "@/content/legal/mentions-legales";
+import type { LegalDocument } from "@/content/legal/types";
 import { inlineParts, missingFields } from "./inline";
+
+const DRAFT: LegalDocument = {
+  title: "Mentions légales",
+  intro: "Éditée par [Dénomination sociale à compléter].",
+  sections: [
+    { title: "Contact", blocks: ["Écrire à [E-mail de contact à compléter].", ["Siège : [Adresse à compléter]", "Voir les [CGU](/cgu)."]] },
+    { title: "Encore", blocks: ["[E-mail de contact à compléter], une seconde fois."] },
+  ],
+};
 
 describe("inlineParts", () => {
   it("finds the links and the fields still to fill in, in order", () => {
@@ -20,11 +27,11 @@ describe("inlineParts", () => {
 });
 
 describe("missingFields", () => {
-  it("lists every company field the legal pages still wait for", () => {
-    const missing = missingFields([CGU, PRIVACY_POLICY, LEGAL_NOTICE]);
-
-    // Until company.ts is filled in: its name, form, capital, address, registration, VAT, director, e-mail, phone and mediator.
-    expect(missing).toEqual(expect.arrayContaining(["Dénomination sociale à compléter", "E-mail de contact à compléter"]));
-    expect(new Set(missing).size).toBe(missing.length);
+  it("lists every field still to fill in, once each, from the intro, paragraphs and lists", () => {
+    expect(missingFields([DRAFT])).toEqual([
+      "Dénomination sociale à compléter",
+      "E-mail de contact à compléter",
+      "Adresse à compléter",
+    ]);
   });
 });

@@ -389,7 +389,11 @@ function TimelineItem({
           </Text>
         ) : null}
 
-        {!inactive && !missed && (!upcoming || changeable) ? (
+        {appointment.salonId === null ? (
+          <Text style={[typography.caption, { color: theme.foreground.gray }]}>Ce salon a quitté WorldHair.</Text>
+        ) : null}
+
+        {!inactive && !missed && (!upcoming || changeable) && appointment.salonId !== null ? (
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             {upcoming ? (
               <>

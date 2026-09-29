@@ -1,10 +1,10 @@
 import * as WebBrowser from "expo-web-browser";
 
 /**
- * The CGU and privacy policy in force (TODO.md Phase 8): the date they took
- * effect. Sent at sign-up; must match server/src/users/terms.ts and
- * web/src/content/legal/company.ts — a user who accepted another version
- * is asked to accept this one (TermsGate).
+ * The CGU and privacy policy this build shows (TODO.md Phase 8): the date
+ * they took effect, recorded at sign-up. Whether an account must accept
+ * again is the server's call (server/src/users/terms.ts, TermsGate), so an
+ * older build never loops on a version it doesn't know.
  */
 export const TERMS_VERSION = "2026-09-29";
 
@@ -26,9 +26,4 @@ export function legalPageUrl(page: LegalPage, base: string | undefined = process
 export async function openLegalPage(page: LegalPage): Promise<void> {
   const url = legalPageUrl(page);
   if (url) await WebBrowser.openBrowserAsync(url);
-}
-
-/** Signed in, and accepted another version or none: the current one must be accepted before going on. */
-export function mustAcceptTerms(session: { termsVersion?: string | null } | null): boolean {
-  return session !== null && session.termsVersion !== TERMS_VERSION;
 }

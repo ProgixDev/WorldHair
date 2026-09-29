@@ -85,6 +85,9 @@ export class FakeStripe {
   }
 
   readonly customers = {
+    /** A deleted customer still answers, marked `deleted`. */
+    retrieve: async (id: string) =>
+      this.customersDeleted.includes(id) || this.missingCustomers.has(id) ? { id, object: 'customer', deleted: true } : { id, object: 'customer' },
     /** Like Stripe: the customer goes, and any subscription of theirs ends at once. */
     del: async (id: string) => {
       if (this.missingCustomers.has(id)) {

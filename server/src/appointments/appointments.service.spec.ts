@@ -569,6 +569,23 @@ describe('AppointmentsService', () => {
     });
   });
 
+  describe('a hold paid after its salon left (TODO.md Phase 8)', () => {
+    it('is refunded in full and dropped: there is no salon to book any more', async () => {
+      const { appointment } = await service.create(PARTICULIER_ID, {
+        coiffeurId: COIFFEUR_ID,
+        serviceIds: [serviceId],
+        startsAt: WEDNESDAY_10AM().toISOString(),
+      });
+      await supabase.client.auth.admin.deleteUser(COIFFEUR_ID);
+      const intent = stripe.completeCheckout(supabase.paymentFor(appointment.id)!.checkout_session_id!);
+
+      await service.handlePaymentEvent({ type: 'payment_intent.succeeded', data: { object: intent } } as unknown as Stripe.Event);
+
+      expect(stripe.refundsCreated).toEqual([expect.objectContaining({ params: expect.objectContaining({ payment_intent: intent.id }) })]);
+      expect(supabase.appointmentFor(appointment.id)).toBeUndefined();
+    });
+  });
+
   describe('lists past 1 000 bookings (PostgREST answers 1 000 rows at most)', () => {
     it("gives the salon and the client every booking, however many", async () => {
       for (let i = 0; i < 1005; i++) {

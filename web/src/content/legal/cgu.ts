@@ -59,10 +59,9 @@ export const CGU: LegalDocument = {
     {
       title: "6. Abonnement des Coiffeurs",
       blocks: [
-        // The pro app links to this page: nothing here says where the subscription is bought (App Store rule 3.1.3).
-        "La présence d'un salon sur le Service est subordonnée à un abonnement, mensuel ou annuel, souscrit auprès de WorldHair. Les prix en vigueur sont affichés avant la souscription. Le premier abonnement peut commencer par une période d'essai gratuite, dont la durée est indiquée au moment de la souscription.",
-        "L'abonnement est payé par carte bancaire via Stripe et se renouvelle automatiquement à chaque échéance. Les factures sont disponibles dans l'espace de gestion de l'abonnement.",
-        "Le Coiffeur peut résilier à tout moment depuis cet espace ; la résiliation prend effet à la fin de la période en cours, qui n'est pas remboursée. En cas d'échec de paiement, de nouvelles tentatives sont faites ; si elles échouent, l'abonnement prend fin et le salon n'est plus visible.",
+        // The pro app links to this page: nothing here says where or how the subscription is paid (App Store rule 3.1.3).
+        "La présence d'un salon sur le Service est subordonnée à un abonnement, mensuel ou annuel. Ses prix sont indiqués avant la souscription. Le premier abonnement peut commencer par une période d'essai gratuite, dont la durée est indiquée au moment de la souscription.",
+        "L'abonnement se renouvelle automatiquement à chaque échéance, jusqu'à sa résiliation. Le Coiffeur peut le résilier à tout moment ; la résiliation prend effet à la fin de la période en cours, qui n'est pas remboursée. Si un paiement échoue et n'aboutit pas après de nouvelles tentatives, l'abonnement prend fin et le salon n'est plus visible.",
         "WorldHair peut offrir une période d'abonnement ; elle prend fin à la date indiquée dans l'espace Coiffeur.",
       ],
     },
@@ -78,7 +77,7 @@ export const CGU: LegalDocument = {
       blocks: [
         "Les prix des Prestations sont fixés librement par chaque Coiffeur et affichés en euros, toutes taxes comprises. L'utilisation du Service est gratuite pour les Clients : aucun frais de réservation n'est ajouté au prix.",
         "Le Client paie le prix total de sa Réservation par carte bancaire, sur la page de paiement sécurisée de Stripe, prestataire de services de paiement agréé. Les données de carte sont traitées par Stripe ; WorldHair n'y a pas accès.",
-        "Commission. Pour chaque Prestation payée sur le Service, WorldHair perçoit une commission sur le montant conservé par le Client, après remboursements éventuels, prélevée sur la somme reversée au Coiffeur. Son taux est de 10 %, sauf taux différent indiqué au Coiffeur dans son espace ; le taux applicable est celui en vigueur le jour du paiement par le Client. Le Client ne paie aucune commission.",
+        "Commission. Pour chaque Prestation payée sur le Service, WorldHair perçoit une commission sur le montant conservé par le Client, après remboursements éventuels, prélevée sur la somme reversée au Coiffeur. Son taux est de 10 % à la date des présentes CGU et peut évoluer ; le taux applicable à une Prestation est celui en vigueur le jour où le Client la paie. Le Client ne paie aucune commission.",
         "Versement. La part du Coiffeur lui est versée sur son compte Stripe 24 heures environ après la fin du rendez-vous, puis sur son compte bancaire selon le calendrier de Stripe.",
       ],
     },
@@ -129,9 +128,10 @@ export const CGU: LegalDocument = {
     {
       title: "13. Suppression du compte",
       blocks: [
-        "L'Utilisateur peut supprimer son compte à tout moment depuis l'application. La suppression est définitive.",
-        "Ses Réservations à venir sont alors annulées et intégralement remboursées, et l'autre partie en est informée. Pour un Coiffeur, les sommes qui lui sont dues pour des rendez-vous passés lui sont versées et son abonnement prend fin.",
-        "Les données du compte sont effacées, à l'exception des informations que la loi impose de conserver, notamment comptables, qui le sont sans permettre d'identifier l'Utilisateur (voir la [politique de confidentialité](/confidentialite)).",
+        `L'Utilisateur peut supprimer son compte à tout moment depuis l'application, ou en écrivant à ${COMPANY.email}. La suppression est définitive.`,
+        "Pour un Client, les Réservations qu'il pouvait encore annuler sont annulées et intégralement remboursées, et le salon en est informé ; celles dont le Délai d'annulation est passé restent dues au Coiffeur, comme si le Client avait conservé son compte.",
+        "Pour un Coiffeur, toutes ses Réservations à venir sont annulées, ses Clients intégralement remboursés et informés, les sommes qui lui sont dues pour des rendez-vous passés lui sont versées, et son abonnement prend fin sans remboursement de la période en cours. Si des sommes lui sont dues alors que ses encaissements ne sont pas actifs, il doit d'abord les activer, ou contacter WorldHair.",
+        "Les données du compte sont effacées. Les Réservations et paiements passés, que la loi impose de conserver pour la comptabilité, sont gardés sans le nom, les coordonnées ni les messages de l'Utilisateur (voir la [politique de confidentialité](/confidentialite)).",
       ],
     },
     {

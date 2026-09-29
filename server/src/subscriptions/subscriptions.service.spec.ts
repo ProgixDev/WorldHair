@@ -173,6 +173,18 @@ describe('SubscriptionsService', () => {
       expect(stripe.customersCreated).toHaveLength(0);
     });
 
+    it('makes a new Stripe customer when the stored one was deleted (from its dashboard, or an account deletion that stopped half-way)', async () => {
+      supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'canceled', stripeCustomerId: 'cus_old', stripeSubscriptionId: 'sub_old' });
+      await stripe.customers.del('cus_old');
+
+      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+
+      expect(stripe.customersCreated).toHaveLength(1);
+      expect(stripe.customersCreated[0].idempotencyKey).toBe(`worldhair-customer-${COIFFEUR_ID}-after-cus_old`);
+      expect(stripe.checkoutSessionsCreated[0].customer).toBe('cus_test_1');
+      expect(supabase.subscriptionFor(COIFFEUR_ID)).toMatchObject({ stripe_customer_id: 'cus_test_1' });
+    });
+
     it('offers no trial to a coiffeur who already had a subscription', async () => {
       supabase.seedSubscription({
         profileId: COIFFEUR_ID,

@@ -60,7 +60,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         [
           "Les autres utilisateurs, pour ce qui est nécessaire : un salon voit le nom de ses clients et leurs rendez-vous chez lui ; les avis sont publics, sous votre prénom et l'initiale de votre nom.",
           "Les membres habilités de l'équipe WorldHair, pour l'administration, la modération et le traitement des litiges.",
-          "Nos prestataires, qui traitent les données pour notre compte : Supabase (base de données, authentification et fichiers, données hébergées " + HOSTING.dataRegion + "), Render (hébergement du serveur et du site), Stripe (paiements, abonnements et versements), Resend (envoi des e-mails), Expo, Apple et Google (acheminement des notifications), Mapbox (affichage des cartes).",
+          "Nos prestataires, qui traitent les données pour notre compte : Supabase (base de données, authentification et fichiers, données hébergées " + HOSTING.dataRegion + "), Render (hébergement du serveur et du site), Stripe (paiements et versements), Resend (envoi des e-mails), Expo, Apple et Google (acheminement des notifications), Mapbox (affichage des cartes).",
           "Les autorités, sur demande légale.",
         ],
         "Certains de ces prestataires sont établis hors de l'Union européenne, notamment aux États-Unis. Ces transferts sont encadrés par les clauses contractuelles types de la Commission européenne ou par le cadre de protection des données UE–États-Unis.",
@@ -71,7 +71,8 @@ export const PRIVACY_POLICY: LegalDocument = {
       blocks: [
         [
           "Votre compte et ses données sont conservés tant que le compte existe.",
-          "Quand vous supprimez votre compte, ces données sont effacées sans délai. Vos rendez-vous et paiements passés sont conservés sans vos nom ni coordonnées, pendant dix ans, pour les obligations comptables ; vos avis restent publiés sous la mention « Ancien client ».",
+          "Quand vous supprimez votre compte, ces données sont effacées sans délai. Vos rendez-vous et paiements passés sont conservés, sans vos nom, coordonnées ni messages, pendant dix ans pour les obligations comptables, puis supprimés ; vos avis restent publiés sous la mention « Ancien client ». Stripe conserve de son côté les données de vos paiements, pour ses propres obligations légales.",
+          "Une copie de vos données préparée pour être téléchargée (« Exporter mes données ») est effacée au plus tard la nuit suivante.",
           "Les justificatifs d'un coiffeur sont conservés pendant l'examen de son dossier, puis tant que son compte existe. Si son dossier est refusé, ils sont supprimés 90 jours après la décision, le temps de le corriger et de le déposer de nouveau.",
           "Les journaux techniques sont conservés pour la durée limitée nécessaire à la sécurité du Service, et les sauvegardes de la base de données sont renouvelées au fil de l'eau.",
         ],
@@ -80,11 +81,11 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       title: "6. Vos droits",
       blocks: [
-        "Vous disposez d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité de vos données, ainsi que du droit de définir des directives sur leur sort après votre décès. Dans l'application :",
+        "Vous disposez d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité de vos données, ainsi que du droit de définir des directives sur leur sort après votre décès. Dans l'application, depuis l'onglet Profil (Compte, pour les coiffeurs) :",
         [
-          "Profil › Exporter mes données : une copie de vos données, au format JSON ;",
-          "Profil › Modifier mon profil (et, pour les coiffeurs, la fiche du salon) : pour les corriger ;",
-          "Profil › Supprimer mon compte : pour les effacer.",
+          "Exporter mes données : une copie de vos données, au format JSON ;",
+          "Modifier mon profil (et, pour les coiffeurs, la fiche du salon) : pour les corriger ;",
+          "Supprimer mon compte : pour les effacer.",
         ],
         `Vous pouvez aussi nous écrire à ${COMPANY.email} : nous répondons dans un délai d'un mois. Vous pouvez retirer à tout moment l'autorisation de localisation ou de notifications dans les réglages de votre téléphone. Si vous estimez que vos droits ne sont pas respectés, vous pouvez adresser une réclamation à la CNIL (www.cnil.fr).`,
       ],

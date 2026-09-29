@@ -75,6 +75,12 @@ async function insertIncompleteRow(
   return error?.code === "42501" ? "blocked" : "allowed";
 }
 
+/** Writes a file to a bucket the server alone may use: any error means it's closed (Storage refuses with its own RLS message). */
+async function uploadTo(client: SupabaseClient, bucket: string, path: string): Promise<"blocked" | "allowed"> {
+  const { error } = await client.storage.from(bucket).upload(path, "check:rls", { contentType: "text/plain", upsert: true });
+  return error ? "blocked" : "allowed";
+}
+
 /** Calls a database function the API alone may call: only "permission denied" (42501) means it's closed. */
 async function callFunction(
   client: SupabaseClient,
@@ -167,6 +173,11 @@ async function main(): Promise<void> {
       name: "coiffeur writes platform_settings (the trial length) directly",
       expect: "blocked",
       run: () => insertIncompleteRow(coiffeur.client, "platform_settings", { trial_days: "365" }),
+    },
+    {
+      name: "particulier writes a data export file (data-exports bucket) directly",
+      expect: "blocked",
+      run: () => uploadTo(particulier.client, "data-exports", `${particulier.userId}/check-rls.txt`),
     },
     {
       name: "particulier lists every booking with names and payments (admin_appointments) directly",

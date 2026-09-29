@@ -93,6 +93,13 @@ describe('ReviewsService', () => {
       );
     });
 
+    it('rejects a review of a salon that left WorldHair since', async () => {
+      const appointmentId = seedDoneAppointment();
+      await supabase.client.auth.admin.deleteUser(COIFFEUR_ID);
+
+      await expect(service.create(PARTICULIER_ID, { appointmentId, rating: 5 })).rejects.toThrow(/left WorldHair/);
+    });
+
     it('rejects a review for an appointment the salon marked as a no-show', async () => {
       const appointmentId = supabase.seedAppointment({
         particulierId: PARTICULIER_ID,

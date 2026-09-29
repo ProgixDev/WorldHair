@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { spacing } from "../constants/spacing";
@@ -7,29 +7,48 @@ import { typography } from "../constants/typography";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { ROUTES } from "../features/auth/routing";
-import { mustAcceptTerms, openLegalPage } from "../features/legal/terms";
-import { acceptTerms } from "../services/account";
+import { openLegalPage } from "../features/legal/terms";
+import { acceptTerms, termsUpToDate } from "../services/account";
+import { MyDataGroups } from "./account/MyDataGroups";
 import { Button } from "./ui/Button";
 
 /**
  * New CGU or privacy policy (TODO.md Phase 8): a signed-in user who
  * accepted another version, or none (accounts made before they existed),
- * accepts the current one before going on — or signs out.
+ * accepts the current one before going on — or signs out, or deletes the
+ * account. The server says which version is in force, so an app older
+ * than it never loops.
  */
 export function TermsGate() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { session, refresh, signOut } = useAuth();
+  const { session, signOut } = useAuth();
+  const [mustAccept, setMustAccept] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const userId = session?.userId ?? null;
+  const emailVerified = session?.emailVerified ?? false;
+
+  // Asked afresh for each account signed in; an answer for an account signed out meanwhile is dropped.
+  useEffect(() => {
+    let current = true;
+    const check = userId && emailVerified ? termsUpToDate() : Promise.resolve(true);
+    void check.then((upToDate) => {
+      if (current) setMustAccept(!upToDate);
+    });
+    return () => {
+      current = false;
+    };
+  }, [userId, emailVerified]);
 
   const accept = async () => {
     setSaving(true);
     setError(null);
     try {
       await acceptTerms();
-      await refresh();
+      setMustAccept(!(await termsUpToDate()));
     } catch {
       setError("Votre accord n'a pas pu être enregistré. Vérifiez votre connexion et réessayez.");
     } finally {
@@ -38,12 +57,13 @@ export function TermsGate() {
   };
 
   const leave = async () => {
+    setMustAccept(false);
     await signOut();
     router.replace(ROUTES.signIn as never);
   };
 
   return (
-    <Modal visible={mustAcceptTerms(session)} animationType="fade" onRequestClose={() => {}}>
+    <Modal visible={mustAccept && userId !== null} animationType="fade" onRequestClose={() => {}}>
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.background.dark }}
         contentContainerStyle={{
@@ -85,6 +105,9 @@ export function TermsGate() {
           <Button label="J'accepte" onPress={() => void accept()} loading={saving} />
           <Button label="Se déconnecter" variant="outline" onPress={() => void leave()} disabled={saving} />
         </View>
+
+        {/* Declining the new terms: the account and its data can still go. */}
+        <MyDataGroups variant="links" />
       </ScrollView>
     </Modal>
   );

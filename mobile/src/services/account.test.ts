@@ -1,7 +1,8 @@
 import { AxiosError, AxiosHeaders } from "axios";
-import { accountErrorMessage } from "./account";
+import { apiClient } from "../lib/apiClient";
+import { accountErrorMessage, accountStillExists, termsUpToDate } from "./account";
 
-jest.mock("../lib/apiClient", () => ({ apiClient: {} }));
+jest.mock("../lib/apiClient", () => ({ apiClient: { get: jest.fn() } }));
 
 function httpError(status: number): AxiosError {
   const error = new AxiosError("Request failed");
@@ -9,15 +10,46 @@ function httpError(status: number): AxiosError {
   return error;
 }
 
+const get = apiClient.get as jest.Mock;
+
 describe("accountErrorMessage", () => {
-  it("says to try again later when the server couldn't finish (Stripe, storage)", () => {
+  it("tells a salon owed money to set up its payouts first", () => {
+    expect(accountErrorMessage(httpError(409))).toContain("vos encaissements ne sont pas actifs");
+  });
+
+  it("says a deletion that stopped half-way can be tried again, without pretending nothing happened", () => {
     expect(accountErrorMessage(httpError(503))).toBe(
-      "Votre compte n'a pas pu être supprimé pour l'instant : rien n'a été effacé. Réessayez dans quelques minutes.",
+      "La suppression n'a pas pu aller jusqu'au bout. Réessayez dans quelques minutes : ce qui a déjà été fait (annulations, remboursements) ne sera pas refait.",
     );
   });
 
   it("covers everything else with a generic retry", () => {
     expect(accountErrorMessage(httpError(500))).toBe("Une erreur est survenue. Vérifiez votre connexion et réessayez.");
     expect(accountErrorMessage(new Error("Network Error"))).toBe("Une erreur est survenue. Vérifiez votre connexion et réessayez.");
+  });
+});
+
+describe("termsUpToDate", () => {
+  it("takes the server's word, whatever version this build knows", async () => {
+    get.mockResolvedValueOnce({ data: { termsUpToDate: false } });
+    await expect(termsUpToDate()).resolves.toBe(false);
+    get.mockResolvedValueOnce({ data: { termsUpToDate: true } });
+    await expect(termsUpToDate()).resolves.toBe(true);
+  });
+
+  it("doesn't hold the user up without a clear answer", async () => {
+    get.mockRejectedValueOnce(new Error("Network Error"));
+    await expect(termsUpToDate()).resolves.toBe(true);
+  });
+});
+
+describe("accountStillExists", () => {
+  it("is gone once the server no longer knows the session's account", async () => {
+    get.mockRejectedValueOnce(httpError(401));
+    await expect(accountStillExists()).resolves.toBe(false);
+    get.mockResolvedValueOnce({ data: {} });
+    await expect(accountStillExists()).resolves.toBe(true);
+    get.mockRejectedValueOnce(new Error("Network Error"));
+    await expect(accountStillExists()).resolves.toBe(true);
   });
 });

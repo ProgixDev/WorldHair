@@ -36,4 +36,33 @@ describe('DocumentRetentionJob', () => {
 
     await expect(job.purgeRejectedDocuments(now)).resolves.toBe(0);
   });
+
+  it("carries on past a folder storage can't list: the next run tries it again", async () => {
+    applicant('first', 'rejected', daysAgo(DOCUMENT_RETENTION_DAYS + 5));
+    applicant('second', 'rejected', daysAgo(DOCUMENT_RETENTION_DAYS + 5));
+    supabase.failNextStorageList();
+
+    await expect(job.purgeRejectedDocuments(now)).resolves.toBe(1);
+    await expect(job.purgeRejectedDocuments(now)).resolves.toBe(1);
+  });
+
+  it("deletes bookings kept without their client or salon once the ten years' accounting duty is over", async () => {
+    const old = supabase.seedAppointment({ particulierId: null, coiffeurId: 'salon-1', startsAt: daysAgo(3660 + 2) });
+    const recent = supabase.seedAppointment({ particulierId: null, coiffeurId: 'salon-1', startsAt: daysAgo(400) });
+    const stillOwned = supabase.seedAppointment({ particulierId: 'client-1', coiffeurId: 'salon-1', startsAt: daysAgo(3660 + 2) });
+
+    await expect(job.purgeAnonymizedRecords(now)).resolves.toBe(1);
+
+    expect(supabase.appointmentFor(old)).toBeUndefined();
+    expect(supabase.appointmentFor(recent)).toBeDefined();
+    expect(supabase.appointmentFor(stillOwned)).toBeDefined();
+  });
+
+  it('deletes yesterday\'s data exports: they were downloadable for minutes only', async () => {
+    supabase.seedStorageObject('data-exports', 'client-1/worldhair-donnees.json');
+
+    await job.purgeDataExports();
+
+    expect(supabase.storagePaths('data-exports')).toEqual([]);
+  });
 });

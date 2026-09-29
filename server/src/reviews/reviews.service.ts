@@ -123,6 +123,10 @@ export class ReviewsService {
     if (appointment.attendance === 'no_show') {
       throw new BadRequestException('This appointment was marked as missed');
     }
+    const coiffeurId = appointment.coiffeur_id;
+    if (!coiffeurId) {
+      throw new BadRequestException('This salon has left WorldHair');
+    }
 
     const { data: existing, error: existingError } = await this.supabase.client
       .from('reviews')
@@ -141,7 +145,7 @@ export class ReviewsService {
       .insert({
         appointment_id: input.appointmentId,
         particulier_id: particulierId,
-        coiffeur_id: appointment.coiffeur_id,
+        coiffeur_id: coiffeurId,
         rating: input.rating,
         tags: input.tags ?? [],
         comment: input.comment?.trim() ?? '',

@@ -16,6 +16,11 @@ function camel(row: Row, omit: string[] = []): Row {
   );
 }
 
+/** A salon's booking as its export gives it: the client by name, as in the app — not by account. */
+function withoutClientId(booking: CoiffeurAppointment): Omit<CoiffeurAppointment, 'clientId'> {
+  return Object.fromEntries(Object.entries(booking).filter(([key]) => key !== 'clientId')) as Omit<CoiffeurAppointment, 'clientId'>;
+}
+
 export interface DataExport {
   /** What this is, in the user's language. */
   about: string;
@@ -27,6 +32,9 @@ export interface DataExport {
   bookings: ParticulierAppointment[];
   reviewsWritten: Row[];
   reportsFiled: Row[];
+  /** What WorldHair sent this account (pushes), and the phones they went to — never their push tokens. */
+  notifications: Row[];
+  devices: Row[];
   /** A coiffeur's salon: everything they gave WorldHair about it, and its activity. */
   salon?: {
     application: Row | null;
@@ -37,10 +45,17 @@ export interface DataExport {
     gallery: Row[];
     subscription: Row | null;
     payoutAccount: Row | null;
-    bookings: CoiffeurAppointment[];
+    /** The salon's bookings, its clients by name as it sees them in the app — not by account. */
+    bookings: Omit<CoiffeurAppointment, 'clientId'>[];
     reviewsReceived: Row[];
   };
 }
+
+/** Where a large export waits to be downloaded (private; emptied every night by DocumentRetentionJob). */
+export const EXPORTS_BUCKET = 'data-exports';
+const EXPORT_FILE = 'worldhair-donnees.json';
+/** How long the download link works. */
+const LINK_SECONDS = 10 * 60;
 
 /**
  * « Exporter mes données » (TODO.md Phase 8 — GDPR, right of access): every
@@ -56,13 +71,15 @@ export class DataExportService {
   ) {}
 
   async export(user: AuthenticatedUser, now = new Date()): Promise<DataExport> {
-    const [profile, preferences, favorites, reviewsWritten, reportsFiled, bookings] = await Promise.all([
+    const [profile, preferences, favorites, reviewsWritten, reportsFiled, bookings, notifications, devices] = await Promise.all([
       this.one('profiles', 'id', user.id),
       this.one('notification_preferences', 'user_id', user.id),
       this.all('favorites', 'particulier_id', user.id, ['created_at', 'coiffeur_id']),
       this.all('reviews', 'particulier_id', user.id, ['created_at', 'id']),
       this.all('review_reports', 'reporter_id', user.id, ['created_at', 'review_id']),
       this.appointments.listForParticulier(user.id),
+      this.all('notifications_log', 'user_id', user.id, ['created_at', 'id']),
+      this.all('push_tokens', 'user_id', user.id, ['created_at', 'id']),
     ]);
     const salonNames = await this.salonNames([
       ...favorites.map((row) => row.coiffeur_id as string),
@@ -85,6 +102,8 @@ export class DataExportService {
         ...camel(row, ['particulier_id', 'report_reason', 'reported_at']),
       })),
       reportsFiled: reportsFiled.map((row) => camel(row, ['reporter_id'])),
+      notifications: notifications.map((row) => camel(row, ['id', 'user_id', 'dedupe_key'])),
+      devices: devices.map((row) => camel(row, ['id', 'user_id', 'token'])),
     };
 
     if (user.role === 'coiffeur') {
@@ -111,12 +130,32 @@ export class DataExportService {
         gallery: gallery.map((row) => camel(row, ['profile_id'])),
         subscription: subscription ? camel(subscription, ['profile_id', 'stripe_customer_id', 'stripe_subscription_id']) : null,
         payoutAccount: payoutAccount ? camel(payoutAccount, ['profile_id', 'stripe_account_id']) : null,
-        bookings: salonBookings,
+        bookings: salonBookings.map(withoutClientId),
         // Their authors are the salon's clients: shown as in the app, by review, without their id.
         reviewsReceived: reviewsReceived.map((row) => camel(row, ['particulier_id', 'coiffeur_id', 'report_reason', 'reported_at'])),
       };
     }
     return data;
+  }
+
+  /**
+   * The same export as a file, for one too large to hand to the phone's
+   * share sheet: written to a private bucket, answered as a link that
+   * works a few minutes. The file goes the next night, or with the account.
+   */
+  async downloadLink(user: AuthenticatedUser): Promise<{ url: string; expiresAt: string }> {
+    const path = `${user.id}/${EXPORT_FILE}`;
+    const body = JSON.stringify(await this.export(user), null, 2);
+    const storage = this.supabase.client.storage.from(EXPORTS_BUCKET);
+    const { error } = await storage.upload(path, body, { upsert: true, contentType: 'application/json' });
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    const { data, error: linkError } = await storage.createSignedUrl(path, LINK_SECONDS, { download: EXPORT_FILE });
+    if (linkError || !data) {
+      throw new InternalServerErrorException(linkError?.message ?? 'No download link');
+    }
+    return { url: data.signedUrl, expiresAt: new Date(Date.now() + LINK_SECONDS * 1000).toISOString() };
   }
 
   private async one(table: string, column: string, value: string): Promise<Row | null> {

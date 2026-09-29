@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type Stripe from 'stripe';
@@ -94,6 +94,24 @@ describe('AccountDeletionService', () => {
   }
 
   describe('a client', () => {
+    it("keeps a booking past the salon's cancellation deadline — owed to the salon, as if the client had stayed — and forgets the client's notes", async () => {
+      // Studio W asks for a day's notice: in two hours is too late to cancel.
+      const tooLate = paidBooking(fromNow(2));
+      const past = supabase.seedAppointment({
+        particulierId: CAMILLE,
+        coiffeurId: STUDIO,
+        startsAt: fromNow(-24 * 30),
+        status: 'confirmed',
+        note: 'Appelez-moi au 06 00 00 00 00',
+      });
+
+      await deletion.delete(CAMILLE, 'particulier');
+
+      expect(supabase.appointmentFor(tooLate)).toMatchObject({ status: 'confirmed', particulier_id: null });
+      expect(stripe.refundsCreated).toEqual([]);
+      expect(supabase.appointmentFor(past)).toMatchObject({ particulier_id: null, client_note: null });
+    });
+
     it('cancels and refunds every booking still to come, tells the salon, and keeps the past ones without the client', async () => {
       const upcoming = paidBooking(fromNow(48));
       const request = paidBooking(fromNow(72), 'pending');
@@ -166,6 +184,39 @@ describe('AccountDeletionService', () => {
       await deletion.delete(STUDIO, 'coiffeur');
       expect(supabase.profileFor(STUDIO)).toBeUndefined();
       expect(stripe.transfersCreated).toHaveLength(1);
+    });
+
+    it("refuses to go while it's owed money it has nowhere to receive: its payouts must be set up first", async () => {
+      supabase.seedPayoutAccount({ profileId: STUDIO, stripeAccountId: `acct_${STUDIO}`, payoutsEnabled: false });
+      const upcoming = paidBooking(fromNow(48));
+      paidBooking(fromNow(-3));
+
+      await expect(deletion.delete(STUDIO, 'coiffeur')).rejects.toThrow(ConflictException);
+
+      expect(supabase.profileFor(STUDIO)).toBeDefined();
+      expect(supabase.appointmentFor(upcoming)).toMatchObject({ status: 'confirmed' });
+      expect(stripe.transfersCreated).toEqual([]);
+    });
+
+    it("lets the demo salon go: its money stays with WorldHair by design", async () => {
+      supabase.seedPayoutAccount({ profileId: STUDIO, stripeAccountId: null, payoutsEnabled: false, bookableWithoutPayouts: true });
+      paidBooking(fromNow(-3));
+
+      await deletion.delete(STUDIO, 'coiffeur');
+
+      expect(supabase.profileFor(STUDIO)).toBeUndefined();
+      expect(stripe.transfersCreated).toEqual([]);
+    });
+
+    it('ends its subscription last: a failure before that leaves it running, to try again', async () => {
+      supabase.seedSubscription({ profileId: STUDIO, status: 'active', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' });
+      supabase.seedStorageObject('coiffeur-documents', `${STUDIO}/identity.pdf`);
+      supabase.failNextStorageList();
+
+      await expect(deletion.delete(STUDIO, 'coiffeur')).rejects.toThrow(ServiceUnavailableException);
+
+      expect(stripe.customersDeleted).toEqual([]);
+      expect(supabase.profileFor(STUDIO)).toBeDefined();
     });
 
     it('goes through when Stripe had already forgotten its customer', async () => {

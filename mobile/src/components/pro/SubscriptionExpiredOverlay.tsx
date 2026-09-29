@@ -7,6 +7,7 @@ import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { Button } from "../ui/Button";
+import { MyDataGroups } from "../account/MyDataGroups";
 
 /**
  * Full-screen block once the subscription has ended (issue #8): a
@@ -117,6 +118,9 @@ export function SubscriptionExpiredOverlay() {
           color={theme.primary.on}
           style={{ width: "100%" }}
         />
+
+        {/* Leaving WorldHair stays possible behind the veil (TODO.md Phase 8). */}
+        <MyDataGroups variant="links" />
       </View>
     </View>
   );

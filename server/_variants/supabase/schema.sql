@@ -1097,6 +1097,14 @@ create policy "Anyone can view admin media"
   on storage.objects for select
   using (bucket_id = 'admin-media');
 
+-- « Exporter mes données » too large for the phone's share sheet (TODO.md
+-- Phase 8): the server writes it here and hands out a link valid ten
+-- minutes (DataExportService.downloadLink). Private, and no policy: only
+-- the server's service role reads or writes it. Emptied every night
+-- (DocumentRetentionJob), and a deleted account's file goes with it.
+insert into storage.buckets (id, name, public)
+values ('data-exports', 'data-exports', false);
+
 -- A coiffeur's subscription (devis: "Abonnement professionnel Stripe", TODO.md
 -- Phase 4). It lives in Stripe — sold on the website through Stripe Checkout,
 -- managed in Stripe's Customer Portal — and this row mirrors it, kept current

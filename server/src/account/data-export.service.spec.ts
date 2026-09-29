@@ -91,6 +91,25 @@ describe('DataExportService', () => {
     expect(JSON.parse(JSON.stringify(data))).toEqual(data);
   });
 
+  it('includes the notifications sent and the devices registered — never their push tokens', async () => {
+    supabase.seedNotification({ userId: CAMILLE, type: 'appointment_confirmed', title: 'Rendez-vous confirmé', body: 'À mercredi.' });
+    supabase.seedPushToken({ userId: CAMILLE, token: 'ExponentPushToken[secret]', platform: 'ios' });
+
+    const data = await exports.export(user(CAMILLE, 'camille@example.com', 'particulier'));
+
+    expect(data.notifications).toMatchObject([{ type: 'appointment_confirmed', title: 'Rendez-vous confirmé' }]);
+    expect(data.devices).toMatchObject([{ platform: 'ios' }]);
+    expect(JSON.stringify(data)).not.toContain('ExponentPushToken');
+  });
+
+  it('puts a large export in a private file, for a download link valid a few minutes', async () => {
+    const { url, expiresAt } = await exports.downloadLink(user(CAMILLE, 'camille@example.com', 'particulier'));
+
+    expect(supabase.storagePaths('data-exports')).toEqual([`${CAMILLE}/worldhair-donnees.json`]);
+    expect(url).toContain(`data-exports/${CAMILLE}/worldhair-donnees.json`);
+    expect(new Date(expiresAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
   it('gives a salon its dossier, its page, its prestations and hours, its bookings and the reviews it received', async () => {
     const booking = supabase.seedAppointment({ particulierId: CAMILLE, coiffeurId: STUDIO, startsAt: PAST, price: 40 });
     supabase.seedReview({ appointmentId: booking, particulierId: CAMILLE, coiffeurId: STUDIO, rating: 4, comment: 'Bien.' });
@@ -108,5 +127,10 @@ describe('DataExportService', () => {
     });
     // Its own bookings as a client are none.
     expect(data.bookings).toEqual([]);
+    // Nothing internal: no Stripe id, nor the clients' account ids.
+    const text = JSON.stringify(data);
+    expect(text).not.toContain('cus_1');
+    expect(text).not.toContain('sub_1');
+    expect(text).not.toContain(CAMILLE);
   });
 });

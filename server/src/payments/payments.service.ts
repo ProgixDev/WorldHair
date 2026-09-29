@@ -372,12 +372,21 @@ export class PaymentsService {
         .range(from, to),
     );
     const started = await this.startedBookings(unsent.map((payment) => payment.appointment_id), now);
+    const owed = unsent.filter(
+      (payment) => started.has(payment.appointment_id) && Number(payment.amount) > Number(payment.refunded_amount),
+    );
+    if (owed.length === 0) return 0;
+    // Its money has nowhere to go — unless it's the demo salon's, which stays with WorldHair by design.
+    if (!(await this.payouts.readyAccountId(coiffeurId)) && !(await this.payouts.isExempt(coiffeurId))) {
+      throw new ConflictException('SALON_PAYOUTS_NOT_READY: this salon is owed money but its payouts are not set up');
+    }
     let sent = 0;
-    for (const due of unsent.filter((payment) => started.has(payment.appointment_id))) {
+    for (const due of owed) {
       try {
+        // The lock's lease from now, not from when the deletion started.
         const paid = await this.withLock(
           due.id,
-          now,
+          new Date(),
           (payment) => this.payOut(payment, now),
           () => {
             throw new ConflictException('This payment is being processed');

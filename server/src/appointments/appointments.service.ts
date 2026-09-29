@@ -541,6 +541,12 @@ export class AppointmentsService {
     payment: PaymentRow,
     intent: Stripe.PaymentIntent,
   ): Promise<AppointmentRow> {
+    if (row.status === 'awaiting_payment' && (!row.coiffeur_id || !row.particulier_id)) {
+      // Its salon (or client) deleted their account while this was being paid: no booking to make — all of it goes back.
+      await this.payments.refundOrphan(intent);
+      await this.supabase.client.from('appointments').delete().eq('id', row.id).eq('status', 'awaiting_payment');
+      return row;
+    }
     if (payment.status !== 'succeeded') await this.payments.markSucceeded(payment, intent);
     if (row.status !== 'awaiting_payment') return row;
 
@@ -707,22 +713,49 @@ export class AppointmentsService {
 
   /**
    * An account being deleted (TODO.md Phase 8): its slots held for a
-   * payment go back to everyone, and every booking still to come — as the
-   * client or as the salon — is cancelled and refunded in full, the other
-   * side told. Those already started stay, anonymized with the account.
-   * Releasing a hold asks Stripe: one it can't answer now stops the deletion.
+   * payment go back to everyone — or, paid that very moment, become
+   * bookings like any other. Releasing a hold asks Stripe: one it can't
+   * answer now stops the deletion.
    */
-  async closeBookingsOf(userId: string, now = new Date()): Promise<void> {
+  async releaseHoldsOfAccount(userId: string): Promise<void> {
     for (const column of ['particulier_id', 'coiffeur_id'] as const) {
-      for (const row of await this.openRowsWhere(column, userId, ['awaiting_payment'])) {
+      for (const row of await this.rowsWithStatus(column, userId, ['awaiting_payment'])) {
         await this.releaseRow(row);
       }
     }
+  }
+
+  /**
+   * An account being deleted: every booking still to come is cancelled and
+   * refunded in full, the other side told — a salon's all of them; a
+   * client's the ones they could still cancel themselves. One past the
+   * salon's deadline stays, owed to the salon as if the client had stayed,
+   * and is anonymized with the account like those already started.
+   */
+  async cancelUpcomingOf(userId: string, now = new Date()): Promise<void> {
     for (const column of ['particulier_id', 'coiffeur_id'] as const) {
-      for (const row of await this.openRowsWhere(column, userId, ['pending', 'confirmed'])) {
-        const toCome = row.status === 'pending' || new Date(row.starts_at).getTime() > now.getTime();
-        if (toCome) await this.cancelForDeletion(row, column === 'particulier_id' ? 'client' : 'salon', userId);
+      const side = column === 'particulier_id' ? 'client' : 'salon';
+      const rows = [
+        ...(await this.rowsWithStatus(column, userId, ['pending'])),
+        ...(await this.rowsWithStatus(column, userId, ['confirmed'], now)),
+      ];
+      const notices = side === 'client' ? await this.salonsFor([...new Set(rows.map(salonOf))]) : null;
+      for (const row of rows) {
+        const until = notices ? modifiableUntil(row, notices.get(salonOf(row))?.cancellationNoticeMinutes ?? 0) : null;
+        if (until !== null && new Date(until).getTime() <= now.getTime()) continue;
+        await this.cancelForDeletion(row, side, userId);
       }
+    }
+  }
+
+  /** What a client wrote to salons goes with them; the bookings themselves stay, anonymized. */
+  async forgetClientNotes(particulierId: string): Promise<void> {
+    const { error } = await this.supabase.client
+      .from('appointments')
+      .update({ client_note: null })
+      .eq('particulier_id', particulierId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
     }
   }
 
@@ -745,21 +778,18 @@ export class AppointmentsService {
     });
   }
 
-  private async openRowsWhere(
+  /** This side's bookings in these statuses — starting from `from` on, when given — however many. */
+  private async rowsWithStatus(
     column: 'particulier_id' | 'coiffeur_id',
     userId: string,
     statuses: string[],
+    from?: Date,
   ): Promise<AppointmentRow[]> {
-    return allPages<AppointmentRow>((from, to) =>
-      this.supabase.client
-        .from('appointments')
-        .select()
-        .eq(column, userId)
-        .in('status', statuses)
-        .order('starts_at')
-        .order('id')
-        .range(from, to),
-    );
+    return allPages<AppointmentRow>((first, last) => {
+      let query = this.supabase.client.from('appointments').select().eq(column, userId).in('status', statuses);
+      if (from) query = query.gte('starts_at', from.toISOString());
+      return query.order('starts_at').order('id').range(first, last);
+    });
   }
 
   // ─── Admin: disputes ─────────────────────────────────────────────────────

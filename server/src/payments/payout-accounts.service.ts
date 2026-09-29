@@ -76,6 +76,11 @@ export class PayoutAccountsService {
     return toStatus(await this.findRow(profileId)).onlineBooking;
   }
 
+  /** The demo salon: bookable without payouts, its money stays with WorldHair by design (seed:demo). */
+  async isExempt(profileId: string): Promise<boolean> {
+    return (await this.findRow(profileId))?.bookable_without_payouts === true;
+  }
+
   /** The account a transfer can go to — none while payouts are off (the demo salon's money stays with WorldHair). */
   async readyAccountId(profileId: string): Promise<string | null> {
     const row = await this.findRow(profileId);

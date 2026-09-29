@@ -159,6 +159,15 @@ export async function setAccountStatus(
   return data;
 }
 
+/**
+ * Deletes a client or salon account for good, as its own « Supprimer mon
+ * compte » would (a request received by e-mail): bookings to come
+ * cancelled and refunded, a salon paid what it's owed. The top admin tier only.
+ */
+export async function deleteAccount(id: string): Promise<void> {
+  await apiClient.delete(`/admin/accounts/${id}`);
+}
+
 export async function getAccount(id: string): Promise<AdminAccount> {
   const { data } = await apiClient.get<AdminAccount>(`/admin/accounts/${id}`);
   return data;
@@ -360,8 +369,9 @@ export interface AdminAppointment {
   attendance: "attended" | "no_show" | null;
   /** `null` unless cancelled — and on bookings cancelled before it was kept. */
   cancelledBy: "client" | "salon" | "admin" | "system" | null;
-  salon: { id: string; name: string };
-  client: { id: string; name: string };
+  /** An `id` of null: that side deleted their account since (TODO.md Phase 8). */
+  salon: { id: string | null; name: string };
+  client: { id: string | null; name: string };
   /** `null` for a booking made before payments. */
   payment: AdminAppointmentPayment | null;
   createdAt: string;
@@ -372,8 +382,8 @@ export interface AdminAppointmentDetail extends AdminAppointment {
   services: { serviceId: string | null; name: string; price: number; durationMin: number }[];
   note: string | null;
   cancellationReason: string | null;
-  client: { id: string; name: string; email: string | null };
-  salon: { id: string; name: string; phone: string; city: string; email: string | null };
+  client: { id: string | null; name: string; email: string | null };
+  salon: { id: string | null; name: string; phone: string; city: string; email: string | null };
   payment: (AdminAppointmentPayment & { paymentIntentId: string | null }) | null;
 }
 

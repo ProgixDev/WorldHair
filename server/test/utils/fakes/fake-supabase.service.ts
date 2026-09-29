@@ -449,9 +449,10 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
       .filter((row) => matchesAll(row, this.eqFilters))
       .filter((row) => this.inFilters.every(([column, values]) => values.includes(row[column])))
       .filter((row) => this.isFilters.every(([column]) => row[column] === null))
-      .filter((row) => this.gteFilters.every(([column, value]) => compareValues(row[column], value) >= 0))
-      .filter((row) => this.lteFilters.every(([column, value]) => compareValues(row[column], value) <= 0))
-      .filter((row) => this.ltFilters.every(([column, value]) => compareValues(row[column], value) < 0));
+      // A NULL never matches a range filter, like SQL.
+      .filter((row) => this.gteFilters.every(([column, value]) => row[column] !== null && compareValues(row[column], value) >= 0))
+      .filter((row) => this.lteFilters.every(([column, value]) => row[column] !== null && compareValues(row[column], value) <= 0))
+      .filter((row) => this.ltFilters.every(([column, value]) => row[column] !== null && compareValues(row[column], value) < 0));
     return rows.slice(this.rangeFrom, Math.min(this.rangeTo + 1, this.rangeFrom + MAX_ROWS));
   }
 
@@ -571,6 +572,7 @@ export class FakeSupabaseService {
   private readonly reviewReports: ReviewReportRow[] = [];
   /** Storage objects by bucket: their paths. */
   private readonly storageObjects = new Map<string, Set<string>>();
+  private nextStorageListFails = false;
   private lastFavoriteAt = 0;
   private lastReportAt = 0;
 
@@ -623,6 +625,9 @@ export class FakeSupabaseService {
           const tokenEntry = [...this.authUsersByToken.entries()].find(
             ([, user]) => user.id === id,
           );
+          if (!tokenEntry && !this.profiles.has(id)) {
+            return { data: null, error: { message: 'User not found', status: 404 } };
+          }
           if (tokenEntry) {
             this.authUsersByToken.delete(tokenEntry[0]);
           }
@@ -723,6 +728,10 @@ export class FakeSupabaseService {
         }),
         /** One folder's entries, like Storage: files, and sub-folders with a null id. */
         list: async (prefix = '', options?: { limit?: number; offset?: number }) => {
+          if (this.nextStorageListFails) {
+            this.nextStorageListFails = false;
+            return { data: null, error: { message: 'Storage is unavailable' } };
+          }
           const folder = prefix ? `${prefix.replace(/\/$/, '')}/` : '';
           const entries = new Map<string, { name: string; id: string | null }>();
           for (const path of this.storageObjects.get(bucket) ?? []) {
@@ -739,6 +748,14 @@ export class FakeSupabaseService {
           const removed = paths.filter((path) => objects?.delete(path));
           return { data: removed.map((name) => ({ name })), error: null };
         },
+        upload: async (path: string) => {
+          this.seedStorageObject(bucket, path);
+          return { data: { path }, error: null };
+        },
+        createSignedUrl: async (path: string, expiresIn: number) => ({
+          data: { signedUrl: `https://fake.local/${bucket}/${path}?expiresIn=${expiresIn}` },
+          error: null,
+        }),
       }),
     },
   };
@@ -798,6 +815,41 @@ export class FakeSupabaseService {
     const objects = this.storageObjects.get(bucket) ?? new Set<string>();
     objects.add(path);
     this.storageObjects.set(bucket, objects);
+  }
+
+  /** Test convenience: the next Storage `list` fails, as when Storage is down. */
+  failNextStorageList(): void {
+    this.nextStorageListFails = true;
+  }
+
+  /** Test convenience: a phone registered for pushes. */
+  seedPushToken(params: { userId: string; token: string; platform: string }): void {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.pushTokens.set(id, {
+      id,
+      user_id: params.userId,
+      token: params.token,
+      platform: params.platform,
+      timezone: 'Europe/Paris',
+      last_seen_at: now,
+      invalidated_at: null,
+      created_at: now,
+    });
+  }
+
+  /** Test convenience: a notification already sent. */
+  seedNotification(params: { userId: string; type: string; title: string; body: string; dedupeKey?: string }): void {
+    const id = randomUUID();
+    this.notificationsLog.set(id, {
+      id,
+      user_id: params.userId,
+      type: params.type,
+      title: params.title,
+      body: params.body,
+      dedupe_key: params.dedupeKey ?? id,
+      created_at: new Date().toISOString(),
+    });
   }
 
   /** Test convenience: every path still in a bucket. */
@@ -878,7 +930,15 @@ export class FakeSupabaseService {
       if (row.profile_id === id) this.availability.delete(key);
     }
     for (const [key, row] of this.services) {
-      if (row.profile_id === id) this.services.delete(key);
+      if (row.profile_id !== id) continue;
+      this.services.delete(key);
+      // appointments.service_id and appointment_services.service_id: on delete set null.
+      for (const [appointmentKey, appointment] of this.appointments) {
+        if (appointment.service_id === key) this.appointments.set(appointmentKey, { ...appointment, service_id: null });
+      }
+      for (const [lineKey, line] of this.appointmentServices) {
+        if (line.service_id === key) this.appointmentServices.set(lineKey, { ...line, service_id: null });
+      }
     }
     for (const [key, row] of this.galleryPhotos) {
       if (row.profile_id === id) this.galleryPhotos.delete(key);
@@ -977,6 +1037,7 @@ export class FakeSupabaseService {
     status?: string;
     attendance?: string | null;
     cancelledBy?: string | null;
+    note?: string | null;
     createdAt?: string;
   }): string {
     const id = params.id ?? randomUUID();
@@ -990,7 +1051,7 @@ export class FakeSupabaseService {
       duration_min: params.durationMin ?? 45,
       starts_at: params.startsAt,
       status: params.status ?? 'confirmed',
-      client_note: null,
+      client_note: params.note ?? null,
       attendance: params.attendance ?? null,
       cancellation_notice_minutes: null,
       moved_by_salon: false,
@@ -1205,8 +1266,11 @@ export class FakeSupabaseService {
     reviewedAt?: string | null;
     documentsPurgedAt?: string | null;
   }): void {
-    const existing = this.coiffeurApplications.get(params.profileId);
-    this.coiffeurApplications.set(params.profileId, {
+    // One row per coiffeur, whether seeded here (keyed by profile) or upserted by the service (keyed by id).
+    const found = [...this.coiffeurApplications.entries()].find(([, row]) => row.profile_id === params.profileId);
+    const key = found?.[0] ?? params.profileId;
+    const existing = found?.[1];
+    this.coiffeurApplications.set(key, {
       id: existing?.id ?? randomUUID(),
       profile_id: params.profileId,
       first_name: params.firstName ?? existing?.first_name ?? '',
@@ -1961,35 +2025,34 @@ export class FakeSupabaseService {
         }),
       }),
 
+      /** Every row matched, like SQL; the first comes back for `.select().maybeSingle()` (callers match one by id). */
       update: (patch: Record<string, unknown>) =>
         new FakeMutationQuery<AppointmentRow>((matches) => {
           const before = this.beforeAppointmentUpdate;
           this.beforeAppointmentUpdate = null;
           before?.();
-          const existing = [...rows.values()].find(matches);
-          if (!existing) {
-            return { data: null, count: 0 };
-          }
-          const updated = { ...existing, ...patch };
-          rows.set(existing.id, updated);
-          return { data: withLines(updated), count: 1 };
+          const updated = [...rows.values()].filter(matches).map((existing) => ({ ...existing, ...patch }));
+          for (const row of updated) rows.set(row.id, row);
+          return { data: updated[0] ? withLines(updated[0]) : null, count: updated.length };
         }),
 
-      /** Mirrors the real ON DELETE CASCADE to appointment_services. */
+      /** Every row matched, like SQL — with the real ON DELETE CASCADE to its lines, payment and review. */
       delete: () =>
         new FakeMutationQuery<AppointmentRow>((matches) => {
-          const existing = [...rows.values()].find(matches);
-          if (!existing) {
-            return { data: null, count: 0 };
+          const deleted = [...rows.values()].filter(matches);
+          for (const existing of deleted) {
+            rows.delete(existing.id);
+            for (const [lineId, line] of this.appointmentServices) {
+              if (line.appointment_id === existing.id) this.appointmentServices.delete(lineId);
+            }
+            for (const [paymentId, payment] of this.payments) {
+              if (payment.appointment_id === existing.id) this.payments.delete(paymentId);
+            }
+            for (const [reviewId, review] of this.reviews) {
+              if (review.appointment_id === existing.id) this.reviews.delete(reviewId);
+            }
           }
-          rows.delete(existing.id);
-          for (const [lineId, line] of this.appointmentServices) {
-            if (line.appointment_id === existing.id) this.appointmentServices.delete(lineId);
-          }
-          for (const [paymentId, payment] of this.payments) {
-            if (payment.appointment_id === existing.id) this.payments.delete(paymentId);
-          }
-          return { data: existing, count: 1 };
+          return { data: deleted[0] ?? null, count: deleted.length };
         }),
     };
   }

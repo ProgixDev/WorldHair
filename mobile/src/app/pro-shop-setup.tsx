@@ -27,6 +27,7 @@ import type { AvailabilityDay, ProService } from "../features/pro/types";
 import { coverFor, coverPlaceholder } from "../features/salons/images";
 import { newServiceId } from "../services/pro";
 import { formatDuration, formatPrice } from "../utils/date";
+import { MyDataGroups } from "../components/account/MyDataGroups";
 
 /**
  * Mandatory first-login screen after admin approval (issue #7): the coiffeur
@@ -366,6 +367,8 @@ function ProShopSetup() {
               {error}
             </Text>
           ) : null}
+
+          <MyDataGroups variant="links" />
         </View>
       </ScrollView>
 

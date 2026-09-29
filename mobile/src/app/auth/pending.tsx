@@ -10,6 +10,7 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
+import { MyDataGroups } from "../../components/account/MyDataGroups";
 
 function formatDate(iso?: string): string {
   if (!iso) return "";
@@ -209,6 +210,8 @@ export default function PendingReview() {
             Se déconnecter
           </Text>
         </Pressable>
+
+        <MyDataGroups variant="links" />
       </View>
     </Screen>
   );

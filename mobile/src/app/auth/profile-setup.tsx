@@ -14,6 +14,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
 import { AuthError } from "../../services/auth";
 import { isValidName } from "../../utils/validation";
+import { MyDataGroups } from "../../components/account/MyDataGroups";
 
 export default function ProfileSetup() {
   const router = useRouter();
@@ -123,6 +124,8 @@ export default function ProfileSetup() {
             {formError}
           </Text>
         ) : null}
+
+        {isEditing ? null : <MyDataGroups variant="links" />}
       </View>
     </Screen>
   );

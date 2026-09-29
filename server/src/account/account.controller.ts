@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
@@ -27,5 +27,12 @@ export class AccountController {
   @Get('export')
   export(@CurrentUser() current: AuthenticatedUser): Promise<DataExport> {
     return this.exports.export(current);
+  }
+
+  /** The export as a file to download, for one too large for the phone's share sheet. */
+  @Post('export/link')
+  @HttpCode(200)
+  exportLink(@CurrentUser() current: AuthenticatedUser): Promise<{ url: string; expiresAt: string }> {
+    return this.exports.downloadLink(current);
   }
 }

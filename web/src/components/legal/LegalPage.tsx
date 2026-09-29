@@ -30,16 +30,17 @@ function Inline({ text }: { text: string }) {
 }
 
 /**
- * One legal page of the site (TODO.md Phase 8): a navy band under the
- * header with the title and version, then the text, then the other legal
- * pages. The app opens these same pages.
+ * One legal page of the site (TODO.md Phase 8): a navy band with the title
+ * and version, then the text, then the other legal pages. The app opens
+ * these same pages.
  */
 export function LegalPage({ document, path }: { document: LegalDocument; path: string }) {
   return (
     <>
-      <section className="bg-[#0c2340] px-4 pt-28 pb-10 text-white sm:px-6 sm:pt-36 sm:pb-14">
+      <section className="bg-[#0c2340] px-4 pt-10 pb-10 text-white sm:px-6 sm:pt-14 sm:pb-14">
         <div className="mx-auto max-w-3xl">
-          <p className="text-xs tracking-[0.2em] text-white/60 uppercase">Informations légales</p>
+          <p className="text-sm tracking-[0.2em] text-white uppercase">WorldHair</p>
+          <p className="mt-8 text-xs tracking-[0.2em] text-white/60 uppercase">Informations légales</p>
           <h1 className="mt-3 text-3xl leading-tight font-medium sm:text-5xl">{document.title}</h1>
           {document.version && <p className="mt-4 text-sm text-white/70">{document.version}</p>}
         </div>

@@ -521,7 +521,12 @@ export class SubscriptionsService {
   }
 
   private async ensureCustomer(profileId: string, row: SubscriptionRow | null): Promise<string> {
-    if (row?.stripe_customer_id) return row.stripe_customer_id;
+    // One deleted since — from Stripe's dashboard, or by an account deletion that stopped half-way — is replaced.
+    const previous = row?.stripe_customer_id ?? null;
+    if (previous) {
+      const existing = await this.stripe.client.customers.retrieve(previous);
+      if (!('deleted' in existing && existing.deleted)) return previous;
+    }
 
     const [email, salonName] = await Promise.all([this.emailOf(profileId), this.salonNameOf(profileId)]);
     // Two clicks racing get the same customer back: Stripe replays a repeated idempotency key.
@@ -532,7 +537,7 @@ export class SubscriptionsService {
         preferred_locales: ['fr'],
         metadata: { profile_id: profileId },
       },
-      { idempotencyKey: `worldhair-customer-${profileId}` },
+      { idempotencyKey: previous ? `worldhair-customer-${profileId}-after-${previous}` : `worldhair-customer-${profileId}` },
     );
     await this.upsertRow({ profile_id: profileId, stripe_customer_id: customer.id });
     return customer.id;

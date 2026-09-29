@@ -79,8 +79,6 @@ export interface Session {
   shopProfileComplete?: boolean;
   /** ISO creation date — drives the "membre depuis" line. */
   createdAt: string;
-  /** The CGU/privacy version accepted; another than the app's (features/legal/terms.ts) is asked again. */
-  termsVersion: string | null;
 }
 
 export type AuthErrorCode =
@@ -192,7 +190,7 @@ async function buildSession(): Promise<Session | null> {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("first_name, last_name, photo_url, role, created_at, terms_version")
+    .select("first_name, last_name, photo_url, role, created_at")
     .eq("id", user.id)
     .maybeSingle();
   if (profileError) throw new AuthError("STORAGE", profileError.message);
@@ -200,7 +198,6 @@ async function buildSession(): Promise<Session | null> {
   const role = (profile?.role as UserRole | undefined) ?? "particulier";
   const emailVerified = user.email_confirmed_at != null;
   const createdAt = profile?.created_at ?? user.created_at;
-  const termsVersion = (profile?.terms_version as string | null | undefined) ?? null;
 
   if (role === "coiffeur") {
     const { data: applicationRow, error: applicationError } = await supabase
@@ -232,7 +229,6 @@ async function buildSession(): Promise<Session | null> {
       reviewMessage: row?.review_message ?? null,
       shopProfileComplete: row?.shop_profile_complete ?? false,
       createdAt,
-      termsVersion,
     };
   }
 
@@ -259,7 +255,6 @@ async function buildSession(): Promise<Session | null> {
     application: null,
     reviewMessage: null,
     createdAt,
-    termsVersion,
   };
 }
 

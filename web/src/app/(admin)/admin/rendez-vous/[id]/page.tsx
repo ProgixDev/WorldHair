@@ -244,9 +244,7 @@ function AppointmentView({
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card title="Client">
-          <Link href={`/admin/comptes/${appointment.client.id}`} className="text-sm font-medium text-[#f2f6fb] hover:text-[#2a93d5]">
-            {appointment.client.name}
-          </Link>
+          <AccountName id={appointment.client.id} name={appointment.client.name} />
           {appointment.client.email ? (
             <a href={`mailto:${appointment.client.email}`} className="block truncate text-xs text-[#2a93d5] hover:text-white">
               {appointment.client.email}
@@ -257,9 +255,7 @@ function AppointmentView({
         </Card>
 
         <Card title="Salon">
-          <Link href={`/admin/comptes/${appointment.salon.id}`} className="text-sm font-medium text-[#f2f6fb] hover:text-[#2a93d5]">
-            {appointment.salon.name}
-          </Link>
+          <AccountName id={appointment.salon.id} name={appointment.salon.name} />
           <p className="text-xs text-[#93a6bc]">
             {[appointment.salon.city, appointment.salon.phone].filter(Boolean).join(" · ") || "—"}
           </p>
@@ -396,6 +392,17 @@ function AppointmentView({
           </button>
         ))}
     </div>
+  );
+}
+
+/** A side's name, to its account — or as plain text once that account was deleted. */
+function AccountName({ id, name }: { id: string | null; name: string }) {
+  return id ? (
+    <Link href={`/admin/comptes/${id}`} className="text-sm font-medium text-[#f2f6fb] hover:text-[#2a93d5]">
+      {name}
+    </Link>
+  ) : (
+    <p className="text-sm font-medium text-[#93a6bc]">{name}</p>
   );
 }
 
