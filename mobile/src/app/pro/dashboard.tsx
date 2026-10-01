@@ -28,6 +28,7 @@ import {
   weeklySeries,
 } from "../../features/pro/stats";
 import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
+import { euros, waitingPayout } from "../../features/pro/payouts";
 import type { TimeOff } from "../../features/pro/types";
 import { listTimeOff } from "../../services/pro";
 import {
@@ -60,6 +61,11 @@ export default function ProDashboard() {
   const { profile, services, appointments, availability, timeOff, subscription, payoutStatus, isLoading } = usePro();
 
   const stats = useMemo(() => computeStats(appointments), [appointments]);
+  // Paid by clients, not sendable until the salon's payouts are active.
+  const waiting = useMemo(
+    () => (payoutStatus && payoutStatus.state !== "ready" ? waitingPayout(appointments) : 0),
+    [appointments, payoutStatus],
+  );
   // This week's closures from Monday: one already over still wasn't open time.
   const [weekClosures, setWeekClosures] = useState<TimeOff[] | null>(null);
   useEffect(() => {
@@ -174,7 +180,7 @@ export default function ProDashboard() {
 
       <View style={{ paddingHorizontal: gutter, gap: spacing.xl }}>
         {/* ── Payouts strip: no online bookings until the salon can be paid ── */}
-        {payoutStatus && !payoutStatus.onlineBooking ? (
+        {payoutStatus && (!payoutStatus.onlineBooking || waiting > 0) ? (
           <Pressable
             onPress={() => router.push("/pro/payments" as never)}
             accessibilityRole="button"
@@ -193,10 +199,12 @@ export default function ProDashboard() {
             <MaterialCommunityIcons name="bank-outline" size={22} color={theme.accent.warm} />
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[typography.label, { color: theme.foreground.white }]}>
-                Réservations en ligne fermées
+                {waiting > 0 ? euros(waiting) + " vous attendent" : "Réservations en ligne fermées"}
               </Text>
               <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-                Configurez vos paiements pour que vos clients réservent et paient dans l&apos;application.
+                {waiting > 0
+                  ? "Vos clients ont payé : configurez vos paiements pour recevoir cet argent."
+                  : "Configurez vos paiements pour que vos clients réservent et paient dans l'application."}
               </Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={20} color={theme.foreground.gray} />

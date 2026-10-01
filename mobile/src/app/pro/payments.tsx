@@ -11,6 +11,7 @@ import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { euros, payoutLine, waitingPayout } from "../../features/pro/payouts";
 import type { PayoutStatus, ProAppointment } from "../../features/pro/types";
 import {
   createPayoutDashboardLink,
@@ -21,13 +22,6 @@ import { fullDate } from "../../utils/date";
 
 /** Where Stripe's onboarding hands back to the app (via the website's /connect/retour page). */
 const RETURN_URL = "worldhair://pro/payments";
-
-/** A day after the appointment's end: when the salon's share is sent (server/src/payments/payments.service.ts). */
-const PAYOUT_DELAY_MS = 24 * 3_600_000;
-
-function euros(amount: number): string {
-  return (Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(".", ",")) + " €";
-}
 
 const STATUS_COPY: Record<PayoutStatus["state"], { title: string; detail: string; action: string | null }> = {
   none: {
@@ -96,6 +90,8 @@ export default function ProPaymentsScreen() {
   };
 
   const copy = payoutStatus ? STATUS_COPY[payoutStatus.state] : null;
+  // Paid by clients, not sendable until the salon's payouts are active.
+  const waiting = payoutStatus && payoutStatus.state !== "ready" ? waitingPayout(appointments) : 0;
   const tone = payoutStatus?.state === "ready" ? theme.success : payoutStatus?.state === "exempt" ? theme.primary.main : theme.accent.warm;
 
   return (
@@ -148,6 +144,11 @@ export default function ProPaymentsScreen() {
             <Text style={[typography.h2, { color: theme.foreground.white, flex: 1 }]}>{copy.title}</Text>
           </View>
           <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>{copy.detail}</Text>
+          {waiting > 0 ? (
+            <Text style={[typography.label, { color: theme.foreground.white }]}>
+              {euros(waiting) + " payés par vos clients vous attendent. Ils vous seront versés dès vos paiements configurés."}
+            </Text>
+          ) : null}
           {copy.action ? (
             <Button
               label={copy.action}
@@ -178,10 +179,7 @@ export default function ProPaymentsScreen() {
         ) : (
           paid.map((appointment) => {
             const { payment } = appointment;
-            const payoutAt = new Date(
-              new Date(appointment.startsAt).getTime() + appointment.durationMin * 60_000 + PAYOUT_DELAY_MS,
-            );
-            const refundedAll = payment.refundedAmount >= payment.amount;
+            const payout = payoutLine(appointment, payoutStatus?.state);
             return (
               <View
                 key={appointment.id}
@@ -208,15 +206,8 @@ export default function ProPaymentsScreen() {
                     {"Remboursé " + euros(payment.refundedAmount)}
                   </Text>
                 ) : null}
-                {!refundedAll && appointment.status !== "cancelled" && appointment.status !== "refused" ? (
-                  <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-                    {"Commission " +
-                      euros(payment.commissionAmount) +
-                      " · " +
-                      (payment.paidOutAt
-                        ? "versé " + euros(payment.payoutAmount) + " le " + fullDate(new Date(payment.paidOutAt))
-                        : "versement de " + euros(payment.payoutAmount) + " prévu le " + fullDate(payoutAt))}
-                  </Text>
+                {payout ? (
+                  <Text style={[typography.caption, { color: theme.foreground.gray }]}>{payout}</Text>
                 ) : null}
               </View>
             );
