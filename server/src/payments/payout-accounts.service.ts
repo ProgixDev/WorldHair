@@ -129,6 +129,9 @@ export class PayoutAccountsService {
 
     const [email, salonName] = await Promise.all([this.emailOf(profileId), this.salonNameOf(profileId)]);
     // Two taps racing get the same account back: Stripe replays a repeated idempotency key.
+    // The key lasts a minute only — Stripe keeps a key's answer for a day, a refusal
+    // (Connect not set up yet) included, which would block the salon until then.
+    const minute = Math.floor(Date.now() / 60_000);
     const account = await this.stripe.client.accounts.create(
       {
         type: 'express',
@@ -138,7 +141,7 @@ export class PayoutAccountsService {
         business_profile: { mcc: SALON_MCC, ...(salonName ? { name: salonName } : {}) },
         metadata: { profile_id: profileId },
       },
-      { idempotencyKey: `worldhair-connect-${profileId}` },
+      { idempotencyKey: `worldhair-connect-${profileId}-${minute}` },
     );
     const { error } = await this.supabase.client
       .from('coiffeur_payout_accounts')

@@ -48,7 +48,7 @@ describe('PayoutAccountsService', () => {
       business_profile: { name: 'Studio W' },
       metadata: { profile_id: COIFFEUR_ID },
     });
-    expect(stripe.accountsCreated[0].idempotencyKey).toBe(`worldhair-connect-${COIFFEUR_ID}`);
+    expect(stripe.accountsCreated[0].idempotencyKey).toMatch(new RegExp(`^worldhair-connect-${COIFFEUR_ID}-[0-9]+$`));
     expect(stripe.accountLinksCreated[0]).toMatchObject({
       account: 'acct_test_1',
       type: 'account_onboarding',
@@ -56,6 +56,25 @@ describe('PayoutAccountsService', () => {
       refresh_url: 'https://worldhair.test/connect/retour?etat=expire',
     });
     await expect(payouts.getStatus(COIFFEUR_ID)).resolves.toMatchObject({ state: 'incomplete', onlineBooking: false });
+  });
+
+  it("doesn't let a refused attempt block the salon: Stripe keeps a key's answer for a day, so the key only covers double taps", async () => {
+    const now = jest.spyOn(Date, 'now');
+    const tapAt = async (iso: string) => {
+      now.mockReturnValue(Date.parse(iso));
+      await payouts.createOnboardingLink(COIFFEUR_ID);
+      // As if Stripe had refused it: nothing saved, the salon taps again.
+      supabase.seedPayoutAccount({ profileId: COIFFEUR_ID, stripeAccountId: null });
+    };
+
+    await tapAt('2026-10-01T08:00:10Z');
+    await tapAt('2026-10-01T08:00:50Z');
+    expect(stripe.accountsCreated).toHaveLength(1); // same minute: the same request, replayed
+
+    await tapAt('2026-10-01T08:01:05Z');
+    now.mockRestore();
+    expect(stripe.accountsCreated).toHaveLength(2); // a minute on: a new request, not the old answer
+    expect(stripe.accountsCreated[1].idempotencyKey).not.toBe(stripe.accountsCreated[0].idempotencyKey);
   });
 
   it('asks Stripe again while onboarding is unfinished, and opens online booking once payouts are on', async () => {
