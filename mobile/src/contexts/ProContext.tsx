@@ -33,6 +33,10 @@ interface ProContextValue {
   /** Upcoming congés and exceptional closures. */
   timeOff: TimeOff[];
   isLoading: boolean;
+  /** The first read failed (no network, server down): the pro area offers to try again. */
+  loadFailed: boolean;
+  /** Reads everything again after a failure; never throws. */
+  retry: () => Promise<void>;
   refresh: () => Promise<void>;
   /** Resolves with what's now stored — the server may normalize (uploaded cover URL, phone format). */
   saveProfile: (profile: ProProfile) => Promise<ProProfile>;
@@ -84,6 +88,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
   const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
   const [payoutStatus, setPayoutStatus] = useState<PayoutStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const refresh = useCallback(async () => {
     const [
@@ -118,12 +123,22 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     setReviews(nextReviews);
     setTimeOff(nextTimeOff);
     setPayoutStatus(nextPayoutStatus);
+    setLoadFailed(false);
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    void refresh();
+  const retry = useCallback(async () => {
+    try {
+      await refresh();
+    } catch {
+      setLoadFailed(true);
+      setIsLoading(false);
+    }
   }, [refresh]);
+
+  useEffect(() => {
+    void retry();
+  }, [retry]);
 
   const value = useMemo<ProContextValue>(
     () => ({
@@ -136,6 +151,8 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       reviews,
       timeOff,
       isLoading,
+      loadFailed,
+      retry,
       refresh,
       saveProfile: async (next) => {
         const saved = await pro.saveProProfile(next);
@@ -184,6 +201,8 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       timeOff,
       payoutStatus,
       isLoading,
+      loadFailed,
+      retry,
       refresh,
     ],
   );

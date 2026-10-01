@@ -11,10 +11,11 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { TermsGate } from "../components/TermsGate";
-import { AuthProvider } from "../contexts/AuthContext";
+import { AuthProvider, useAuth } from "../contexts/AuthContext";
 import { FavoritesProvider } from "../contexts/FavoritesContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { ThemeProvider, useTheme } from "../contexts/ThemeContext";
+import { useSignedOutRedirect } from "../features/auth/useSignedOutRedirect";
 import { useNotificationRouting } from "../features/notifications/useNotificationRouting";
 import { usePushTokenSync } from "../features/notifications/usePushRegistration";
 import { queryClient } from "../lib/queryClient";
@@ -71,8 +72,11 @@ function RootLayoutWithTheme() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
 
+  const { session } = useAuth();
+
   usePushTokenSync();
   useNotificationRouting();
+  useSignedOutRedirect(session !== null);
 
   const [fontsLoaded] = useFonts({
     "PlayfairDisplay-Regular": require("../../assets/fonts/PlayfairDisplay/PlayfairDisplay-Regular.ttf"),

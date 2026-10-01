@@ -1,4 +1,4 @@
-import { create } from "axios";
+import { create, isAxiosError } from "axios";
 import { supabase } from "./supabase";
 
 const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL;
@@ -23,4 +23,23 @@ apiClient.interceptors.request.use(async (config) => {
     config.headers.Authorization = `Bearer ${session.access_token}`;
   }
   return config;
+});
+
+/**
+ * The server refused the session itself (account deleted, token revoked):
+ * it can't come back, so it's dropped on this device and the app goes back
+ * to sign-in instead of failing every call. Only if it's still the one
+ * signed in — a late answer about an earlier account leaves the new one be.
+ */
+apiClient.interceptors.response.use(undefined, async (error: unknown) => {
+  const sent = isAxiosError(error) ? error.config?.headers?.Authorization : undefined;
+  if (isAxiosError(error) && error.response?.status === 401 && typeof sent === "string") {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session && sent === `Bearer ${session.access_token}`) {
+      await supabase.auth.signOut({ scope: "local" });
+    }
+  }
+  throw error;
 });

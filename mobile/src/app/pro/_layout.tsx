@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import React from "react";
 import { View } from "react-native";
+import { ProLoadFailed } from "../../components/pro/ProLoadFailed";
 import { ProTabBar } from "../../components/pro/ProTabBar";
 import { SubscriptionExpiredOverlay } from "../../components/pro/SubscriptionExpiredOverlay";
 import { ProProvider, usePro } from "../../contexts/ProContext";
@@ -23,7 +24,7 @@ export default function ProLayout() {
  */
 function ProGate() {
   const { theme } = useTheme();
-  const { subscription, isLoading } = usePro();
+  const { subscription, isLoading, loadFailed } = usePro();
   const expired = !isLoading && subscription
     ? isSubscriptionExpired(subscription)
     : false;
@@ -46,6 +47,7 @@ function ProGate() {
         <Tabs.Screen name="payments" options={{ title: "Paiements" }} />
       </Tabs>
       {expired ? <SubscriptionExpiredOverlay /> : null}
+      {loadFailed ? <ProLoadFailed /> : null}
     </View>
   );
 }

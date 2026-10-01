@@ -343,6 +343,13 @@ async function seedSalon(seed: SalonSeed, reviewerIds: string[]): Promise<void> 
 
   await offerSubscription(supabase, userId);
 
+  // Bookable without the salon's own Stripe payouts, like the demo salon, so any
+  // of them can be booked and paid in test; a real onboarding later takes over.
+  const { error: payoutError } = await supabase
+    .from("coiffeur_payout_accounts")
+    .upsert({ profile_id: userId, bookable_without_payouts: true }, { onConflict: "profile_id" });
+  if (payoutError) throw payoutError;
+
   const reviews = await seedSalonReviews(supabase, {
     coiffeurId: userId,
     salonKey: seed.id,
