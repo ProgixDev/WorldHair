@@ -41,6 +41,13 @@ export interface SalonInvite {
   createdAt: string;
 }
 
+/** What the invite link's page and the join screen show before joining. */
+export interface InviteInfo {
+  code: string;
+  salonName: string;
+  expiresAt: string;
+}
+
 /** Where a staff account works. */
 export interface StaffMembership {
   staffId: string;
@@ -319,6 +326,30 @@ export class StaffService {
       throw new InternalServerErrorException(error.message);
     }
     return (data as InviteRow[]).map(mapInvite);
+  }
+
+  /**
+   * Which salon a code joins — for the link the owner shares (website page,
+   * and the app's « Rejoindre un salon »), signed in or not. Only a code
+   * still usable: unknown, used and expired ones read alike.
+   */
+  async inviteInfo(rawCode: string): Promise<InviteInfo> {
+    const code = rawCode.trim().toUpperCase();
+    const { data, error } = await this.supabase.client
+      .from('salon_invites')
+      .select()
+      .eq('code', code)
+      .is('used_at', null)
+      .gte('expires_at', new Date(Date.now()).toISOString())
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    const invite = data as InviteRow | null;
+    if (!invite) {
+      throw new NotFoundException('INVALID_CODE: this code is unknown, used or expired');
+    }
+    return { code: invite.code, salonName: await this.salonNameOf(invite.salon_id), expiresAt: invite.expires_at };
   }
 
   async revokeInvite(salonId: string, code: string): Promise<void> {

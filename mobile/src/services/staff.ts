@@ -36,6 +36,19 @@ function toMembership(response: MembershipResponse): StaffMembership {
   return { staffId: response.staffId, salonId: response.salonId, salonName: response.salonName };
 }
 
+/** Which salon a code joins — shown before joining; `null` when it's unknown, used or expired. */
+export async function getInvite(code: string): Promise<{ code: string; salonName: string; expiresAt: string } | null> {
+  try {
+    const { data } = await apiClient.get<{ code: string; salonName: string; expiresAt: string }>(
+      `/staff/invites/${encodeURIComponent(normalizeInviteCode(code))}`,
+    );
+    return data;
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
 /** « Rejoindre un salon »: this account becomes one of the salon's team (role `staff`) — no dossier, the owner vouches. */
 export async function joinSalon(code: string): Promise<StaffMembership> {
   const { data } = await apiClient.post<MembershipResponse>("/staff/join", { code: normalizeInviteCode(code) });

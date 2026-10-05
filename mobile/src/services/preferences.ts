@@ -5,6 +5,8 @@ const KEYS = {
   onboardingSeen: "@worldhair/onboarding_seen",
   locationIntent: "@worldhair/location_intent",
   signupIntent: "@worldhair/signup_intent",
+  /** The code from the owner's QR code or link (TODO.md Phase 3), until it's used. */
+  pendingJoinCode: "@worldhair/pending_join_code",
   manualCity: "@worldhair/manual_city",
 } as const;
 
@@ -154,6 +156,31 @@ export async function clearSignupIntent(): Promise<void> {
   }
 }
 
+/** The code from the owner's QR code or link (app/rejoindre/[code].tsx), kept through sign-up for « Rejoindre un salon ». */
+export async function getPendingJoinCode(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(KEYS.pendingJoinCode);
+  } catch {
+    return null;
+  }
+}
+
+export async function setPendingJoinCode(code: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.pendingJoinCode, code);
+  } catch {
+    // Not kept: the code is typed by hand instead.
+  }
+}
+
+export async function clearPendingJoinCode(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(KEYS.pendingJoinCode);
+  } catch {
+    // ignore
+  }
+}
+
 /** Wipes onboarding state — used by the dev reset action. */
 export async function clearPreferences(): Promise<void> {
   try {
@@ -161,6 +188,7 @@ export async function clearPreferences(): Promise<void> {
       KEYS.onboardingSeen,
       KEYS.locationIntent,
       KEYS.signupIntent,
+      KEYS.pendingJoinCode,
       KEYS.manualCity,
     ]);
   } catch {

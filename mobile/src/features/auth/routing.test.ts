@@ -1,6 +1,6 @@
 import type { Session } from "../../services/auth";
 import { getSignupIntent } from "../../services/preferences";
-import { nextRouteForSession, resolveNextRoute, ROUTES } from "./routing";
+import { nextRouteForSession, resolveNextRoute, routeForInviteLink, ROUTES } from "./routing";
 
 jest.mock("../../services/preferences", () => ({ getSignupIntent: jest.fn() }));
 jest.mock("../../lib/supabase", () => ({ supabase: {} }));
@@ -111,5 +111,26 @@ describe("resolveNextRoute", () => {
     await expect(resolveNextRoute(session({ role: "staff", staffMembership: MEMBERSHIP }), true)).resolves.toBe(
       ROUTES.staffAgenda,
     );
+  });
+});
+
+describe("routeForInviteLink (the owner's QR code or link, TODO.md Phase 3)", () => {
+  it("signs someone new up, then takes a client account to « Rejoindre un salon »", () => {
+    expect(routeForInviteLink(null)).toBe(ROUTES.signUp);
+    expect(routeForInviteLink(session())).toBe(ROUTES.joinSalon);
+    // Names first: the salon's owner sees who joined.
+    expect(routeForInviteLink(session({ profile: null, status: "profile_incomplete" }))).toBe(ROUTES.profileSetup);
+    expect(routeForInviteLink(session({ emailVerified: false, status: "pending_email" }))).toBe(ROUTES.verifyEmail);
+  });
+
+  it("takes a staff account between salons to the code, and one in a salon to its agenda", () => {
+    expect(routeForInviteLink(session({ role: "staff", staffMembership: null }))).toBe(ROUTES.joinSalon);
+    expect(routeForInviteLink(session({ role: "staff", staffMembership: MEMBERSHIP }))).toBe(ROUTES.staffAgenda);
+  });
+
+  it("leaves a salon's owner where he belongs", () => {
+    expect(
+      routeForInviteLink(session({ role: "coiffeur", status: "active", shopProfileComplete: true, profile: null })),
+    ).toBe(ROUTES.proDashboard);
   });
 });

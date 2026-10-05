@@ -68,6 +68,19 @@ export function nextRouteForSession(
 }
 
 /**
+ * Where the owner's QR code or link (« /rejoindre/CODE ») takes this
+ * account, the code kept for « Rejoindre un salon » (TODO.md Phase 3):
+ * someone new signs up first; a client account fills in its names, then
+ * joins; a staff account between salons joins, one in a salon stays on its
+ * agenda; a salon's owner stays in his own area.
+ */
+export function routeForInviteLink(session: Session | null): AppRoute {
+  if (!session) return ROUTES.signUp;
+  const route = nextRouteForSession(session, true);
+  return session.role === "particulier" && route === ROUTES.discover ? ROUTES.joinSalon : route;
+}
+
+/**
  * Same decision as nextRouteForSession, plus resuming an in-progress
  * coiffeur signup — the DB role only flips from "particulier" to "coiffeur"
  * once the application is actually *submitted* (see services/auth.ts's doc

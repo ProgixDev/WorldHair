@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { AuthHeader } from "../../components/ui/AuthHeader";
 import { Button } from "../../components/ui/Button";
@@ -13,7 +13,7 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
-import { setSignupIntent, type SignupIntent } from "../../services/preferences";
+import { getPendingJoinCode, setSignupIntent, type SignupIntent } from "../../services/preferences";
 import { AuthError } from "../../services/auth";
 import { checkPassword, isValidEmail } from "../../utils/validation";
 import { openLegalPage } from "../../features/legal/terms";
@@ -29,6 +29,15 @@ export default function SignUp() {
   // with its owner's code (TODO.md Phase 3) — no dossier, no admin review.
   const [coiffeurPath, setCoiffeurPath] = useState<"coiffeur" | "staff">("coiffeur");
   const intent: SignupIntent = role === "coiffeur" ? coiffeurPath : "particulier";
+
+  // Came from a salon's QR code or link (app/rejoindre/[code].tsx): joining it is the point.
+  useEffect(() => {
+    void getPendingJoinCode().then((code) => {
+      if (!code) return;
+      setRole("coiffeur");
+      setCoiffeurPath("staff");
+    });
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);

@@ -76,6 +76,15 @@ describe('StaffService', () => {
       await expect(staff.membershipOf(NADIA)).resolves.toMatchObject({ salonId: OWNER, staffId: membership.staffId });
     });
 
+    it("says which salon a code joins, for the link's page and the app — never once it's used or expired", async () => {
+      const { code, expiresAt } = await staff.createInvite(OWNER);
+
+      await expect(staff.inviteInfo(` ${code.toLowerCase()} `)).resolves.toEqual({ code, salonName: 'Studio W', expiresAt });
+      await staff.join(NADIA, code);
+      await expect(staff.inviteInfo(code)).rejects.toThrow(NotFoundException);
+      await expect(staff.inviteInfo('ZZZZZZ')).rejects.toThrow(NotFoundException);
+    });
+
     it('turns a client account into a staff one', async () => {
       const { code } = await staff.createInvite(OWNER);
       await staff.join(CLIENT, code);

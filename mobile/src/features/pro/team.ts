@@ -111,12 +111,30 @@ export function inviteValidity(expiresAt: string): string {
   return "Valable jusqu'au " + until(expiresAt);
 }
 
-/** What the owner sends by WhatsApp or SMS: the code, until when, and where to type it. */
-export function inviteShareMessage(salonName: string, invite: SalonInvite): string {
+/**
+ * The website's « /rejoindre/CODE » page (web/src/app/rejoindre): it opens
+ * the app on « Rejoindre un salon » with the code in — what the QR code
+ * holds. `null` when this build has no website address.
+ */
+export function inviteLink(code: string, base: string | undefined = process.env.EXPO_PUBLIC_WEB_URL): string | null {
+  const root = base?.trim().replace(/\/+$/, "");
+  return root ? root + "/rejoindre/" + code : null;
+}
+
+/** What the owner sends by WhatsApp or SMS: the link, the code for whoever types it, until when. */
+export function inviteShareMessage(
+  salonName: string,
+  invite: SalonInvite,
+  base: string | undefined = process.env.EXPO_PUBLIC_WEB_URL,
+): string {
+  const link = inviteLink(invite.code, base);
   return (
     "Rejoignez " +
     (salonName.trim() || "mon salon") +
-    " sur WorldHair : téléchargez l'app, choisissez « Coiffeur › Rejoindre un salon » et entrez le code " +
+    " sur WorldHair : " +
+    // A space before the comma: messaging apps would take it into the link.
+    (link ? "ouvrez " + link + " , ou dans l'app choisissez" : "téléchargez l'app, choisissez") +
+    " « Coiffeur › Rejoindre un salon » et entrez le code " +
     invite.code +
     " (valable jusqu'au " +
     until(invite.expiresAt) +

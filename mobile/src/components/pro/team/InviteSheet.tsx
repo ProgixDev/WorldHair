@@ -3,14 +3,15 @@ import { Share, Text, View } from "react-native";
 import { radius, spacing } from "../../../constants/spacing";
 import { fontFamily, typography } from "../../../constants/typography";
 import { useTheme } from "../../../contexts/ThemeContext";
-import { inviteShareMessage, inviteValidity } from "../../../features/pro/team";
+import { inviteLink, inviteShareMessage, inviteValidity } from "../../../features/pro/team";
 import type { SalonInvite } from "../../../features/pro/types";
 import { BottomSheet } from "../../ui/BottomSheet";
 import { Button } from "../../ui/Button";
+import { QrCode } from "../../ui/QrCode";
 
 const STEPS = [
-  "Envoyez-lui ce code par WhatsApp ou SMS.",
-  "Il télécharge WorldHair, choisit « Coiffeur › Rejoindre un salon » et entre le code.",
+  "Faites-lui scanner ce QR code avec l'appareil photo de son téléphone, ou envoyez-lui le lien par WhatsApp ou SMS.",
+  "WorldHair s'ouvre sur « Rejoindre un salon », le code déjà rempli. Sans compte, il en crée un en choisissant « Coiffeur ».",
   "Il apparaît ici, dans votre équipe : réglez ses horaires et ses congés.",
 ];
 
@@ -40,6 +41,7 @@ export function InviteSheet({
   onClose: () => void;
 }) {
   const { theme } = useTheme();
+  const link = invite ? inviteLink(invite.code) : null;
 
   return (
     <BottomSheet
@@ -76,6 +78,7 @@ export function InviteSheet({
               borderColor: theme.divider,
             }}
           >
+            {link ? <QrCode value={link} size={196} /> : null}
             {/* Selectable: a long press copies it, exactly as typed in the app. */}
             <Text
               selectable
@@ -90,6 +93,11 @@ export function InviteSheet({
             <Text style={[typography.caption, { color: theme.foreground.gray, textAlign: "center" }]}>
               {inviteValidity(invite.expiresAt) + " · une seule utilisation"}
             </Text>
+            {link ? (
+              <Text selectable style={[typography.caption, { color: theme.primary.main, textAlign: "center" }]}>
+                {link}
+              </Text>
+            ) : null}
           </View>
 
           <View style={{ gap: spacing.sm }}>

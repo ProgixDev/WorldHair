@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { MyDataGroups } from "../../components/account/MyDataGroups";
 import { AuthHeader } from "../../components/ui/AuthHeader";
@@ -12,8 +12,9 @@ import { fontFamily, typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
-import { clearSignupIntent } from "../../services/preferences";
+import { clearPendingJoinCode, clearSignupIntent, getPendingJoinCode } from "../../services/preferences";
 import {
+  getInvite,
   INVITE_CODE_LENGTH,
   joinSalon,
   normalizeInviteCode,
@@ -36,6 +37,32 @@ export default function JoinSalon() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  // Which salon the code joins, once it's complete: « Vous rejoignez … ».
+  const [salonName, setSalonName] = useState<string | null>(null);
+
+  // Opened from the owner's QR code or link: the code is already in.
+  useEffect(() => {
+    void getPendingJoinCode().then((pending) => {
+      if (pending) setCode(normalizeInviteCode(pending));
+    });
+  }, []);
+
+  useEffect(() => {
+    setSalonName(null);
+    if (code.length !== INVITE_CODE_LENGTH) return;
+    let current = true;
+    getInvite(code)
+      .then((invite) => {
+        if (!current) return;
+        if (invite) setSalonName(invite.salonName);
+        else setError("Ce code n'existe pas, a déjà servi ou a expiré. Demandez-en un nouveau au salon.");
+      })
+      // The check is a courtesy: joining still says what went wrong.
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [code]);
 
   // Out of a salon already: they were in one before.
   const wasInSalon = session?.role === "staff";
@@ -50,6 +77,7 @@ export default function JoinSalon() {
     try {
       const membership = await joinSalon(code);
       await clearSignupIntent();
+      await clearPendingJoinCode();
       // The account is now a staff member's: re-read it so the app knows.
       await refresh().catch(() => null);
       router.replace(ROUTES.staffAgenda as never);
@@ -63,6 +91,7 @@ export default function JoinSalon() {
 
   const handleClient = async () => {
     await clearSignupIntent();
+    await clearPendingJoinCode();
     router.replace(ROUTES.discover as never);
   };
 
@@ -118,6 +147,11 @@ export default function JoinSalon() {
             error={Boolean(error)}
           />
           {error ? <Text style={[typography.bodySmall, { color: theme.danger }]}>{error}</Text> : null}
+          {salonName && !error ? (
+            <Text style={[typography.bodySmall, { color: theme.foreground.white }]}>
+              {"Vous rejoignez l'équipe de " + salonName + "."}
+            </Text>
+          ) : null}
         </View>
 
         <View style={{ gap: spacing.xs, alignItems: "center" }}>

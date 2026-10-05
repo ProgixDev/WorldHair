@@ -1,6 +1,7 @@
 import { AxiosError, AxiosHeaders } from "axios";
 import {
   closuresOf,
+  inviteLink,
   inviteShareMessage,
   inviteValidity,
   memberName,
@@ -166,10 +167,19 @@ describe("invites", () => {
   });
 
   it("writes the message the owner sends, with the code and how to use it", () => {
-    expect(inviteShareMessage("Maison Tresse", invite)).toBe(
+    expect(inviteShareMessage("Maison Tresse", invite, "https://worldhair.test")).toBe(
+      "Rejoignez Maison Tresse sur WorldHair : ouvrez https://worldhair.test/rejoindre/ABC234 , ou dans l'app choisissez « Coiffeur › Rejoindre un salon » et entrez le code ABC234 (valable jusqu'au lundi 12 oct. à 14:32).",
+    );
+    expect(inviteShareMessage("  ", invite, "https://worldhair.test")).toContain("Rejoignez mon salon sur WorldHair");
+    // No website address in this build: the code alone.
+    expect(inviteShareMessage("Maison Tresse", invite, "")).toBe(
       "Rejoignez Maison Tresse sur WorldHair : téléchargez l'app, choisissez « Coiffeur › Rejoindre un salon » et entrez le code ABC234 (valable jusqu'au lundi 12 oct. à 14:32).",
     );
-    expect(inviteShareMessage("  ", invite)).toContain("Rejoignez mon salon sur WorldHair");
+  });
+
+  it("links to the website's « /rejoindre » page, which opens the app with the code in", () => {
+    expect(inviteLink("ABC234", "https://worldhair.test/")).toBe("https://worldhair.test/rejoindre/ABC234");
+    expect(inviteLink("ABC234", undefined)).toBeNull();
   });
 });
 

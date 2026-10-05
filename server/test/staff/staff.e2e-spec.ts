@@ -71,6 +71,15 @@ describe('staff (e2e)', () => {
     ]);
   });
 
+  it("tells anyone with the link which salon it joins, signed in or not", async () => {
+    const invite = await request(server).post('/salon/me/invites').set(as(ownerToken)).expect(201);
+    await request(server)
+      .get(`/staff/invites/${invite.body.code}`)
+      .expect(200)
+      .expect((res) => expect(res.body).toMatchObject({ code: invite.body.code, salonName: 'Studio W' }));
+    await request(server).get('/staff/invites/ZZZZZZ').expect(404);
+  });
+
   it('refuses a wrong code, and keeps the team and invites to the owner', async () => {
     await request(server).post('/staff/join').set(as(nadiaToken)).send({ code: 'ZZZZZZ' }).expect(404);
     await request(server).post('/staff/join').set(as(nadiaToken)).send({ code: 'short' }).expect(400);

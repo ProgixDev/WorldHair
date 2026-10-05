@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { JoinSalonDto } from './dto/staff.dto';
-import { StaffMembership, StaffService } from './staff.service';
+import { InviteInfo, StaffMembership, StaffService } from './staff.service';
 
 /**
  * A coiffeur working in someone else's salon (TODO.md Phase 3): joining it
@@ -13,6 +14,17 @@ import { StaffMembership, StaffService } from './staff.service';
 @Controller('staff')
 export class StaffController {
   constructor(private readonly staff: StaffService) {}
+
+  /**
+   * The link the owner shares (« /rejoindre/CODE »): which salon it joins.
+   * `@Public()`: whoever opens it may not have an account yet. Throttled
+   * like every route, which keeps codes from being guessed.
+   */
+  @Public()
+  @Get('invites/:code')
+  invite(@Param('code') code: string): Promise<InviteInfo> {
+    return this.staff.inviteInfo(code);
+  }
 
   /** « Rejoindre un salon »: right after sign-up (still a client account), or a staff account between salons. */
   @Roles('particulier', 'staff')
