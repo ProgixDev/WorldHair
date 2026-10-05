@@ -29,10 +29,13 @@ export function closedAfter(endsAt: string | null): TimeRange[] {
 }
 
 export interface BookingRules {
+  /** The salon's opening hours. */
   availability: AvailabilityDay[];
-  /** Congés and exceptional closures. */
+  /** The person's own week (TODO.md Phase 3) — a booking fits both; absent: they work the salon's hours. */
+  personalAvailability?: AvailabilityDay[] | null;
+  /** Congés and exceptional closures: the salon's, and the person's own. */
   closures: TimeRange[];
-  /** The salon's other active (pending/confirmed) bookings. */
+  /** The other active (pending/confirmed) bookings this person already holds. */
   salonBookings: BusyBooking[];
   /** The client's own active bookings anywhere; empty when the coiffeur is the one moving an appointment. */
   clientBookings: BusyBooking[];
@@ -49,7 +52,9 @@ export type SlotRefusal =
   | 'break'
   | 'time_off'
   | 'taken'
-  | 'client_busy';
+  | 'client_busy'
+  /** Open, but the person doesn't work then (their own week) — or the salon has nobody to book. */
+  | 'staff_off';
 
 export interface DaySlots {
   /** YYYY-MM-DD, Paris calendar. */
@@ -63,6 +68,20 @@ const MINUTE_MS = 60_000;
 
 function overlaps(startMs: number, endMs: number, otherStartMs: number, otherEndMs: number): boolean {
   return startMs < otherEndMs && otherStartMs < endMs;
+}
+
+/** Outside `day`'s hours or inside its break — the salon's day or a person's. */
+function outsideDay(day: AvailabilityDay, startMinute: number, endMinute: number): 'outside_hours' | 'break' | null {
+  if (startMinute < day.opensMinute || endMinute > day.closesMinute) return 'outside_hours';
+  if (
+    day.breakStartMinute !== null &&
+    day.breakEndMinute !== null &&
+    startMinute < day.breakEndMinute &&
+    endMinute > day.breakStartMinute
+  ) {
+    return 'break';
+  }
+  return null;
 }
 
 function overlapsBooking(startMs: number, endMs: number, booking: BusyBooking): boolean {
@@ -89,14 +108,11 @@ export function refusalFor(rules: BookingRules, startsAt: Date, durationMin: num
 
   const startMinute = paris.hour * 60 + paris.minute;
   const endMinute = startMinute + durationMin;
-  if (startMinute < day.opensMinute || endMinute > day.closesMinute) return 'outside_hours';
-  if (
-    day.breakStartMinute !== null &&
-    day.breakEndMinute !== null &&
-    startMinute < day.breakEndMinute &&
-    endMinute > day.breakStartMinute
-  ) {
-    return 'break';
+  const salonRefusal = outsideDay(day, startMinute, endMinute);
+  if (salonRefusal) return salonRefusal;
+  if (rules.personalAvailability) {
+    const own = rules.personalAvailability.find((d) => d.weekday === paris.weekday);
+    if (!own?.isOpen || outsideDay(own, startMinute, endMinute)) return 'staff_off';
   }
 
   if (rules.closures.some((range) => overlapsRange(startMs, endMs, range))) return 'time_off';
@@ -115,6 +131,9 @@ export function slotsForDay(rules: BookingRules, date: string, durationMin: numb
   const weekday = new Date(Date.UTC(year, month - 1, dayOfMonth)).getUTCDay();
   const hours = rules.availability.find((d) => d.weekday === weekday);
   if (!hours?.isOpen) return { date, closed: true, slots: [] };
+  if (rules.personalAvailability && !rules.personalAvailability.find((d) => d.weekday === weekday)?.isOpen) {
+    return { date, closed: true, slots: [] };
+  }
 
   const opensMs = parisTime(year, month, dayOfMonth, 0, hours.opensMinute).getTime();
   const closesMs = parisTime(year, month, dayOfMonth, 0, hours.closesMinute).getTime();
@@ -133,4 +152,85 @@ export function slotsForDay(rules: BookingRules, date: string, durationMin: numb
     });
   }
   return { date, closed: false, slots };
+}
+
+// ─── A team (TODO.md Phase 3) ──────────────────────────────────────────────
+//
+// A salon books its team: a time is free when one person is, and a booking
+// holds one person — the database refuses two bookings on the same person
+// at once. The client never picks; the owner decides who does it when
+// accepting.
+
+export interface PersonRules {
+  staffId: string;
+  /** Team order: the tie-break when two people are as busy. */
+  position: number;
+  rules: BookingRules;
+}
+
+/** Most telling first, for the client: when nobody is free, why. */
+const REFUSAL_PRIORITY: SlotRefusal[] = [
+  'past',
+  'too_soon',
+  'closed',
+  'outside_hours',
+  'break',
+  'client_busy',
+  'taken',
+  'time_off',
+  'staff_off',
+];
+
+/** `null` when someone in the team can take it; otherwise the reason that tells the client most. */
+export function teamRefusal(team: PersonRules[], startsAt: Date, durationMin: number): SlotRefusal | null {
+  if (team.length === 0) return 'staff_off';
+  const refusals = team.map((person) => refusalFor(person.rules, startsAt, durationMin));
+  if (refusals.includes(null)) return null;
+  return REFUSAL_PRIORITY.find((reason) => refusals.includes(reason)) ?? 'taken';
+}
+
+/** The day's grid for the whole team: a start is available when someone can take it. */
+export function slotsForTeam(team: PersonRules[], date: string, durationMin: number): DaySlots {
+  const days = team.map((person) => slotsForDay(person.rules, date, durationMin)).filter((day) => !day.closed);
+  if (days.length === 0) return { date, closed: true, slots: [] };
+  // Everyone's grid follows the salon's hours: the same starts, in the same order.
+  return {
+    date,
+    closed: false,
+    slots: days[0].slots.map((slot, index) => ({
+      ...slot,
+      available: days.some((day) => day.slots[index]?.available),
+    })),
+  };
+}
+
+function bookedMinutesOn(person: PersonRules, startsAt: Date): number {
+  const day = parisParts(startsAt);
+  return person.rules.salonBookings
+    .filter((booking) => {
+      const other = parisParts(new Date(booking.startsAt));
+      return other.year === day.year && other.month === day.month && other.day === day.day;
+    })
+    .reduce((sum, booking) => sum + booking.durationMin, 0);
+}
+
+/**
+ * Who holds a booking at `startsAt`: `preferred` when they're free (the
+ * person a booking already has), else the free person with the fewest
+ * booked minutes that day, then the first in the team. `null`: nobody is free.
+ */
+export function pickPerson(
+  team: PersonRules[],
+  startsAt: Date,
+  durationMin: number,
+  preferred?: string | null,
+): PersonRules | null {
+  const free = team.filter((person) => refusalFor(person.rules, startsAt, durationMin) === null);
+  return (
+    free.find((person) => person.staffId === preferred) ??
+    free
+      .map((person) => ({ person, load: bookedMinutesOn(person, startsAt) }))
+      .sort((a, b) => a.load - b.load || a.person.position - b.person.position)[0]?.person ??
+    null
+  );
 }

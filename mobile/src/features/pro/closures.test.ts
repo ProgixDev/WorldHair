@@ -20,6 +20,7 @@ describe("describeClosure", () => {
   const closure = (startsAt: Date, endsAt: Date) => ({
     id: "t1",
     label: "",
+    staffId: null,
     startsAt: startsAt.toISOString(),
     endsAt: endsAt.toISOString(),
   });
@@ -51,6 +52,7 @@ describe("closureBlocksForDay", () => {
         {
           id: "hours",
           label: "Formation",
+          staffId: null,
           startsAt: new Date(2026, 10, 1, 14, 0).toISOString(),
           endsAt: new Date(2026, 10, 1, 16, 0).toISOString(),
         },
@@ -66,12 +68,14 @@ describe("closureBlocksForDay", () => {
         {
           id: "days",
           label: "Congés",
+          staffId: null,
           startsAt: new Date(2026, 9, 5).toISOString(),
           endsAt: new Date(2026, 9, 8).toISOString(),
         },
         {
           id: "hours",
           label: "Formation",
+          staffId: null,
           startsAt: new Date(2026, 9, 9, 14, 0).toISOString(),
           endsAt: new Date(2026, 9, 9, 19, 0).toISOString(),
         },
@@ -86,6 +90,7 @@ describe("closureBlocksForDay", () => {
           {
             id: "hours",
             label: "Formation",
+            staffId: null,
             startsAt: new Date(2026, 9, 9, 14, 0).toISOString(),
             endsAt: new Date(2026, 9, 9, 19, 0).toISOString(),
           },

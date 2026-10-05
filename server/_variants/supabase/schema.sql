@@ -31,7 +31,9 @@ create table public.profiles (
   -- 'admin_limited' (TODO.md/web "Paramètres" → create-admin section): every
   -- admin capability except creating more admins — see is_admin() below and
   -- server/src/admin-users/.
-  role text not null default 'particulier' check (role in ('particulier', 'coiffeur', 'admin', 'admin_limited')),
+  -- 'staff' (TODO.md Phase 3): a coiffeur who works in someone else's salon,
+  -- joined with the owner's code — see salon_staff below and server/src/staff/.
+  role text not null default 'particulier' check (role in ('particulier', 'coiffeur', 'staff', 'admin', 'admin_limited')),
   account_status text not null default 'active' check (account_status in ('active', 'suspended', 'banned')),
   -- The CGU and privacy policy this user accepted (TODO.md Phase 8): at
   -- sign-up (handle_new_user, from the app's sign-up metadata), then again
@@ -361,6 +363,56 @@ create policy "Anyone can view availability"
   on public.coiffeur_availability for select
   using (true);
 
+-- A salon's team (TODO.md Phase 3): its owner (profile_id = salon_id) and
+-- the coiffeurs who joined with one of his codes, each with their own
+-- account (role 'staff'). One salon per person. A booking holds one of
+-- them (appointments.staff_id). The owner's row is created on first use by
+-- server/src/staff/staff.service.ts, and for every salon by the migration.
+-- API only: RLS on, no policy.
+create table public.salon_staff (
+  id uuid primary key default gen_random_uuid (),
+  salon_id uuid not null references public.profiles (id) on delete cascade,
+  profile_id uuid not null unique references public.profiles (id) on delete cascade,
+  -- Off: clients' bookings never land on this person (an owner who only
+  -- manages); the owner can still give them one.
+  takes_bookings boolean not null default true,
+  position smallint not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index salon_staff_salon_id_idx on public.salon_staff (salon_id);
+
+alter table public.salon_staff enable row level security;
+
+-- A person's own week, inside the salon's hours (a booking fits both). No
+-- rows: they work the salon's hours. Same shape as coiffeur_availability.
+create table public.staff_availability (
+  staff_id uuid not null references public.salon_staff (id) on delete cascade,
+  weekday smallint not null check (weekday between 0 and 6),
+  is_open boolean not null default false,
+  opens_minute smallint not null default 540,
+  closes_minute smallint not null default 1140,
+  break_start_minute smallint,
+  break_end_minute smallint,
+  primary key (staff_id, weekday)
+);
+
+alter table public.staff_availability enable row level security;
+
+-- « Rejoindre un salon »: a code the owner sends, one use, a few days.
+create table public.salon_invites (
+  code text primary key,
+  salon_id uuid not null references public.profiles (id) on delete cascade,
+  expires_at timestamptz not null,
+  used_by uuid references public.profiles (id) on delete set null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index salon_invites_salon_id_idx on public.salon_invites (salon_id);
+
+alter table public.salon_invites enable row level security;
+
 create table public.coiffeur_services (
   id uuid primary key default gen_random_uuid (),
   profile_id uuid not null references public.profiles (id) on delete cascade,
@@ -420,13 +472,13 @@ create index coiffeur_gallery_photos_profile_id_idx on public.coiffeur_gallery_p
 -- or a few hours of one day — both are just a time range. Nothing can be
 -- booked inside one. Adding one doesn't cancel bookings already inside it:
 -- the API hands them back to the coiffeur (SalonService.addTimeOff).
--- `staff_id` is for staff members (TODO.md Phase 3): null = the whole salon.
+-- `staff_id`: one person's congé (TODO.md Phase 3); null = the whole salon.
 -- API only (the public salon page gets the times, never the label), so RLS
 -- is on with no policy.
 create table public.coiffeur_time_off (
   id uuid primary key default gen_random_uuid (),
   profile_id uuid not null references public.profiles (id) on delete cascade,
-  staff_id uuid,
+  staff_id uuid references public.salon_staff (id) on delete cascade,
   starts_at timestamptz not null,
   ends_at timestamptz not null,
   label text not null default '',
@@ -435,6 +487,7 @@ create table public.coiffeur_time_off (
 );
 
 create index coiffeur_time_off_profile_id_ends_at_idx on public.coiffeur_time_off (profile_id, ends_at);
+create index coiffeur_time_off_staff_id_idx on public.coiffeur_time_off (staff_id);
 
 alter table public.coiffeur_time_off enable row level security;
 
@@ -450,6 +503,10 @@ create table public.appointments (
   -- come was cancelled and refunded first (AccountDeletionService).
   particulier_id uuid references public.profiles (id) on delete set null,
   coiffeur_id uuid references public.profiles (id) on delete set null,
+  -- Who in the salon's team does it (TODO.md Phase 3): held when the client
+  -- books, chosen by the owner when he accepts. Null once that person left
+  -- (only ever for a booking already past: leaving needs none to come).
+  staff_id uuid references public.salon_staff (id) on delete set null,
   -- Nullable + a snapshot alongside: a coiffeur editing/deleting a service
   -- later must never retroactively change what a past booking says it was.
   service_id uuid references public.coiffeur_services (id) on delete set null,
@@ -487,6 +544,7 @@ create table public.appointments (
 );
 
 create index appointments_coiffeur_id_starts_at_idx on public.appointments (coiffeur_id, starts_at);
+create index appointments_staff_id_starts_at_idx on public.appointments (staff_id, starts_at);
 -- The admins' list: every salon's bookings, the latest first.
 create index appointments_starts_at_idx on public.appointments (starts_at);
 create index appointments_particulier_id_idx on public.appointments (particulier_id);
@@ -530,9 +588,11 @@ as $$
   select tstzrange(starts_at, starts_at + make_interval(mins => duration_min))
 $$;
 
+-- One booking at a time per person (TODO.md Phase 3): two people of a salon
+-- can take the same time, one person can't.
 alter table public.appointments
   add constraint appointments_no_overlap
-  exclude using gist (coiffeur_id with =, public.appointment_time_range (starts_at, duration_min) with &&)
+  exclude using gist (staff_id with =, public.appointment_time_range (starts_at, duration_min) with &&)
   where (status in ('awaiting_payment', 'pending', 'confirmed'));
 
 -- The prestations of a booking, in order — several can be booked back to
@@ -1364,7 +1424,8 @@ as $$
           )
           and not exists (
             select 1 from public.coiffeur_time_off t
-            where t.profile_id = cp.profile_id and t.starts_at <= p_now and t.ends_at > p_now
+            -- A salon closure; one person's congé leaves the salon open.
+            where t.profile_id = cp.profile_id and t.staff_id is null and t.starts_at <= p_now and t.ends_at > p_now
           )
         )
       )
@@ -1380,6 +1441,7 @@ as $$
             and not exists (
               select 1 from public.coiffeur_time_off t
               where t.profile_id = cp.profile_id
+                and t.staff_id is null
                 and t.starts_at <= ((p_open_on + make_interval(mins => greatest(h.opens_minute, coalesce(p_open_after, 0)))) at time zone 'Europe/Paris')
                 and t.ends_at >= ((p_open_on + make_interval(mins => h.closes_minute)) at time zone 'Europe/Paris')
             )

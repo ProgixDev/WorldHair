@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -121,6 +122,20 @@ export class CoiffeurApplicationsService {
     this.assertOwnPath(userId, dto.identityDocumentPath, 'identityDocumentPath');
     this.assertOwnPath(userId, dto.diplomaDocumentPath, 'diplomaDocumentPath');
     this.assertOwnPath(userId, dto.kbisDocumentPath, 'kbisDocumentPath');
+
+    // In someone else's team (TODO.md Phase 3): one salon per person — they leave it first.
+    const { data: membership, error: membershipError } = await this.supabase.client
+      .from('salon_staff')
+      .select('salon_id')
+      .eq('profile_id', userId)
+      .maybeSingle();
+    if (membershipError) {
+      throw new InternalServerErrorException(membershipError.message);
+    }
+    const memberOf = (membership as { salon_id: string } | null)?.salon_id;
+    if (memberOf && memberOf !== userId) {
+      throw new ConflictException('ALREADY_IN_SALON: leave the salon you work in first');
+    }
 
     const isSalon = dto.practiceZone === PracticeZone.Salon;
     if (isSalon && !dto.invoiceDocumentPath) {

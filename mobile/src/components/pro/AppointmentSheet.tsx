@@ -13,6 +13,8 @@ import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { TextField } from "../ui/TextField";
 import { SlotPicker } from "./SlotPicker";
+import { StaffPicker } from "./StaffPicker";
+import { personOf } from "../../features/pro/staffPick";
 
 function euros(amount: number): string {
   return (Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(".", ",")) + " €";
@@ -30,15 +32,20 @@ const STATUS_LABELS: Record<ProAppointment["status"], string> = {
  * One booking, everything the coiffeur can do with it: accept or refuse a
  * request, move or cancel an accepted appointment, and once it has started,
  * mark it attended or missed. Moving picks from the server's own slot grid.
+ * With a team (TODO.md Phase 3), accepting means choosing who does it
+ * (« Qui s'en occupe ? »), and an accepted booking can go to someone else.
  */
 export function AppointmentSheet({
   appointment,
   visible,
   onClose,
+  startWith = "details",
 }: {
   appointment: ProAppointment | null;
   visible: boolean;
   onClose: () => void;
+  /** "accept": straight to « Qui s'en occupe ? » (the agenda's « Accepter »). */
+  startWith?: "details" | "accept";
 }) {
   const { theme } = useTheme();
   const {
@@ -47,22 +54,29 @@ export function AppointmentSheet({
     timeOff,
     setAppointmentStatus,
     moveAppointment,
+    assignAppointment,
     setAttendance,
     refundAppointment,
+    team,
   } = usePro();
-  const [mode, setMode] = useState<"details" | "move">("details");
+  const [mode, setMode] = useState<"details" | "move" | "accept" | "assign">("details");
+  const [pickedStaff, setPickedStaff] = useState<string | null>(null);
   const [moveTo, setMoveTo] = useState<string | null>(null);
   const [gridVersion, setGridVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
 
+  // A salon of one has nobody to choose between: accepting stays one tap.
+  const hasTeam = team.length > 1;
+
   useEffect(() => {
-    setMode("details");
+    setMode(startWith === "accept" && hasTeam ? "accept" : "details");
     setMoveTo(null);
+    setPickedStaff(null);
     setError(null);
     setRefundAmount("");
-  }, [appointment?.id, visible]);
+  }, [appointment?.id, visible, startWith, hasTeam]);
 
   if (!appointment) {
     return <BottomSheet visible={false} title="" onClose={onClose}>{null}</BottomSheet>;
@@ -144,8 +158,40 @@ export function AppointmentSheet({
     );
   };
 
+  const accept = () =>
+    hasTeam
+      ? setMode("accept")
+      : void run(() => setAppointmentStatus(appointment.id, "confirmed"));
+  const pickedName = team.find((member) => member.id === pickedStaff);
+
   const footer =
-    mode === "move" ? (
+    mode === "accept" || mode === "assign" ? (
+      <>
+        <Button label="Retour" variant="outline" onPress={() => setMode("details")} style={{ flex: 1 }} />
+        <Button
+          label={
+            mode === "accept"
+              ? pickedName
+                ? "Accepter avec " + (pickedName.isOwner ? "moi" : pickedName.firstName)
+                : "Accepter"
+              : "Confier"
+          }
+          onPress={() =>
+            pickedStaff &&
+            void run(() =>
+              mode === "accept"
+                ? setAppointmentStatus(appointment.id, "confirmed", pickedStaff)
+                : assignAppointment(appointment.id, pickedStaff),
+            )
+          }
+          disabled={!pickedStaff}
+          loading={busy}
+          background={theme.primary.main}
+          color={theme.primary.on}
+          style={{ flex: 1.3 }}
+        />
+      </>
+    ) : mode === "move" ? (
       <>
         <Button label="Retour" variant="outline" onPress={() => setMode("details")} style={{ flex: 1 }} />
         <Button
@@ -178,7 +224,7 @@ export function AppointmentSheet({
         />
         <Button
           label="Accepter"
-          onPress={() => void run(() => setAppointmentStatus(appointment.id, "confirmed"))}
+          onPress={accept}
           loading={busy}
           background={theme.primary.main}
           color={theme.primary.on}
@@ -209,11 +255,31 @@ export function AppointmentSheet({
   return (
     <BottomSheet
       visible={visible}
-      title={mode === "move" ? "Déplacer le rendez-vous" : appointment.clientName}
+      title={
+        mode === "move"
+          ? "Déplacer le rendez-vous"
+          : mode === "accept" || mode === "assign"
+            ? "Qui s'en occupe ?"
+            : appointment.clientName
+      }
       onClose={onClose}
       footer={footer}
     >
-      {mode === "move" && profile ? (
+      {mode === "accept" || mode === "assign" ? (
+        <View style={{ gap: spacing.md }}>
+          <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
+            {appointment.clientName +
+              " · " +
+              relativeDay(start).toLowerCase() +
+              " à " +
+              timeOfDay(start) +
+              " · " +
+              formatDuration(appointment.durationMin) +
+              (mode === "assign" ? ". La personne choisie est prévenue." : ".")}
+          </Text>
+          <StaffPicker appointmentId={appointment.id} selected={pickedStaff} onSelect={setPickedStaff} />
+        </View>
+      ) : mode === "move" && profile ? (
         <View style={{ gap: spacing.md }}>
           <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
             {appointment.clientName +
@@ -254,6 +320,17 @@ export function AppointmentSheet({
           </Text>
           {cancellationNote(appointment) ? (
             <Text style={[typography.caption, { color: theme.danger }]}>{cancellationNote(appointment)}</Text>
+          ) : null}
+
+          {hasTeam ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Text style={[typography.bodySmall, { color: theme.foreground.white, flex: 1 }]}>
+                {(isPending ? "Prévu avec " : "Avec ") + staffNameOf(appointment, team)}
+              </Text>
+              {canMoveOrCancel ? (
+                <Button label="Changer" variant="outline" onPress={() => setMode("assign")} disabled={busy} />
+              ) : null}
+            </View>
           ) : null}
 
           <View
@@ -366,4 +443,15 @@ export function AppointmentSheet({
       ) : null}
     </BottomSheet>
   );
+}
+
+/** Who does it, as the salon reads it: « moi » for the owner (a booking without a person is his), « — » once that person has left. */
+function staffNameOf(
+  appointment: ProAppointment,
+  team: { id: string; firstName: string; isOwner: boolean }[],
+): string {
+  const ownerId = team.find((person) => person.isOwner)?.id ?? null;
+  const member = team.find((person) => person.id === personOf(appointment, ownerId));
+  if (member) return member.isOwner ? "moi" : member.firstName;
+  return appointment.staffName ?? "—";
 }

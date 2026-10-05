@@ -4,6 +4,7 @@
  * except creating more admins (see `server/src/admin-users/`) — most
  * `@Roles('admin')` gates should read `@Roles('admin', 'admin_limited')`.
  */
-export type Role = 'particulier' | 'coiffeur' | 'admin' | 'admin_limited';
+export type Role = 'particulier' | 'coiffeur' | 'staff' | 'admin' | 'admin_limited';
 
-export const ROLES: readonly Role[] = ['particulier', 'coiffeur', 'admin', 'admin_limited'];
+/** 'staff': a coiffeur working in someone else's salon (TODO.md Phase 3, server/src/staff/). */
+export const ROLES: readonly Role[] = ['particulier', 'coiffeur', 'staff', 'admin', 'admin_limited'];

@@ -385,6 +385,8 @@ export interface AdminAppointmentDetail extends AdminAppointment {
   client: { id: string | null; name: string; email: string | null };
   salon: { id: string | null; name: string; phone: string; city: string; email: string | null };
   payment: (AdminAppointmentPayment & { paymentIntentId: string | null }) | null;
+  /** Who of the salon's team does it (TODO.md Phase 3); `null` when unknown or gone. */
+  staffName: string | null;
 }
 
 export interface AdminAppointmentFilters {

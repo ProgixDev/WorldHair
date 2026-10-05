@@ -14,6 +14,7 @@ jest.mock("../services/pro", () => ({
   listProReviews: jest.fn().mockResolvedValue([]),
   listTimeOff: jest.fn().mockResolvedValue([]),
   getPayoutStatus: jest.fn().mockResolvedValue(null),
+  listTeam: jest.fn().mockResolvedValue([]),
 }));
 
 const getProProfile = pro.getProProfile as jest.Mock;

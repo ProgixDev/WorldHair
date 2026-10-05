@@ -14,6 +14,7 @@ import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
 import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
+import { teamSizeLabel } from "../../features/pro/team";
 import type { Subscription } from "../../features/pro/types";
 import { fullDate } from "../../utils/date";
 import { MyDataGroups } from "../../components/account/MyDataGroups";
@@ -57,7 +58,7 @@ export default function ProAccount() {
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
   const { session, signOut } = useAuth();
-  const { profile, subscription, appointments, payoutStatus, isLoading, refreshSubscription } = usePro();
+  const { profile, subscription, appointments, payoutStatus, team, isLoading, refreshSubscription } = usePro();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -234,6 +235,17 @@ export default function ProAccount() {
           </View>
         ))}
       </View>
+
+      {/* ── Team (TODO.md Phase 3) ────────────────────────────────────── */}
+      <Group title="Salon">
+        <Row
+          icon="account-group-outline"
+          label="Équipe"
+          value={teamSizeLabel(team)}
+          onPress={() => router.push("/pro/team" as never)}
+          isLast
+        />
+      </Group>
 
       {/* ── Payments (Stripe Connect) ─────────────────────────────────── */}
       <Group title="Encaissements">

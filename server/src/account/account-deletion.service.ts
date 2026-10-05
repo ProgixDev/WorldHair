@@ -1,9 +1,17 @@
-import { HttpException, Injectable, InternalServerErrorException, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { Role } from '../common/types/role';
 import { removeFolder } from '../common/utils/storage-folders';
 import { SupabaseService } from '../database/supabase.service';
 import { PaymentsService } from '../payments/payments.service';
+import { StaffService } from '../staff/staff.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 /** Where an account's files live, each under a folder named after it. */
@@ -29,9 +37,11 @@ export class AccountDeletionService {
     private readonly appointments: AppointmentsService,
     private readonly payments: PaymentsService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly staff: StaffService,
   ) {}
 
   async delete(userId: string, role: Role, now = new Date()): Promise<void> {
+    if (role === 'staff') await this.assertNothingToComeAsStaff(userId);
     await this.step('holds', () => this.appointments.releaseHoldsOfAccount(userId));
     if (role === 'coiffeur') await this.step('pay', async () => void (await this.payments.settleSalon(userId, now)));
     await this.step('bookings', async () => {
@@ -50,6 +60,18 @@ export class AccountDeletionService {
       throw new InternalServerErrorException(error.message);
     }
     this.logger.log(`Account ${userId} (${role}) deleted`);
+  }
+
+  /**
+   * A staff member's bookings to come stay with their clients (TODO.md
+   * Phase 3): the salon gives them to someone else before they can go, as
+   * when they leave the salon.
+   */
+  private async assertNothingToComeAsStaff(userId: string): Promise<void> {
+    const membership = await this.staff.membershipOf(userId);
+    if (membership && (await this.staff.upcomingCount(membership.staffId)) > 0) {
+      throw new ConflictException('STAFF_HAS_BOOKINGS: the salon has to reassign your bookings to come first');
+    }
   }
 
   /** A step Stripe or Storage couldn't finish: the account stays, to be deleted on another try. */

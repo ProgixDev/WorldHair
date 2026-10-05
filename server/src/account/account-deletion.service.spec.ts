@@ -20,6 +20,7 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { FakeStripe } from '../../test/utils/fakes/fake-stripe';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { AccountDeletionService } from './account-deletion.service';
+import { StaffService } from '../staff/staff.service';
 
 const STUDIO = 'coiffeur-1';
 const CAMILLE = 'client-1';
@@ -63,6 +64,7 @@ describe('AccountDeletionService', () => {
       events,
       payments,
       payouts,
+      new StaffService(supabase as unknown as SupabaseService, events),
     );
     const notifications = new NotificationsService(
       supabase as unknown as SupabaseService,
@@ -77,7 +79,13 @@ describe('AccountDeletionService', () => {
       new SubscriptionNotifier(supabase as unknown as SupabaseService, notifications, new MailService(config)),
       config,
     );
-    deletion = new AccountDeletionService(supabase as unknown as SupabaseService, appointments, payments, subscriptions);
+    deletion = new AccountDeletionService(
+      supabase as unknown as SupabaseService,
+      appointments,
+      payments,
+      subscriptions,
+      new StaffService(supabase as unknown as SupabaseService, events),
+    );
 
     supabase.seedValidatedSalon({ profileId: STUDIO, firstName: 'Sofia', lastName: 'Benali', salonName: 'Studio W' });
     supabase.addUser('camille-token', { id: CAMILLE, email: 'camille@example.com', email_confirmed_at: null }, 'particulier', {
@@ -138,6 +146,34 @@ describe('AccountDeletionService', () => {
       expect(supabase.storagePaths('user-photos')).toEqual([`${STUDIO}/salon-cover.jpg`]);
       expect(supabase.profileFor(CAMILLE)).toBeUndefined();
       await expect(supabase.client.auth.getUser('camille-token')).resolves.toMatchObject({ data: { user: null } });
+    });
+  });
+
+  describe('a staff member (TODO.md Phase 3)', () => {
+    const NADIA = 'nadia-1';
+
+    beforeEach(() => {
+      supabase.addUser('nadia-token', { id: NADIA, email: 'nadia@example.com', email_confirmed_at: null }, 'staff');
+    });
+
+    it('is refused while bookings to come are theirs: the salon reassigns them first', async () => {
+      const nadia = supabase.seedStaff({ salonId: STUDIO, profileId: NADIA });
+      const booking = supabase.seedAppointment({ particulierId: CAMILLE, coiffeurId: STUDIO, staffId: nadia, startsAt: fromNow(48) });
+
+      await expect(deletion.delete(NADIA, 'staff')).rejects.toThrow(/reassign/);
+      expect(supabase.profileFor(NADIA)).toBeDefined();
+      expect(supabase.appointmentFor(booking)?.status).toBe('confirmed');
+    });
+
+    it('goes, leaving the salon, its past bookings kept without them', async () => {
+      const nadia = supabase.seedStaff({ salonId: STUDIO, profileId: NADIA });
+      const past = supabase.seedAppointment({ particulierId: CAMILLE, coiffeurId: STUDIO, staffId: nadia, startsAt: fromNow(-48) });
+
+      await deletion.delete(NADIA, 'staff');
+
+      expect(supabase.profileFor(NADIA)).toBeUndefined();
+      expect(supabase.staffOf(STUDIO).map((member) => member.profile_id)).not.toContain(NADIA);
+      expect(supabase.appointmentFor(past)).toMatchObject({ coiffeur_id: STUDIO, staff_id: null });
     });
   });
 

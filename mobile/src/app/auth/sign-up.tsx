@@ -13,8 +13,8 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
-import { setSignupIntent } from "../../services/preferences";
-import { AuthError, type UserRole } from "../../services/auth";
+import { setSignupIntent, type SignupIntent } from "../../services/preferences";
+import { AuthError } from "../../services/auth";
 import { checkPassword, isValidEmail } from "../../utils/validation";
 import { openLegalPage } from "../../features/legal/terms";
 
@@ -24,7 +24,11 @@ export default function SignUp() {
   const { space } = useResponsive();
   const { signUp } = useAuth();
 
-  const [role, setRole] = useState<UserRole>("particulier");
+  const [role, setRole] = useState<"particulier" | "coiffeur">("particulier");
+  // A coiffeur either runs his own salon (the dossier wizard) or joins one
+  // with its owner's code (TODO.md Phase 3) — no dossier, no admin review.
+  const [coiffeurPath, setCoiffeurPath] = useState<"coiffeur" | "staff">("coiffeur");
+  const intent: SignupIntent = role === "coiffeur" ? coiffeurPath : "particulier";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -54,8 +58,9 @@ export default function SignUp() {
 
     setPending(true);
     try {
-      await signUp(email, password, role);
-      await setSignupIntent(role);
+      // Only a hint (see services/auth.ts): someone joining a salon starts as a client account too.
+      await signUp(email, password, intent === "coiffeur" ? "coiffeur" : "particulier");
+      await setSignupIntent(intent);
       router.replace({
         pathname: ROUTES.verifyEmail,
         params: { email: email.trim() },
@@ -98,6 +103,35 @@ export default function SignUp() {
             },
           ]}
         />
+
+        {role === "coiffeur" ? (
+          <View style={{ gap: spacing.sm }}>
+            <SegmentedControl
+              label="Mon salon"
+              value={coiffeurPath}
+              onChange={setCoiffeurPath}
+              options={[
+                {
+                  value: "coiffeur",
+                  label: "Créer mon salon",
+                  hint: "Je le gère",
+                },
+                {
+                  value: "staff",
+                  label: "Rejoindre un salon",
+                  hint: "J'y travaille",
+                },
+              ]}
+            />
+            <Text
+              style={[typography.caption, { color: theme.foreground.gray }]}
+            >
+              {coiffeurPath === "staff"
+                ? "Demandez son code d'invitation au gérant du salon : il suffira de le saisir, sans dossier à envoyer."
+                : "Vous présentez votre salon et envoyez vos justificatifs ; notre équipe les vérifie avant de le rendre visible."}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={{ gap: spacing.lg }}>
           <TextField
@@ -163,7 +197,7 @@ export default function SignUp() {
 
           <Button
             label={
-              role === "coiffeur"
+              intent === "coiffeur"
                 ? "Continuer mon inscription pro"
                 : "Créer mon compte"
             }

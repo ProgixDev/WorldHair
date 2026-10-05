@@ -17,6 +17,8 @@ function appointment(overrides: Partial<ProAppointment>): ProAppointment {
     attendance: null,
     isNewClient: false,
     payment: null,
+    staffId: null,
+    staffName: null,
     ...overrides,
   };
 }
@@ -122,6 +124,24 @@ describe("weeklyFillRate", () => {
     ];
 
     expect(weeklyFillRate(BOOKINGS, WEEK, overlapping, NOW).openMinutes).toBe(3240 - 180);
+  });
+
+  it("adds up a team's open time, each on their own week and congés (TODO.md Phase 3)", () => {
+    const owner = { id: "sofia", availability: null };
+    // Nadia works Wednesday afternoons only, 14:00-18:00, and is off this Wednesday from 16:00.
+    const nadia = {
+      id: "nadia",
+      availability: WEEK.map((day) => ({ ...day, open: day.weekday === 3, opens: 14 * 60, closes: 18 * 60, breakStart: null, breakEnd: null })),
+    };
+    const nadiaOff = [
+      { startsAt: new Date(2026, 8, 30, 16, 0).toISOString(), endsAt: new Date(2026, 8, 30, 19, 0).toISOString(), staffId: "nadia" },
+    ];
+
+    expect(weeklyFillRate(BOOKINGS, WEEK, nadiaOff, NOW, [owner, nadia])).toEqual({
+      bookedMinutes: 180,
+      openMinutes: 3240 + 120,
+      percent: 5,
+    });
   });
 
   it("is 0 % for a week the salon is closed", () => {

@@ -7,11 +7,14 @@ import {
   CoiffeurAppointment,
   HeldAppointment,
   ParticulierAppointment,
+  StaffCandidate,
 } from './appointments.service';
 import { DaySlots } from './booking-rules';
+import { AssignAppointmentDto } from './dto/assign-appointment.dto';
 import { AttendanceDto } from './dto/attendance.dto';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { DecideAppointmentDto } from './dto/decide-appointment.dto';
+import { MoveAppointmentDto } from './dto/move-appointment.dto';
 import { RefundAppointmentDto } from './dto/refund-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { SlotsQueryDto } from './dto/slots-query.dto';
@@ -117,7 +120,24 @@ export class AppointmentsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DecideAppointmentDto,
   ): Promise<void> {
-    return this.appointments.decide(current.id, id, dto.decision);
+    return this.appointments.decide(current.id, id, dto.decision, dto.staffId);
+  }
+
+  /** « Qui s'en occupe ? »: the team, each free or not at this booking's time (TODO.md Phase 3). */
+  @Roles('coiffeur')
+  @Get(':id/staff')
+  candidates(@CurrentUser() current: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string): Promise<StaffCandidate[]> {
+    return this.appointments.candidates(current.id, id);
+  }
+
+  @Roles('coiffeur')
+  @Patch(':id/assign')
+  assign(
+    @CurrentUser() current: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignAppointmentDto,
+  ): Promise<void> {
+    return this.appointments.assign(current.id, id, dto.staffId);
   }
 
   @Roles('coiffeur')
@@ -125,12 +145,13 @@ export class AppointmentsController {
   move(
     @CurrentUser() current: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: RescheduleAppointmentDto,
+    @Body() dto: MoveAppointmentDto,
   ): Promise<void> {
-    return this.appointments.move(current.id, id, dto.startsAt);
+    return this.appointments.move(current.id, id, dto.startsAt, dto.staffId);
   }
 
-  @Roles('coiffeur')
+  /** The salon's owner, or the staff member doing it (TODO.md Phase 3). */
+  @Roles('coiffeur', 'staff')
   @Patch(':id/attendance')
   setAttendance(
     @CurrentUser() current: AuthenticatedUser,

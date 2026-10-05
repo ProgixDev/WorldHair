@@ -6,6 +6,7 @@ import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { describeClosure, hoursRange, wholeDaysRange } from "../../features/pro/closures";
+import { closuresOf } from "../../features/pro/team";
 import type { TimeOff } from "../../features/pro/types";
 import { proErrorMessage } from "../../services/pro";
 import { addDays, dayAndMonth, minutesToTime, relativeDay, startOfDay, timeOfDay, weekdayShort } from "../../utils/date";
@@ -26,10 +27,28 @@ type Kind = "days" | "hours";
  * (an afternoon off). Nothing can be booked inside one. Bookings already
  * inside a new closure are kept and listed, for the coiffeur to move or
  * cancel from the agenda (the client is told either way).
+ *
+ * Without `staffId` (the agenda's « Fermetures »), the whole salon closes;
+ * with it (Équipe, TODO.md Phase 3), it's that one person's congés — no
+ * booking goes to them meanwhile, the rest of the team stays bookable.
  */
-export function ClosuresSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export function ClosuresSheet({
+  visible,
+  onClose,
+  staffId,
+  personName,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  /** One person's congés; absent: the salon's own closures. */
+  staffId?: string;
+  /** Shown in the title of one person's congés. */
+  personName?: string;
+}) {
   const { theme } = useTheme();
-  const { timeOff, addTimeOff, deleteTimeOff } = usePro();
+  const { timeOff, team, addTimeOff, deleteTimeOff } = usePro();
+  const forPerson = staffId !== undefined;
+  const closures = useMemo(() => closuresOf(timeOff, staffId ?? null), [timeOff, staffId]);
 
   const days = useMemo(() => {
     const today = startOfDay(new Date());
@@ -68,21 +87,28 @@ export function ClosuresSheet({ visible, onClose }: { visible: boolean; onClose:
     setError(null);
     try {
       const range = kind === "days" ? wholeDaysRange(from, to) : hoursRange(from, fromMinute, toMinute);
-      const conflicts = await addTimeOff({ ...range, label: label.trim() || undefined });
+      const conflicts = await addTimeOff({
+        ...range,
+        label: label.trim() || undefined,
+        ...(staffId ? { staffId } : {}),
+      });
       setAdding(false);
       setLabel("");
       if (conflicts.length > 0) {
+        const what = forPerson ? "ce congé" : "cette fermeture";
         Alert.alert(
           conflicts.length > 1
-            ? conflicts.length + " rendez-vous pendant cette fermeture"
-            : "1 rendez-vous pendant cette fermeture",
+            ? conflicts.length + " rendez-vous pendant " + what
+            : "1 rendez-vous pendant " + what,
           conflicts
             .map((conflict) => {
               const start = new Date(conflict.startsAt);
               return "• " + relativeDay(start) + " " + timeOfDay(start) + " — " + conflict.serviceName;
             })
             .join("\n") +
-            "\n\nIls sont conservés : déplacez-les ou annulez-les depuis l'agenda, le client sera prévenu.",
+            (forPerson
+              ? "\n\nIls sont conservés : donnez-les à quelqu'un d'autre, déplacez-les ou annulez-les depuis l'agenda."
+              : "\n\nIls sont conservés : déplacez-les ou annulez-les depuis l'agenda, le client sera prévenu."),
         );
       }
     } catch (err) {
@@ -93,7 +119,7 @@ export function ClosuresSheet({ visible, onClose }: { visible: boolean; onClose:
   };
 
   const confirmDelete = (closure: TimeOff) =>
-    Alert.alert("Supprimer cette fermeture ?", describeClosure(closure), [
+    Alert.alert(forPerson ? "Supprimer ce congé ?" : "Supprimer cette fermeture ?", describeClosure(closure), [
       { text: "Garder", style: "cancel" },
       {
         text: "Supprimer",
@@ -130,10 +156,20 @@ export function ClosuresSheet({ visible, onClose }: { visible: boolean; onClose:
     </ScrollView>
   );
 
+  const title = forPerson
+    ? adding
+      ? "Nouveau congé"
+      : personName
+        ? "Congés · " + personName
+        : "Congés"
+    : adding
+      ? "Nouvelle fermeture"
+      : "Congés et fermetures";
+
   return (
     <BottomSheet
       visible={visible}
-      title={adding ? "Nouvelle fermeture" : "Congés et fermetures"}
+      title={title}
       onClose={onClose}
       footer={
         adding ? (
@@ -199,21 +235,22 @@ export function ClosuresSheet({ visible, onClose }: { visible: boolean; onClose:
           )}
 
           <TextField
-            label="Motif (vous seul le voyez)"
+            label={forPerson ? "Motif (jamais montré aux clients)" : "Motif (vous seul le voyez)"}
             value={label}
             onChangeText={setLabel}
             placeholder="Congés, formation…"
             maxLength={60}
           />
         </View>
-      ) : timeOff.length === 0 ? (
+      ) : closures.length === 0 ? (
         <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
-          Aucune fermeture prévue. Ajoutez vos congés ou une fermeture exceptionnelle : personne ne pourra
-          réserver pendant ce temps.
+          {forPerson
+            ? "Aucun congé prévu. Pendant un congé, aucun rendez-vous ne lui est donné ; le reste de l'équipe reste réservable."
+            : "Aucune fermeture prévue. Ajoutez vos congés ou une fermeture exceptionnelle : personne ne pourra réserver pendant ce temps."}
         </Text>
       ) : (
         <View style={{ gap: spacing.sm }}>
-          {timeOff.map((closure) => (
+          {closures.map((closure) => (
             <View
               key={closure.id}
               style={{
@@ -237,7 +274,7 @@ export function ClosuresSheet({ visible, onClose }: { visible: boolean; onClose:
               <Pressable
                 onPress={() => confirmDelete(closure)}
                 accessibilityRole="button"
-                accessibilityLabel={"Supprimer la fermeture " + describeClosure(closure)}
+                accessibilityLabel={(forPerson ? "Supprimer le congé " : "Supprimer la fermeture ") + describeClosure(closure)}
                 hitSlop={8}
               >
                 <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.danger} />
@@ -246,6 +283,13 @@ export function ClosuresSheet({ visible, onClose }: { visible: boolean; onClose:
           ))}
         </View>
       )}
+
+      {/* The salon's closures shut everyone; one person's congés live in Équipe. */}
+      {!forPerson && !adding && team.length > 1 ? (
+        <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+          Ici, le salon entier ferme. Les congés d&apos;une seule personne se gèrent dans Compte › Équipe.
+        </Text>
+      ) : null}
 
       {error ? <Text style={[typography.bodySmall, { color: theme.danger }]}>{error}</Text> : null}
     </BottomSheet>

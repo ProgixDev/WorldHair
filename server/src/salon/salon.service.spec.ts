@@ -358,6 +358,20 @@ describe('SalonService', () => {
       expect(conflicts[0]).toMatchObject({ durationMin: 60, status: 'confirmed' });
     });
 
+    it("addTimeOff() for one person lists only their bookings — the owner's include those without a person (TODO.md Phase 3)", async () => {
+      const owner = supabase.seedStaff({ salonId: USER_ID, profileId: USER_ID });
+      const nadia = supabase.seedStaff({ salonId: USER_ID, profileId: 'nadia-1' });
+      const legacy = supabase.seedAppointment({ particulierId: 'p1', coiffeurId: USER_ID, startsAt: inDays(10, 10), durationMin: 60 });
+      const owners = supabase.seedAppointment({ particulierId: 'p2', coiffeurId: USER_ID, staffId: owner, startsAt: inDays(10, 12), durationMin: 60 });
+      const nadias = supabase.seedAppointment({ particulierId: 'p3', coiffeurId: USER_ID, staffId: nadia, startsAt: inDays(10, 14), durationMin: 60 });
+
+      const forOwner = await service.addTimeOff(USER_ID, { startsAt: inDays(10), endsAt: inDays(11), staffId: owner });
+      const forNadia = await service.addTimeOff(USER_ID, { startsAt: inDays(10), endsAt: inDays(11), staffId: nadia });
+
+      expect(forOwner.conflicts.map((conflict) => conflict.appointmentId).sort()).toEqual([legacy, owners].sort());
+      expect(forNadia.conflicts.map((conflict) => conflict.appointmentId)).toEqual([nadias]);
+    });
+
     it("addTimeOff() leaves out the salon's bookings that are already over", async () => {
       const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
       supabase.seedAppointment({ particulierId: 'p1', coiffeurId: USER_ID, startsAt: hoursAgo(3), durationMin: 60, status: 'confirmed' });

@@ -209,6 +209,8 @@ interface AppointmentSeed {
   /** Who cancelled it (TODO.md Phase 7), and WorldHair's reason when it did. */
   cancelledBy?: "client" | "salon" | "admin";
   cancellationReason?: string;
+  /** Who of Studio W's team does it (TODO.md Phase 3): the owner unless « nadia ». */
+  staff?: "nadia";
 }
 
 const APPOINTMENT_SEEDS: AppointmentSeed[] = [
@@ -222,6 +224,11 @@ const APPOINTMENT_SEEDS: AppointmentSeed[] = [
   },
   // Two prestations in one booking: Coloration complète + Soin fondant, 120 min.
   { serviceIndexes: [2, 3], dayOffset: 5, hour: 14, minute: 30, status: "confirmed" },
+  // Studio W's colleague (TODO.md Phase 3): a request held on Nadia at the same
+  // time as one of the owner's — two people, two bookings at once — and one of hers.
+  { serviceIndexes: [1], dayOffset: 5, hour: 15, minute: 0, status: "pending", staff: "nadia" },
+  { serviceIndexes: [0], dayOffset: 3, hour: 11, minute: 0, status: "confirmed", staff: "nadia" },
+  { serviceIndexes: [3], dayOffset: -4, hour: 10, minute: 0, status: "confirmed", staff: "nadia" },
   // In the past — the API derives "confirmed and past" as "done" at read time.
   // Left unmarked, so demo.particulier can still review it by hand.
   { serviceIndexes: [2], dayOffset: -6, hour: 11, minute: 0, status: "confirmed" },
@@ -292,7 +299,7 @@ const CHART_APPOINTMENT_SEEDS: ChartAppointmentSeed[] = [
   { serviceIndex: 0, month: 11, day: 24, status: "cancelled" },
 ];
 
-async function seedDemoAppointments(particulierId: string, coiffeurId: string): Promise<void> {
+async function seedDemoAppointments(particulierId: string, coiffeurId: string, team: DemoTeam): Promise<void> {
   const { data: services, error: servicesError } = await supabase
     .from("coiffeur_services")
     .select()
@@ -326,6 +333,7 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
       .insert({
         particulier_id: particulierId,
         coiffeur_id: coiffeurId,
+        staff_id: seed.staff === "nadia" ? team.nadia : team.owner,
         service_id: picked[0].id as string,
         service_name: picked.map((service) => service.name as string).join(" + "),
         price: picked.reduce((sum, service) => sum + Number(service.price), 0),
@@ -364,6 +372,7 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
     return {
       particulier_id: particulierId,
       coiffeur_id: coiffeurId,
+      staff_id: team.owner,
       service_id: service.id as string,
       service_name: service.name as string,
       price: service.price,
@@ -382,6 +391,66 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string): 
   console.log(
     `  demo appointments seeded (${APPOINTMENT_SEEDS.length} agenda + ${chartRows.length} chart-only)`,
   );
+}
+
+interface DemoTeam {
+  owner: string;
+  nadia: string;
+}
+
+const STAFF_EMAIL = "demo.coiffeur.equipe@worldhair.app";
+
+/**
+ * Studio W's team (TODO.md Phase 3): its owner, and Nadia — a coiffeur who
+ * joined with a code (her own account, role 'staff', sign in with
+ * demo.coiffeur.equipe@…) — on the salon's hours but for her own congé, so
+ * « Équipe », « Qui s'en occupe ? » and the staff app have something to show.
+ * Run after seedDemoClosures, which clears every closure of the salon.
+ */
+async function seedDemoTeam(coiffeurId: string): Promise<DemoTeam> {
+  const nadiaId = await upsertAuthUser(STAFF_EMAIL);
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      role: "staff",
+      first_name: "Nadia",
+      last_name: "Kaci",
+      terms_version: TERMS_VERSION,
+      terms_accepted_at: new Date().toISOString(),
+    })
+    .eq("id", nadiaId);
+  if (profileError) throw profileError;
+
+  const { data: members, error: teamError } = await supabase
+    .from("salon_staff")
+    .upsert(
+      [
+        { salon_id: coiffeurId, profile_id: coiffeurId, position: 0 },
+        { salon_id: coiffeurId, profile_id: nadiaId, position: 1 },
+      ],
+      { onConflict: "profile_id" },
+    )
+    .select("id, profile_id");
+  if (teamError) throw teamError;
+  const idOf = (profileId: string) => (members as { id: string; profile_id: string }[]).find((member) => member.profile_id === profileId)!.id;
+  const team = { owner: idOf(coiffeurId), nadia: idOf(nadiaId) };
+
+  // On the salon's hours: no week of her own.
+  const { error: weekError } = await supabase.from("staff_availability").delete().eq("staff_id", team.nadia);
+  if (weekError) throw weekError;
+
+  const today = parisParts(new Date());
+  const { error: offError } = await supabase.from("coiffeur_time_off").insert({
+    profile_id: coiffeurId,
+    staff_id: team.nadia,
+    starts_at: parisTime(today.year, today.month, today.day + 10).toISOString(),
+    ends_at: parisTime(today.year, today.month, today.day + 11).toISOString(),
+    label: "Congés Nadia",
+  });
+  if (offError) throw offError;
+
+  console.log(`  demo team seeded (owner + Nadia, ${STAFF_EMAIL})`);
+  return team;
 }
 
 /**
@@ -553,8 +622,9 @@ async function main(): Promise<void> {
   const particulierId = userIds.get("demo.particulier@worldhair.app");
   const coiffeurId = userIds.get("demo.coiffeur.active@worldhair.app");
   if (particulierId && coiffeurId) {
-    await seedDemoAppointments(particulierId, coiffeurId);
     await seedDemoClosures(coiffeurId);
+    const team = await seedDemoTeam(coiffeurId);
+    await seedDemoAppointments(particulierId, coiffeurId, team);
     // Written by the six client.* accounts, never demo.particulier — its own
     // past appointments stay free to review by hand.
     const reviewerIds = await upsertReviewers(supabase);

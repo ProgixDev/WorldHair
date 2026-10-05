@@ -3,6 +3,7 @@ import { apiClient } from "../lib/apiClient";
 import { supabase } from "../lib/supabase";
 import { TERMS_VERSION } from "../features/legal/terms";
 import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
+import { getMyMembership, type StaffMembership } from "./staff";
 
 /**
  * Real auth service: Supabase Auth directly for signup/login/verify/reset
@@ -13,10 +14,13 @@ import { isRemoteUrl, uploadUserPhoto } from "../lib/uploadPhoto";
  * server/src/coiffeur/). `profiles` itself is read directly here too (RLS
  * lets the owner read/update their own row), so session/role/status
  * resolution never needs the NestJS server to be reachable — only
- * *submitting or deciding* a coiffeur application does.
+ * *submitting or deciding* a coiffeur application does. The one exception
+ * is a staff member's salon (`/staff/me`, the team tables being API-only),
+ * and its absence is tolerated: see `Session.staffMembership`.
  */
 
-export type UserRole = "particulier" | "coiffeur";
+/** `staff`: a coiffeur working in someone else's salon, joined with the owner's code (TODO.md Phase 3). */
+export type UserRole = "particulier" | "coiffeur" | "staff";
 
 export type AccountStatus =
   | "pending_email" // email not verified yet
@@ -77,6 +81,12 @@ export interface Session {
   reviewMessage?: string | null;
   /** Coiffeur only — issue #7. */
   shopProfileComplete?: boolean;
+  /**
+   * Staff only — the salon they work in; `null` once out of one (left, or
+   * removed by the owner); left unset when the server couldn't be asked, so
+   * an unreachable server never passes for « not in a salon ».
+   */
+  staffMembership?: StaffMembership | null;
   /** ISO creation date — drives the "membre depuis" line. */
   createdAt: string;
 }
@@ -176,10 +186,20 @@ function mapApplicationRow(row: CoiffeurApplicationRow): ProApplication {
 
 // ─── Session ─────────────────────────────────────────────────────────────────
 
+/** `undefined` when the server couldn't say — see `Session.staffMembership`. */
+async function readStaffMembership(): Promise<StaffMembership | null | undefined> {
+  try {
+    return await getMyMembership();
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The single place a `Session` gets assembled: the Supabase auth user plus
  * its `profiles` row plus (coiffeurs only) its `coiffeur_applications` row —
- * both read directly via RLS, not through the NestJS server.
+ * both read directly via RLS, not through the NestJS server — or (staff
+ * only) the salon they work in, which only the server knows.
  */
 async function buildSession(): Promise<Session | null> {
   const {
@@ -238,11 +258,13 @@ async function buildSession(): Promise<Session | null> {
     : !hasProfile
       ? "profile_incomplete"
       : "active";
+  // A salon's staff member reads like a client (names, photo), plus where they work.
+  const isStaff = role === "staff";
 
   return {
     userId: user.id,
     email: user.email ?? "",
-    role: "particulier",
+    role: isStaff ? "staff" : "particulier",
     status,
     emailVerified,
     profile: hasProfile
@@ -255,6 +277,7 @@ async function buildSession(): Promise<Session | null> {
     application: null,
     reviewMessage: null,
     createdAt,
+    ...(isStaff ? { staffMembership: await readStaffMembership() } : {}),
   };
 }
 
@@ -455,7 +478,7 @@ export async function completeShopProfile(): Promise<Session> {
  * needing anyone to actually run the signup/review flow first.
  */
 export type DemoPersona =
-  "particulier" | "coiffeur_active" | "coiffeur_pending" | "coiffeur_rejected";
+  "particulier" | "coiffeur_active" | "coiffeur_pending" | "coiffeur_rejected" | "staff";
 
 export interface DemoPersonaInfo {
   id: DemoPersona;
@@ -484,6 +507,11 @@ export const DEMO_PERSONAS: DemoPersonaInfo[] = [
     label: "Coiffeur refusé",
     hint: "Dossier à corriger",
   },
+  {
+    id: "staff",
+    label: "Collaboratrice",
+    hint: "Nadia, de l'équipe du Studio W",
+  },
 ];
 
 const DEMO_PASSWORD = "Demo1234!";
@@ -493,6 +521,8 @@ const DEMO_EMAILS: Record<DemoPersona, string> = {
   coiffeur_active: "demo.coiffeur.active@worldhair.app",
   coiffeur_pending: "demo.coiffeur.pending@worldhair.app",
   coiffeur_rejected: "demo.coiffeur.rejected@worldhair.app",
+  // Joined Studio W's team (TODO.md Phase 3); seeded by server/scripts/seed-demo-accounts.ts.
+  staff: "demo.coiffeur.equipe@worldhair.app",
 };
 
 /** Signs into one of the seeded preview accounts above — a real sign-in, not a fabrication. */

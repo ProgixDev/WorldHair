@@ -121,16 +121,18 @@ export async function setNotificationPrefs(
  * Which role the user picked on the sign-up screen — read once, right after
  * email verification, to decide whether a freshly-verified account (still
  * `role: "particulier"` in the database; only submitting a coiffeur
- * application flips that server-side) lands in the coiffeur wizard instead
- * of particulier profile-setup. Not read anywhere else: an existing
- * coiffeur's real `session.role` is what routing.ts uses everywhere after.
+ * application, or joining a salon, flips that server-side) lands in the
+ * coiffeur wizard (« Créer mon salon ») or on « Rejoindre un salon »
+ * (`staff`, TODO.md Phase 3) instead of particulier profile-setup. Not read
+ * anywhere else: an existing coiffeur's or staff member's real
+ * `session.role` is what routing.ts uses everywhere after.
  */
-export type SignupIntent = "particulier" | "coiffeur";
+export type SignupIntent = "particulier" | "coiffeur" | "staff";
 
 export async function getSignupIntent(): Promise<SignupIntent | null> {
   try {
     const value = await AsyncStorage.getItem(KEYS.signupIntent);
-    return value === "particulier" || value === "coiffeur" ? value : null;
+    return value === "particulier" || value === "coiffeur" || value === "staff" ? value : null;
   } catch {
     return null;
   }

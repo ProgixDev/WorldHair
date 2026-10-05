@@ -11,6 +11,7 @@ import { PayoutAccountsService } from '../payments/payout-accounts.service';
 import { ReviewsService } from '../reviews/reviews.service';
 import { SalonService } from '../salon/salon.service';
 import { PlatformSettingsService } from '../settings/platform-settings.service';
+import { StaffService } from '../staff/staff.service';
 import { StripeService } from '../stripe/stripe.service';
 import { FakeStripe } from '../../test/utils/fakes/fake-stripe';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
@@ -51,6 +52,7 @@ describe('AppointmentsService', () => {
   let events: EventEmitter2;
   let stripe: FakeStripe;
   let payments: PaymentsService;
+  let staff: StaffService;
   let serviceId: string;
 
   /** Books like the app: holds the slot, pays on Stripe's page with a test card, then comes back and confirms. */
@@ -79,6 +81,7 @@ describe('AppointmentsService', () => {
     );
     const applications = new CoiffeurApplicationsService(supabase as unknown as SupabaseService, events);
     salon = new SalonService(supabase as unknown as SupabaseService);
+    staff = new StaffService(supabase as unknown as SupabaseService, events);
     service = new AppointmentsService(
       supabase as unknown as SupabaseService,
       applications,
@@ -86,6 +89,7 @@ describe('AppointmentsService', () => {
       events,
       payments,
       payouts,
+      staff,
     );
 
     supabase.seedValidatedSalon({
@@ -685,6 +689,7 @@ describe('AppointmentsService', () => {
       expect(heard).toHaveBeenCalledWith({
         appointmentId: created.id,
         coiffeurId: COIFFEUR_ID,
+        staffId: null,
         serviceName: 'Coupe & brushing',
         previousStartsAt: created.startsAt,
         startsAt: newSlot.toISOString(),
@@ -776,6 +781,7 @@ describe('AppointmentsService', () => {
         appointmentId: created.id,
         coiffeurId: COIFFEUR_ID,
         particulierId: PARTICULIER_ID,
+        staffId: null,
         cancelledByUserId: COIFFEUR_ID,
         serviceName: 'Coupe & brushing',
         startsAt: created.startsAt,
@@ -1244,6 +1250,7 @@ describe('AppointmentsService', () => {
       expect(heard).toHaveBeenCalledWith({
         appointmentId: created.id,
         particulierId: PARTICULIER_ID,
+        staffId: expect.any(String),
         serviceName: 'Coupe & brushing',
         previousStartsAt: created.startsAt,
         startsAt: newSlot.toISOString(),
@@ -1345,6 +1352,206 @@ describe('AppointmentsService', () => {
         status: 'cancelled',
       });
       await expect(service.setAttendance(COIFFEUR_ID, cancelled, 'attended')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('accepting in a salon of one (TODO.md Phase 3: as before teams)', () => {
+    it('accepts a request inside a closure added since, as before', async () => {
+      const booked = await book(PARTICULIER_ID, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: WEDNESDAY_10AM().toISOString() });
+      supabase.seedTimeOff({ profileId: COIFFEUR_ID, startsAt: nextWeekday(3, 9).toISOString(), endsAt: nextWeekday(3, 12).toISOString() });
+
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed');
+      expect(supabase.appointmentFor(booked.id)?.status).toBe('confirmed');
+    });
+  });
+
+  describe('a team (TODO.md Phase 3)', () => {
+    const NADIA = 'nadia-1';
+    const OTHER_CLIENT = 'particulier-2';
+    const THIRD_CLIENT = 'particulier-3';
+    let owner: string;
+    let nadia: string;
+
+    beforeEach(async () => {
+      supabase.addUser('nadia-token', { id: NADIA, email: 'nadia@example.com', email_confirmed_at: null }, 'staff', {
+        firstName: 'Nadia',
+        lastName: 'Kaci',
+      });
+      [{ id: owner }] = await staff.team(COIFFEUR_ID);
+      nadia = supabase.seedStaff({ salonId: COIFFEUR_ID, profileId: NADIA });
+    });
+
+    const bookAt = (client: string, startsAt: Date) =>
+      book(client, { coiffeurId: COIFFEUR_ID, serviceIds: [serviceId], startsAt: startsAt.toISOString() });
+    const personOf = (id: string) => supabase.appointmentFor(id)?.staff_id;
+
+    it('takes two bookings at the same time, one per person, and no third', async () => {
+      const first = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      const day = parisParts(WEDNESDAY_10AM());
+      const date = `${day.year}-${String(day.month).padStart(2, '0')}-${String(day.day).padStart(2, '0')}`;
+      const grid = await service.slots(OTHER_CLIENT, 'particulier', COIFFEUR_ID, { date, serviceIds: [serviceId] });
+      expect(grid.slots.find((slot) => slot.startsAt === WEDNESDAY_10AM().toISOString())?.available).toBe(true);
+
+      const second = await bookAt(OTHER_CLIENT, WEDNESDAY_10AM());
+
+      expect([personOf(first.id), personOf(second.id)].sort()).toEqual([owner, nadia].sort());
+      await expect(bookAt(THIRD_CLIENT, WEDNESDAY_10AM())).rejects.toThrow(/no longer available/);
+    });
+
+    it('holds the free person with the fewest bookings that day', async () => {
+      supabase.seedAppointment({ particulierId: THIRD_CLIENT, coiffeurId: COIFFEUR_ID, staffId: owner, startsAt: WEDNESDAY_9AM().toISOString(), durationMin: 60 });
+      const booked = await bookAt(PARTICULIER_ID, nextWeekday(3, 15));
+      expect(personOf(booked.id)).toBe(nadia);
+    });
+
+    it("never gives a client's booking to someone who doesn't take bookings", async () => {
+      await staff.setTakesBookings(COIFFEUR_ID, nadia, false);
+      await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      await expect(bookAt(OTHER_CLIENT, WEDNESDAY_10AM())).rejects.toThrow(/no longer available/);
+    });
+
+    it("keeps a person's own week and congés to them", async () => {
+      await staff.replaceHours(
+        COIFFEUR_ID,
+        nadia,
+        [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, isOpen: weekday === 3, opensMinute: 14 * 60, closesMinute: 18 * 60, breakStartMinute: null, breakEndMinute: null })),
+      );
+      await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      // Nadia only works Wednesday afternoons: nobody is left at 10:00.
+      await expect(bookAt(OTHER_CLIENT, WEDNESDAY_10AM())).rejects.toThrow(/no longer available/);
+
+      // The owner's congé leaves Nadia, and only her, at 15:00.
+      supabase.seedTimeOff({ profileId: COIFFEUR_ID, staffId: owner, startsAt: nextWeekday(3, 14).toISOString(), endsAt: nextWeekday(3, 19).toISOString() });
+      const afternoon = await bookAt(OTHER_CLIENT, nextWeekday(3, 15));
+      expect(personOf(afternoon.id)).toBe(nadia);
+      await expect(bookAt(THIRD_CLIENT, nextWeekday(3, 15))).rejects.toThrow(/no longer available/);
+    });
+
+    it('accepts a request only with someone free then: the person held, or the one the owner picks', async () => {
+      const first = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      const second = await bookAt(OTHER_CLIENT, WEDNESDAY_10AM());
+      const firstPerson = personOf(first.id)!;
+      const otherPerson = personOf(second.id)!;
+
+      await expect(service.decide(COIFFEUR_ID, first.id, 'confirmed', otherPerson)).rejects.toThrow(/not free/);
+      await expect(service.decide(COIFFEUR_ID, first.id, 'confirmed', 'someone-else')).rejects.toThrow(NotFoundException);
+      await service.decide(COIFFEUR_ID, first.id, 'confirmed', firstPerson);
+
+      expect(supabase.appointmentFor(first.id)).toMatchObject({ status: 'confirmed', staff_id: firstPerson });
+    });
+
+    it('lets the owner give a request to someone else free when accepting, and tells that person', async () => {
+      const assigned = jest.fn();
+      events.on('appointment.assigned', assigned);
+      const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      const other = personOf(booked.id) === owner ? nadia : owner;
+
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed', other);
+
+      expect(personOf(booked.id)).toBe(other);
+      expect(assigned).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: booked.id, staffId: other, salonId: COIFFEUR_ID }));
+    });
+
+    it('reassigns an accepted booking to someone free, never to someone busy', async () => {
+      const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      const held = personOf(booked.id)!;
+      const other = held === owner ? nadia : owner;
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed', held);
+
+      await service.assign(COIFFEUR_ID, booked.id, other);
+      expect(personOf(booked.id)).toBe(other);
+
+      supabase.seedAppointment({ particulierId: THIRD_CLIENT, coiffeurId: COIFFEUR_ID, staffId: held, startsAt: WEDNESDAY_10AM().toISOString(), durationMin: 60 });
+      await expect(service.assign(COIFFEUR_ID, booked.id, held)).rejects.toThrow(/not free/);
+      await expect(service.assign('another-salon', booked.id, held)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('moves a booking to a time its person is busy by giving it to someone free', async () => {
+      const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      const held = personOf(booked.id)!;
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed', held);
+      supabase.seedAppointment({ particulierId: THIRD_CLIENT, coiffeurId: COIFFEUR_ID, staffId: held, startsAt: nextWeekday(3, 15).toISOString(), durationMin: 60 });
+
+      await service.move(COIFFEUR_ID, booked.id, nextWeekday(3, 15).toISOString());
+
+      expect(supabase.appointmentFor(booked.id)).toMatchObject({ starts_at: nextWeekday(3, 15).toISOString(), staff_id: held === owner ? nadia : owner });
+    });
+
+    it("lists who could do a booking, free or not at its time, the person held first-marked (« Qui s'en occupe ? »)", async () => {
+      const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      const held = personOf(booked.id)!;
+      const other = held === owner ? nadia : owner;
+      supabase.seedAppointment({ particulierId: THIRD_CLIENT, coiffeurId: COIFFEUR_ID, staffId: other, startsAt: WEDNESDAY_10AM().toISOString(), durationMin: 60 });
+
+      const candidates = await service.candidates(COIFFEUR_ID, booked.id);
+
+      expect(candidates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ staffId: held, free: true, held: true }),
+          expect.objectContaining({ staffId: other, free: false, held: false }),
+        ]),
+      );
+      expect(candidates.map((candidate) => candidate.firstName)).toEqual(['Sofia', 'Nadia']);
+      await expect(service.candidates('another-salon', booked.id)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("never moves a booking onto someone who doesn't take bookings, unless the owner names them", async () => {
+      await staff.setTakesBookings(COIFFEUR_ID, owner, false);
+      const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      expect(personOf(booked.id)).toBe(nadia);
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed', nadia);
+      supabase.seedAppointment({ particulierId: THIRD_CLIENT, coiffeurId: COIFFEUR_ID, staffId: nadia, startsAt: nextWeekday(3, 15).toISOString(), durationMin: 60 });
+
+      await expect(service.move(COIFFEUR_ID, booked.id, nextWeekday(3, 15).toISOString())).rejects.toThrow(BadRequestException);
+      await service.move(COIFFEUR_ID, booked.id, nextWeekday(3, 15).toISOString(), owner);
+      expect(personOf(booked.id)).toBe(owner);
+    });
+
+    it("tells the new person, not the old one, when a client's reschedule changes who does it", async () => {
+      const assigned = jest.fn();
+      const rescheduled = jest.fn();
+      events.on('appointment.assigned', assigned);
+      events.on('appointment.rescheduled', rescheduled);
+      const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      const held = personOf(booked.id)!;
+      const other = held === owner ? nadia : owner;
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed', held);
+      supabase.seedAppointment({ particulierId: THIRD_CLIENT, coiffeurId: COIFFEUR_ID, staffId: held, startsAt: nextWeekday(4, 10).toISOString(), durationMin: 60 });
+      assigned.mockClear();
+
+      await service.reschedule(PARTICULIER_ID, booked.id, nextWeekday(4, 10).toISOString());
+
+      expect(personOf(booked.id)).toBe(other);
+      expect(rescheduled).toHaveBeenCalledWith(expect.objectContaining({ staffId: null }));
+      expect(assigned).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: booked.id, staffId: other }));
+    });
+
+    it('gives a request without a person to the owner when accepting, as before teams', async () => {
+      const request = supabase.seedAppointment({ particulierId: PARTICULIER_ID, coiffeurId: COIFFEUR_ID, startsAt: WEDNESDAY_10AM().toISOString(), status: 'pending', durationMin: 60 });
+      await service.decide(COIFFEUR_ID, request, 'confirmed');
+      expect(personOf(request)).toBe(owner);
+    });
+
+    it('says who does each booking in the agenda', async () => {
+      const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      await service.decide(COIFFEUR_ID, booked.id, 'confirmed', nadia);
+
+      const [forSalon] = await service.listForCoiffeur(COIFFEUR_ID);
+      expect(forSalon).toMatchObject({ staffId: nadia, staffName: 'Nadia Kaci' });
+    });
+
+    it('shows a staff member their own bookings only, and lets them mark those', async () => {
+      const mine = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
+      await service.decide(COIFFEUR_ID, mine.id, 'confirmed', nadia);
+      const past = supabase.seedAppointment({ particulierId: PARTICULIER_ID, coiffeurId: COIFFEUR_ID, staffId: nadia, startsAt: YESTERDAY() });
+      const ownersPast = supabase.seedAppointment({ particulierId: OTHER_CLIENT, coiffeurId: COIFFEUR_ID, staffId: owner, startsAt: YESTERDAY() });
+
+      const agenda = await service.listForStaff(NADIA);
+      expect(agenda.map((item) => item.id).sort()).toEqual([mine.id, past].sort());
+
+      await service.setAttendance(NADIA, past, 'attended');
+      expect(supabase.appointmentFor(past)?.attendance).toBe('attended');
+      await expect(service.setAttendance(NADIA, ownersPast, 'attended')).rejects.toThrow(ForbiddenException);
     });
   });
 });

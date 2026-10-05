@@ -1,15 +1,75 @@
 import { supabase } from "../lib/supabase";
-import { AuthError, resendVerificationCode, signUpWithEmail } from "./auth";
+import { AuthError, getSession, resendVerificationCode, signUpWithEmail } from "./auth";
+import { getMyMembership } from "./staff";
 
 jest.mock("../lib/supabase", () => ({
-  supabase: { auth: { signUp: jest.fn(), resend: jest.fn() } },
+  supabase: { auth: { signUp: jest.fn(), resend: jest.fn(), getSession: jest.fn() }, from: jest.fn() },
 }));
 jest.mock("../lib/apiClient", () => ({ apiClient: {} }));
 jest.mock("../lib/uploadPhoto", () => ({}));
 jest.mock("./pro", () => ({}));
+jest.mock("./staff", () => ({ getMyMembership: jest.fn() }));
 
 const mockedSignUp = supabase.auth.signUp as jest.Mock;
 const mockedResend = supabase.auth.resend as jest.Mock;
+const mockedGetSession = supabase.auth.getSession as jest.Mock;
+const mockedFrom = supabase.from as jest.Mock;
+const mockedMembership = getMyMembership as jest.Mock;
+
+/** A signed-in, verified user whose `profiles` row is `row`. */
+function signedInWithProfile(row: Record<string, unknown>) {
+  mockedGetSession.mockResolvedValue({
+    data: {
+      session: { user: { id: "u1", email: "lea@example.com", email_confirmed_at: "2026-10-01", created_at: "2026-10-01" } },
+    },
+  });
+  const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: row, error: null }) };
+  mockedFrom.mockReturnValue(query);
+}
+
+const PROFILE_ROW = { first_name: "Léa", last_name: "Martin", photo_url: null, created_at: "2026-10-01" };
+
+describe("getSession", () => {
+  beforeEach(() => mockedMembership.mockReset());
+
+  it("reads a staff member like a client, plus the salon they work in", async () => {
+    signedInWithProfile({ ...PROFILE_ROW, role: "staff" });
+    mockedMembership.mockResolvedValue({ staffId: "s1", salonId: "salon1", salonName: "Maison Tresse" });
+
+    await expect(getSession()).resolves.toMatchObject({
+      role: "staff",
+      status: "active",
+      profile: { firstName: "Léa", lastName: "Martin" },
+      staffMembership: { staffId: "s1", salonId: "salon1", salonName: "Maison Tresse" },
+    });
+  });
+
+  it("says a staff member out of a salon has none", async () => {
+    signedInWithProfile({ ...PROFILE_ROW, role: "staff" });
+    mockedMembership.mockResolvedValue(null);
+
+    await expect(getSession()).resolves.toMatchObject({ role: "staff", staffMembership: null });
+  });
+
+  // An unreachable server must not pass for « not in a salon »: that would send them to join one.
+  it("leaves the salon unknown when the server can't be asked", async () => {
+    signedInWithProfile({ ...PROFILE_ROW, role: "staff" });
+    mockedMembership.mockRejectedValue(new Error("Network Error"));
+
+    const session = await getSession();
+    expect(session?.role).toBe("staff");
+    expect(session?.staffMembership).toBeUndefined();
+  });
+
+  it("never asks the server for a client's salon", async () => {
+    signedInWithProfile({ ...PROFILE_ROW, role: "particulier" });
+
+    const session = await getSession();
+    expect(session?.role).toBe("particulier");
+    expect(session).not.toHaveProperty("staffMembership");
+    expect(mockedMembership).not.toHaveBeenCalled();
+  });
+});
 
 describe("signUpWithEmail", () => {
   beforeEach(() => mockedSignUp.mockReset());

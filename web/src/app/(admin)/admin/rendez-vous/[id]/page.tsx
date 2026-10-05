@@ -259,6 +259,9 @@ function AppointmentView({
           <p className="text-xs text-[#93a6bc]">
             {[appointment.salon.city, appointment.salon.phone].filter(Boolean).join(" · ") || "—"}
           </p>
+          {appointment.staffName && (
+            <p className="text-xs text-[#93a6bc]">Avec {appointment.staffName}</p>
+          )}
           {appointment.salon.email && (
             <a href={`mailto:${appointment.salon.email}`} className="block truncate text-xs text-[#2a93d5] hover:text-white">
               {appointment.salon.email}

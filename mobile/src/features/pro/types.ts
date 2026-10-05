@@ -45,6 +45,8 @@ export interface TimeOff {
   endsAt: string;
   /** The coiffeur's own note ("Congés", "Formation"); never shown to clients. */
   label: string;
+  /** One person's congé (TODO.md Phase 3); `null`: the whole salon closes. */
+  staffId: string | null;
 }
 
 /** A booking that falls inside a closure just added — listed so the coiffeur moves or cancels it. */
@@ -110,6 +112,45 @@ export interface ProAppointment {
   cancelledBy?: CancelledBy | null;
   /** WorldHair's reason, when it cancelled (a dispute). */
   cancellationReason?: string | null;
+  /** Who in the salon's team does it (TODO.md Phase 3); `null` for a booking whose person has left. */
+  staffId: string | null;
+  staffName: string | null;
+}
+
+// ─── The salon's team (TODO.md Phase 3) ─────────────────────────────────────
+
+/** Someone of the salon's team: its owner, or a coiffeur who joined with his code. */
+export interface StaffMember {
+  id: string;
+  profileId: string;
+  firstName: string;
+  lastName: string;
+  photoUrl: string | null;
+  isOwner: boolean;
+  /** Off: clients' bookings never go to them; the owner can still give them one. */
+  takesBookings: boolean;
+  position: number;
+  /** Their own week; `null`: the salon's hours. */
+  availability: AvailabilityDay[] | null;
+}
+
+/** A code to join the salon: one use, until `expiresAt`. */
+export interface SalonInvite {
+  code: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** « Qui s'en occupe ? »: someone of the team, free or not at a booking's time. */
+export interface StaffCandidate {
+  staffId: string;
+  firstName: string;
+  lastName: string;
+  photoUrl: string | null;
+  isOwner: boolean;
+  free: boolean;
+  /** The person the booking has now. */
+  held: boolean;
 }
 
 /** The salon's side of a booking's payment. */

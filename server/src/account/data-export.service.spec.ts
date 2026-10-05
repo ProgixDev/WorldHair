@@ -14,6 +14,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { FakeStripe } from '../../test/utils/fakes/fake-stripe';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { DataExportService } from './data-export.service';
+import { StaffService } from '../staff/staff.service';
 
 const STUDIO = 'coiffeur-1';
 const CAMILLE = 'client-1';
@@ -46,6 +47,7 @@ describe('DataExportService', () => {
       events,
       payments,
       payouts,
+      new StaffService(supabase as unknown as SupabaseService, events),
     );
     exports = new DataExportService(supabase as unknown as SupabaseService, appointments);
 

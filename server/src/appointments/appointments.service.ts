@@ -20,7 +20,18 @@ import { SupabaseService } from '../database/supabase.service';
 import { PaymentRow, PaymentsService, RefundReason } from '../payments/payments.service';
 import { PayoutAccountsService } from '../payments/payout-accounts.service';
 import { SalonProfile, SalonService, SalonServiceItem } from '../salon/salon.service';
-import { BookingRules, BusyBooking, closedAfter, DaySlots, refusalFor, SlotRefusal, slotsForDay } from './booking-rules';
+import { StaffMember, StaffService } from '../staff/staff.service';
+import {
+  BusyBooking,
+  closedAfter,
+  DaySlots,
+  PersonRules,
+  pickPerson,
+  refusalFor,
+  SlotRefusal,
+  slotsForTeam,
+  teamRefusal,
+} from './booking-rules';
 
 /**
  * "done" is NOT a stored status (see schema.sql's appointments table) — it's
@@ -110,6 +121,21 @@ export interface CoiffeurAppointment {
   payment: CoiffeurPayment | null;
   cancelledBy: CancelledBy | null;
   cancellationReason: string | null;
+  /** Who in the salon's team does it (TODO.md Phase 3); `null` for a booking whose person has left. */
+  staffId: string | null;
+  staffName: string | null;
+}
+
+/** Someone of the salon's team, free or not at a booking's time (TODO.md Phase 3). */
+export interface StaffCandidate {
+  staffId: string;
+  firstName: string;
+  lastName: string;
+  photoUrl: string | null;
+  isOwner: boolean;
+  free: boolean;
+  /** The person the booking has now (held when the client booked). */
+  held: boolean;
 }
 
 export interface CreateAppointmentInput {
@@ -144,6 +170,8 @@ export interface AppointmentRow {
   /** Null once that side deleted their account (TODO.md Phase 8): the booking stays, anonymized. */
   particulier_id: string | null;
   coiffeur_id: string | null;
+  /** The person of the salon's team holding it (TODO.md Phase 3); none on a booking whose person left. */
+  staff_id?: string | null;
   service_id: string | null;
   service_name: string;
   price: string | number;
@@ -185,7 +213,23 @@ const REFUSAL_MESSAGES: Record<SlotRefusal, string> = {
   time_off: 'The salon is closed at that time',
   taken: 'This slot is no longer available',
   client_busy: 'You already have an appointment at that time',
+  staff_off: 'Nobody in the salon is available at that time',
 };
+
+const NOT_FREE = 'This person is not free at that time';
+
+/** Who can take a booking: a client's goes to those who take bookings; the owner can give one to anybody. */
+type Members = 'bookable' | 'all';
+
+interface TeamRulesOptions {
+  particulierId?: string;
+  excludeAppointmentId?: string;
+  ignoreHoldsOf?: string;
+  bookingNoticeMinutes: number;
+  members: Members;
+  /** Kept in whatever `members` says: the person a booking already has. */
+  alsoStaffId?: string | null;
+}
 
 function endTimeMs(row: { starts_at: string; duration_min: number }): number {
   return new Date(row.starts_at).getTime() + row.duration_min * MINUTE_MS;
@@ -314,6 +358,7 @@ export class AppointmentsService {
     private readonly events: EventEmitter2,
     private readonly payments: PaymentsService,
     private readonly payouts: PayoutAccountsService,
+    private readonly staff: StaffService,
   ) {}
 
   // ─── Create (particulier) ────────────────────────────────────────────────
@@ -349,37 +394,25 @@ export class AppointmentsService {
     const startsAt = this.parseDate(input.startsAt);
     // One payment at a time per client: going back, or starting over, frees their previous hold.
     await this.releaseHoldsOf(particulierId);
-    const rules = await this.rulesFor(input.coiffeurId, {
+    const team = await this.teamRulesFor(input.coiffeurId, {
       particulierId,
       bookingNoticeMinutes: profile.bookingNoticeMinutes,
+      members: 'bookable',
     });
-    this.assertSlot(rules, startsAt, durationMin, 'client');
+    this.assertTeamSlot(team, startsAt, durationMin, 'client');
 
-    const { data, error } = await this.supabase.client
-      .from('appointments')
-      .insert({
-        particulier_id: particulierId,
-        coiffeur_id: input.coiffeurId,
-        service_id: lines[0].serviceId,
-        service_name: serviceName,
-        price,
-        duration_min: durationMin,
-        starts_at: startsAt.toISOString(),
-        status: 'awaiting_payment',
-        client_note: input.note?.trim() || null,
-        cancellation_notice_minutes: profile.cancellationNoticeMinutes,
-      })
-      .select()
-      .single();
-    if (error) {
-      // Two requests for the same time can both pass the check above; the
-      // database's exclusion constraint lets only one of them in.
-      if (error.code === '23P01') {
-        throw new BadRequestException(REFUSAL_MESSAGES.taken);
-      }
-      throw new InternalServerErrorException(error.message);
-    }
-    const created = data as AppointmentRow;
+    const created = await this.insertOnFreePerson(team, startsAt, durationMin, {
+      particulier_id: particulierId,
+      coiffeur_id: input.coiffeurId,
+      service_id: lines[0].serviceId,
+      service_name: serviceName,
+      price,
+      duration_min: durationMin,
+      starts_at: startsAt.toISOString(),
+      status: 'awaiting_payment',
+      client_note: input.note?.trim() || null,
+      cancellation_notice_minutes: profile.cancellationNoticeMinutes,
+    });
 
     const { error: linesError } = await this.supabase.client.from('appointment_services').insert(
       lines.map((line, position) => ({
@@ -579,6 +612,7 @@ export class AppointmentsService {
         serviceName: row.service_name,
         startsAt: row.starts_at,
       });
+      this.emitAssigned(updated);
     }
     return updated;
   }
@@ -659,22 +693,35 @@ export class AppointmentsService {
     this.assertBeforeDeadline(row, profile.cancellationNoticeMinutes);
 
     const startsAt = this.parseDate(startsAtIso);
-    const rules = await this.rulesFor(salonOf(row), {
+    const team = await this.teamRulesFor(salonOf(row), {
       particulierId,
       excludeAppointmentId: id,
       bookingNoticeMinutes: profile.bookingNoticeMinutes,
+      members: 'bookable',
+      alsoStaffId: row.staff_id,
     });
-    this.assertSlot(rules, startsAt, row.duration_min, 'client');
+    this.assertTeamSlot(team, startsAt, row.duration_min, 'client');
+    // Its person keeps it when free then; someone else free otherwise.
+    const person = pickPerson(team, startsAt, row.duration_min, row.staff_id)!;
+    const samePerson = person.staffId === row.staff_id;
 
     // The client picked this time themselves: the salon's notice binds it again.
-    const updated = await this.updateRow(id, { starts_at: startsAt.toISOString(), moved_by_salon: false });
+    const updated = await this.updateRow(id, {
+      starts_at: startsAt.toISOString(),
+      staff_id: person.staffId,
+      moved_by_salon: false,
+    });
     this.events.emit('appointment.rescheduled', {
       appointmentId: id,
       coiffeurId: row.coiffeur_id,
+      // Its person hears of it once it's theirs (accepted, not just held), and
+      // as moved only when it stays theirs: someone new hears of it as theirs.
+      staffId: row.status === 'confirmed' && samePerson ? person.staffId : null,
       serviceName: row.service_name,
       previousStartsAt: row.starts_at,
       startsAt: updated.starts_at,
     });
+    if (row.status === 'confirmed' && !samePerson) this.emitAssigned(updated);
     return this.mapParticulier(updated, profile.salonName, profile.cancellationNoticeMinutes);
   }
 
@@ -703,6 +750,7 @@ export class AppointmentsService {
       appointmentId: id,
       coiffeurId: row.coiffeur_id,
       particulierId: row.particulier_id,
+      staffId: row.status === 'confirmed' ? (row.staff_id ?? null) : null,
       cancelledByUserId: currentUserId,
       serviceName: row.service_name,
       startsAt: row.starts_at,
@@ -772,6 +820,7 @@ export class AppointmentsService {
       appointmentId: row.id,
       coiffeurId: salonOf(row),
       particulierId: clientOf(row),
+      staffId: row.status === 'confirmed' ? (row.staff_id ?? null) : null,
       cancelledByUserId: userId,
       serviceName: row.service_name,
       startsAt: row.starts_at,
@@ -824,6 +873,7 @@ export class AppointmentsService {
       appointmentId: id,
       particulierId: row.particulier_id,
       coiffeurId: row.coiffeur_id,
+      staffId: row.status === 'confirmed' ? (row.staff_id ?? null) : null,
       serviceName: row.service_name,
       startsAt: row.starts_at,
       reason: why,
@@ -859,6 +909,8 @@ export class AppointmentsService {
     let excludeAppointmentId: string | undefined;
     let ignoreHoldsOf: string | undefined;
     let bookingNoticeMinutes = profile.bookingNoticeMinutes;
+    const members: Members = 'bookable';
+    let alsoStaffId: string | null | undefined;
 
     if (query.appointmentId) {
       const row = await this.rowOrThrow(query.appointmentId);
@@ -868,6 +920,7 @@ export class AppointmentsService {
       durationMin = row.duration_min;
       particulierId = row.particulier_id ?? undefined;
       excludeAppointmentId = row.id;
+      alsoStaffId = row.staff_id;
       if (callerId === row.coiffeur_id) bookingNoticeMinutes = 0;
     } else if (query.serviceIds && query.serviceIds.length > 0) {
       const services = await this.salon.listServices(coiffeurId, { activeOnly: true });
@@ -885,8 +938,15 @@ export class AppointmentsService {
       throw new BadRequestException('Pick at least one service');
     }
 
-    const rules = await this.rulesFor(coiffeurId, { particulierId, excludeAppointmentId, ignoreHoldsOf, bookingNoticeMinutes });
-    return slotsForDay(rules, query.date, durationMin);
+    const team = await this.teamRulesFor(coiffeurId, {
+      particulierId,
+      excludeAppointmentId,
+      ignoreHoldsOf,
+      bookingNoticeMinutes,
+      members,
+      alsoStaffId,
+    });
+    return slotsForTeam(team, query.date, durationMin);
   }
 
   // ─── Coiffeur: list / decide / move / attendance ─────────────────────────
@@ -896,20 +956,59 @@ export class AppointmentsService {
     const rows = (await this.rowsWhere('coiffeur_id', coiffeurId, WITH_LINES))
       .filter((row) => row.status !== 'awaiting_payment')
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return this.mapForSalon(rows, await this.staff.team(coiffeurId), true);
+  }
+
+  /**
+   * A staff member's own agenda (TODO.md Phase 3): the accepted bookings
+   * they do, read-only — no payments, the owner deals with the money.
+   */
+  async listForStaff(profileId: string): Promise<CoiffeurAppointment[]> {
+    const membership = await this.staff.membershipOf(profileId);
+    if (!membership) return [];
+    const rows = (
+      await allPages<AppointmentRow>((from, to) =>
+        this.supabase.client
+          .from('appointments')
+          .select(WITH_LINES)
+          .eq('staff_id', membership.staffId)
+          // Theirs once accepted: a request is only held on them, the owner may give it to someone else.
+          .eq('status', 'confirmed')
+          .order('starts_at')
+          .order('id')
+          .range(from, to),
+      )
+    ).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return this.mapForSalon(rows, await this.staff.team(membership.salonId), false);
+  }
+
+  private async mapForSalon(rows: AppointmentRow[], team: StaffMember[], withPayments: boolean): Promise<CoiffeurAppointment[]> {
     const names = await this.particulierNamesFor([...new Set(rows.flatMap((row) => (row.particulier_id ? [row.particulier_id] : [])))]);
+    const staffNames = new Map(team.map((member) => [member.id, `${member.firstName} ${member.lastName}`.trim()]));
 
     const seen = new Set<string>();
     const now = new Date();
     const mapped = rows.map((row) => {
-      if (!row.particulier_id) return this.mapCoiffeur(row, DELETED_CLIENT, false, now);
-      const isNewClient = !seen.has(row.particulier_id);
-      seen.add(row.particulier_id);
-      return this.mapCoiffeur(row, names.get(row.particulier_id) ?? 'Client', isNewClient, now);
+      const staffName = row.staff_id ? (staffNames.get(row.staff_id) ?? null) : null;
+      let item: CoiffeurAppointment;
+      if (!row.particulier_id) {
+        item = this.mapCoiffeur(row, DELETED_CLIENT, false, now, staffName);
+      } else {
+        const isNewClient = !seen.has(row.particulier_id);
+        seen.add(row.particulier_id);
+        item = this.mapCoiffeur(row, names.get(row.particulier_id) ?? 'Client', isNewClient, now, staffName);
+      }
+      return withPayments ? item : { ...item, payment: null };
     });
     return mapped.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   }
 
-  async decide(coiffeurId: string, id: string, decision: 'confirmed' | 'refused'): Promise<void> {
+  /**
+   * Accepts or refuses a request. Accepting gives it to someone free then
+   * (TODO.md Phase 3): `staffId`, the owner's pick in « Qui s'en occupe ? »,
+   * or the person held when the client booked.
+   */
+  async decide(coiffeurId: string, id: string, decision: 'confirmed' | 'refused', staffId?: string): Promise<void> {
     const row = await this.rowOrThrow(id);
     if (row.coiffeur_id !== coiffeurId) {
       throw new ForbiddenException();
@@ -920,8 +1019,12 @@ export class AppointmentsService {
     if (new Date(row.starts_at).getTime() < Date.now()) {
       throw new BadRequestException('This request has expired');
     }
+    const patch: Record<string, unknown> = { status: decision };
+    if (decision === 'confirmed') {
+      patch.staff_id = await this.freePersonFor(row, staffId ?? row.staff_id ?? null);
+    }
     // Only while still pending: the client may have cancelled it, or the job expired it, meanwhile.
-    await this.updateWhileStatus(id, ['pending'], { status: decision }, 'This request has already been decided');
+    await this.updateWhileStatus(id, ['pending'], patch, 'This request has already been decided');
     if (decision === 'refused') {
       await this.refundAfter(id, 'salon_refused');
     }
@@ -931,10 +1034,70 @@ export class AppointmentsService {
       serviceName: row.service_name,
       startsAt: row.starts_at,
     });
+    if (decision === 'confirmed') {
+      this.emitAssigned({ ...row, staff_id: patch.staff_id as string });
+    }
   }
 
-  /** "Déplacer": an accepted appointment only — a pending request is accepted or refused instead. */
-  async move(coiffeurId: string, id: string, startsAtIso: string): Promise<void> {
+  /**
+   * « Qui s'en occupe ? » (TODO.md Phase 3): the salon's team in order, each
+   * free or not at this booking's time, and the person it has now.
+   */
+  async candidates(coiffeurId: string, id: string): Promise<StaffCandidate[]> {
+    const row = await this.rowOrThrow(id);
+    if (row.coiffeur_id !== coiffeurId) {
+      throw new ForbiddenException();
+    }
+    const [team, rules] = await Promise.all([
+      this.staff.team(coiffeurId),
+      this.teamRulesFor(coiffeurId, {
+        particulierId: row.particulier_id ?? undefined,
+        excludeAppointmentId: row.id,
+        bookingNoticeMinutes: 0,
+        members: 'all',
+      }),
+    ]);
+    const startsAt = new Date(row.starts_at);
+    return team.map((member) => {
+      const person = rules.find((candidate) => candidate.staffId === member.id);
+      const refusal = person ? refusalFor(person.rules, startsAt, row.duration_min) : 'staff_off';
+      return {
+        staffId: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        photoUrl: member.photoUrl,
+        isOwner: member.isOwner,
+        free: refusal === null || refusal === 'past',
+        held: member.id === row.staff_id,
+      };
+    });
+  }
+
+  /** Gives a booking to someone else of the team, free at its time — a request or an accepted one, before it starts. */
+  async assign(coiffeurId: string, id: string, staffId: string): Promise<void> {
+    const row = await this.rowOrThrow(id);
+    if (row.coiffeur_id !== coiffeurId) {
+      throw new ForbiddenException();
+    }
+    if (row.status !== 'pending' && row.status !== 'confirmed') {
+      throw new BadRequestException('This appointment can no longer be modified');
+    }
+    if (new Date(row.starts_at).getTime() <= Date.now()) {
+      throw new BadRequestException('This appointment has already started');
+    }
+    if (row.staff_id === staffId) return;
+    const person = await this.freePersonFor(row, staffId);
+    await this.updateWhileStatus(id, ['pending', 'confirmed'], { staff_id: person }, 'This appointment can no longer be modified');
+    // A request is only held: the person hears of it once it's accepted.
+    if (row.status === 'confirmed') this.emitAssigned({ ...row, staff_id: person });
+  }
+
+  /**
+   * "Déplacer": an accepted appointment only — a pending request is accepted
+   * or refused instead. It stays with its person when they're free then;
+   * otherwise it goes to `staffId`, or to someone else free.
+   */
+  async move(coiffeurId: string, id: string, startsAtIso: string, staffId?: string): Promise<void> {
     const row = await this.rowOrThrow(id);
     if (row.coiffeur_id !== coiffeurId) {
       throw new ForbiddenException();
@@ -948,22 +1111,43 @@ export class AppointmentsService {
     }
 
     const startsAt = this.parseDate(startsAtIso);
-    const rules = await this.rulesFor(coiffeurId, {
+    // Someone the owner names may be anyone of the team; otherwise only those
+    // who take clients' bookings, and the person it has.
+    const team = await this.teamRulesFor(coiffeurId, {
       particulierId: row.particulier_id ?? undefined,
       excludeAppointmentId: id,
       bookingNoticeMinutes: 0,
+      members: staffId ? 'all' : 'bookable',
+      alsoStaffId: row.staff_id,
     });
-    this.assertSlot(rules, startsAt, row.duration_min, 'salon');
+    let person: PersonRules | null;
+    if (staffId) {
+      person = team.find((candidate) => candidate.staffId === staffId) ?? null;
+      if (!person) {
+        throw new NotFoundException('Staff member not found');
+      }
+      this.assertTeamSlot([person], startsAt, row.duration_min, 'salon');
+    } else {
+      this.assertTeamSlot(team, startsAt, row.duration_min, 'salon');
+      person = pickPerson(team, startsAt, row.duration_min, row.staff_id);
+    }
 
     // The client never chose this time: they may change it until it starts (see modifiableUntil).
-    const updated = await this.updateRow(id, { starts_at: startsAt.toISOString(), moved_by_salon: true });
+    const updated = await this.updateRow(id, {
+      starts_at: startsAt.toISOString(),
+      staff_id: person!.staffId,
+      moved_by_salon: true,
+    });
     this.events.emit('appointment.moved', {
       appointmentId: id,
       particulierId: row.particulier_id,
+      // A booking given to someone else: they hear of it as theirs (emitAssigned), not as moved.
+      staffId: person!.staffId === row.staff_id ? person!.staffId : null,
       serviceName: row.service_name,
       previousStartsAt: row.starts_at,
       startsAt: updated.starts_at,
     });
+    if (person!.staffId !== row.staff_id) this.emitAssigned(updated);
   }
 
   /**
@@ -971,10 +1155,14 @@ export class AppointmentsService {
    * no-show, and a no-show can't follow a review: marking one must never be a
    * way for a salon to remove what a client wrote (reporting it is).
    */
-  async setAttendance(coiffeurId: string, id: string, attendance: Attendance): Promise<void> {
+  async setAttendance(actorId: string, id: string, attendance: Attendance): Promise<void> {
     const row = await this.rowOrThrow(id);
-    if (row.coiffeur_id !== coiffeurId) {
-      throw new ForbiddenException();
+    // The salon's owner, or the staff member doing it (TODO.md Phase 3).
+    if (row.coiffeur_id !== actorId) {
+      const membership = await this.staff.membershipOf(actorId);
+      if (!membership || !row.staff_id || membership.staffId !== row.staff_id) {
+        throw new ForbiddenException();
+      }
     }
     if (row.status !== 'confirmed') {
       throw new BadRequestException('Only an accepted appointment can be marked');
@@ -1038,39 +1226,133 @@ export class AppointmentsService {
     return profile;
   }
 
-  private async rulesFor(
-    coiffeurId: string,
-    options: { particulierId?: string; excludeAppointmentId?: string; ignoreHoldsOf?: string; bookingNoticeMinutes: number },
-  ): Promise<BookingRules> {
-    const [availability, closures, salonRows, clientRows, subscription] = await Promise.all([
+  /**
+   * The booking rules for each person who can take it (TODO.md Phase 3): the
+   * salon's hours, closures and subscription for all, then each one's own
+   * week, congés and bookings. A booking without a person (seeded, or from
+   * before teams) counts as the owner's, as the migration made them.
+   */
+  private async teamRulesFor(coiffeurId: string, options: TeamRulesOptions): Promise<PersonRules[]> {
+    const [availability, closures, salonRows, clientRows, subscription, team] = await Promise.all([
       this.salon.getAvailability(coiffeurId),
       this.salon.listTimeOff(coiffeurId),
       this.activeRowsWhere('coiffeur_id', coiffeurId),
       options.particulierId ? this.activeRowsWhere('particulier_id', options.particulierId) : Promise.resolve([]),
       findSalonSubscription(this.supabase, coiffeurId),
+      this.staff.team(coiffeurId),
     ]);
     const counts = (row: AppointmentRow) =>
       holdsSlot(row) &&
       row.id !== options.excludeAppointmentId &&
       !(row.status === 'awaiting_payment' && row.particulier_id === options.ignoreHoldsOf);
-    return {
-      availability,
-      closures: [...closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })), ...closedAfter(subscriptionEndsAt(subscription))],
-      salonBookings: salonRows.filter(counts).map(toBusy),
-      // The client's bookings at this same salon are already in salonBookings.
-      clientBookings: clientRows.filter((row) => counts(row) && row.coiffeur_id !== coiffeurId).map(toBusy),
-      bookingNoticeMinutes: options.bookingNoticeMinutes,
-      now: new Date(),
-    };
+    const ownerId = team.find((member) => member.isOwner)?.id;
+    const active = salonRows.filter(counts);
+    const ends = closedAfter(subscriptionEndsAt(subscription));
+    // The client can't be in two chairs at once, here or anywhere.
+    const clientBookings = clientRows.filter(counts).map(toBusy);
+    const now = new Date();
+
+    return team
+      .filter((member) => options.members === 'all' || member.takesBookings || member.id === options.alsoStaffId)
+      .map((member) => ({
+        staffId: member.id,
+        position: member.position,
+        rules: {
+          availability,
+          personalAvailability: member.availability,
+          closures: [
+            ...closures
+              .filter((closure) => closure.staffId === null || closure.staffId === member.id)
+              .map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
+            ...ends,
+          ],
+          salonBookings: active.filter((row) => (row.staff_id ?? ownerId) === member.id).map(toBusy),
+          clientBookings,
+          bookingNoticeMinutes: options.bookingNoticeMinutes,
+          now,
+        },
+      }));
   }
 
-  private assertSlot(rules: BookingRules, startsAt: Date, durationMin: number, audience: 'client' | 'salon'): void {
-    const refusal = refusalFor(rules, startsAt, durationMin);
+  private assertTeamSlot(team: PersonRules[], startsAt: Date, durationMin: number, audience: 'client' | 'salon'): void {
+    const refusal = teamRefusal(team, startsAt, durationMin);
     if (refusal === null) return;
     if (refusal === 'client_busy' && audience === 'salon') {
       throw new BadRequestException('The client already has an appointment at that time');
     }
     throw new BadRequestException(REFUSAL_MESSAGES[refusal]);
+  }
+
+  /**
+   * Inserts the booking on a free person: the one pickPerson() holds, then —
+   * when another request took them in the meantime (the exclusion
+   * constraint) — the next one free, until nobody is.
+   */
+  private async insertOnFreePerson(
+    team: PersonRules[],
+    startsAt: Date,
+    durationMin: number,
+    row: Record<string, unknown>,
+  ): Promise<AppointmentRow> {
+    let remaining = team;
+    for (;;) {
+      const person = pickPerson(remaining, startsAt, durationMin);
+      if (!person) {
+        throw new BadRequestException(REFUSAL_MESSAGES.taken);
+      }
+      const { data, error } = await this.supabase.client
+        .from('appointments')
+        .insert({ ...row, staff_id: person.staffId })
+        .select()
+        .single();
+      if (!error) return data as AppointmentRow;
+      // Two requests for the same time can both pass the check above; the
+      // database's exclusion constraint lets only one of them have this person.
+      if (error.code !== '23P01') {
+        throw new InternalServerErrorException(error.message);
+      }
+      remaining = remaining.filter((candidate) => candidate.staffId !== person.staffId);
+    }
+  }
+
+  /**
+   * `staffId` — a member of the booking's salon, free at its time — or why
+   * not. The owner's own choice: no notice, anyone in the team; none named
+   * means the owner, as a booking without a person always was. The person a
+   * booking already has only needs not to be taken meanwhile: accepting it
+   * stays as before teams (a closure or new hours since don't block it).
+   */
+  private async freePersonFor(row: AppointmentRow, staffId: string | null): Promise<string> {
+    const salonId = salonOf(row);
+    const team = await this.teamRulesFor(salonId, {
+      particulierId: row.particulier_id ?? undefined,
+      excludeAppointmentId: row.id,
+      bookingNoticeMinutes: 0,
+      members: 'all',
+    });
+    const target = staffId ?? (await this.staff.team(salonId)).find((member) => member.isOwner)?.id ?? null;
+    const person = team.find((candidate) => candidate.staffId === target);
+    if (!person) {
+      throw new NotFoundException('Staff member not found');
+    }
+    const refusal = refusalFor(person.rules, new Date(row.starts_at), row.duration_min);
+    const blocking = target === row.staff_id ? refusal === 'taken' : refusal !== null && refusal !== 'past';
+    if (blocking) {
+      throw new BadRequestException(NOT_FREE);
+    }
+    return person.staffId;
+  }
+
+  /** A booking given to someone: they hear of it (notifications/listeners). */
+  private emitAssigned(row: AppointmentRow): void {
+    if (!row.staff_id || !row.coiffeur_id) return;
+    this.events.emit('appointment.assigned', {
+      appointmentId: row.id,
+      salonId: row.coiffeur_id,
+      staffId: row.staff_id,
+      serviceName: row.service_name,
+      startsAt: row.starts_at,
+    });
   }
 
   /** Every booking of this side, however many: page after page (PostgREST answers 1 000 rows at most). */
@@ -1183,6 +1465,10 @@ export class AppointmentsService {
       .select()
       .maybeSingle();
     if (error) {
+      // Someone else got that person at that time first.
+      if (error.code === '23P01') {
+        throw new BadRequestException(NOT_FREE);
+      }
       throw new InternalServerErrorException(error.message);
     }
     if (!data) {
@@ -1255,6 +1541,7 @@ export class AppointmentsService {
     clientName: string,
     isNewClient: boolean,
     now = new Date(),
+    staffName: string | null = null,
   ): CoiffeurAppointment {
     return {
       id: row.id,
@@ -1272,6 +1559,8 @@ export class AppointmentsService {
       payment: salonPayment(row),
       cancelledBy: row.cancelled_by ?? null,
       cancellationReason: row.cancellation_reason ?? null,
+      staffId: row.staff_id ?? null,
+      staffName,
     };
   }
 }

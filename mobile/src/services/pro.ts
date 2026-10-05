@@ -20,6 +20,9 @@ import type {
   Subscription,
   TimeOff,
   TimeOffConflict,
+  SalonInvite,
+  StaffCandidate,
+  StaffMember,
 } from "../features/pro/types";
 import type { ConfirmationMode, Review } from "../features/salons/types";
 import { joinPhone, splitPhone } from "../utils/phoneFormat";
@@ -343,23 +346,103 @@ export async function listProAppointments(): Promise<ProAppointment[]> {
   return data;
 }
 
-/** Only ever called with "confirmed"/"refused" (accepting or refusing a pending request) or "cancelled" — never "pending"/"done", which aren't decisions a coiffeur makes. */
+/**
+ * Only ever called with "confirmed"/"refused" (accepting or refusing a pending
+ * request) or "cancelled" — never "pending"/"done", which aren't decisions a
+ * coiffeur makes. Accepting: `staffId` is who does it (« Qui s'en occupe ? »,
+ * TODO.md Phase 3) — the person held when the client booked if absent.
+ */
 export async function setAppointmentStatus(
   id: string,
   status: ProAppointmentStatus,
+  staffId?: string,
 ): Promise<ProAppointment[]> {
   if (status === "confirmed" || status === "refused") {
-    await apiClient.patch(`/appointments/${id}/decide`, { decision: status });
+    await apiClient.patch(`/appointments/${id}/decide`, {
+      decision: status,
+      ...(status === "confirmed" && staffId ? { staffId } : {}),
+    });
   } else if (status === "cancelled") {
     await apiClient.patch(`/appointments/${id}/cancel`);
   }
   return listProAppointments();
 }
 
-/** "Déplacer" an accepted appointment; the client gets a push with the new time. */
+/** "Déplacer" an accepted appointment; the client gets a push with the new time. It stays with its person when free then, else goes to someone free. */
 export async function moveAppointment(id: string, startsAt: string): Promise<ProAppointment[]> {
   await apiClient.patch(`/appointments/${id}/move`, { startsAt });
   return listProAppointments();
+}
+
+/** « Qui s'en occupe ? »: the team, each free or not at this booking's time (TODO.md Phase 3). */
+export async function listStaffCandidates(id: string): Promise<StaffCandidate[]> {
+  const { data } = await apiClient.get<StaffCandidate[]>(`/appointments/${id}/staff`);
+  return data;
+}
+
+/** Gives a booking to someone else of the team, free at its time. */
+export async function assignAppointment(id: string, staffId: string): Promise<ProAppointment[]> {
+  await apiClient.patch(`/appointments/${id}/assign`, { staffId });
+  return listProAppointments();
+}
+
+// ─── The team (TODO.md Phase 3) ──────────────────────────────────────────────
+
+interface StaffMemberResponse extends Omit<StaffMember, "availability"> {
+  availability: AvailabilityResponse[] | null;
+}
+
+function fromStaffResponse(member: StaffMemberResponse): StaffMember {
+  return { ...member, availability: member.availability ? member.availability.map(fromAvailabilityResponse) : null };
+}
+
+export async function listTeam(): Promise<StaffMember[]> {
+  const { data } = await apiClient.get<StaffMemberResponse[]>("/salon/me/staff");
+  return data.map(fromStaffResponse);
+}
+
+/** Whether clients' bookings go to this person. */
+export async function setTakesBookings(staffId: string, takesBookings: boolean): Promise<StaffMember[]> {
+  await apiClient.patch(`/salon/me/staff/${staffId}`, { takesBookings });
+  return listTeam();
+}
+
+/** This person's own week — `null` gives them back the salon's hours. */
+export async function saveStaffHours(staffId: string, availability: AvailabilityDay[] | null): Promise<StaffMember[]> {
+  await apiClient.put(`/salon/me/staff/${staffId}/hours`, {
+    days: availability
+      ? availability.map((day) => ({
+          weekday: day.weekday,
+          isOpen: day.open,
+          opensMinute: day.opens,
+          closesMinute: day.closes,
+          breakStartMinute: day.breakStart,
+          breakEndMinute: day.breakEnd,
+        }))
+      : null,
+  });
+  return listTeam();
+}
+
+/** Out of the team — refused while bookings to come are theirs (STAFF_HAS_BOOKINGS). */
+export async function removeStaff(staffId: string): Promise<StaffMember[]> {
+  await apiClient.delete(`/salon/me/staff/${staffId}`);
+  return listTeam();
+}
+
+export async function listInvites(): Promise<SalonInvite[]> {
+  const { data } = await apiClient.get<SalonInvite[]>("/salon/me/invites");
+  return data;
+}
+
+export async function createInvite(): Promise<SalonInvite> {
+  const { data } = await apiClient.post<SalonInvite>("/salon/me/invites");
+  return data;
+}
+
+export async function revokeInvite(code: string): Promise<SalonInvite[]> {
+  await apiClient.delete(`/salon/me/invites/${encodeURIComponent(code)}`);
+  return listInvites();
 }
 
 /** "Honoré" or "Absent", once the appointment has started. No review after a no-show. */
@@ -403,11 +486,12 @@ export async function listTimeOff(from?: Date): Promise<TimeOff[]> {
   return data;
 }
 
-/** Adds a closure; bookings already inside it aren't cancelled — they come back as `conflicts` to handle one by one. */
+/** Adds a closure — the salon's, or one person's congé (`staffId`); bookings already inside it aren't cancelled — they come back as `conflicts` to handle one by one. */
 export async function addTimeOff(input: {
   startsAt: string;
   endsAt: string;
   label?: string;
+  staffId?: string;
 }): Promise<{ timeOff: TimeOff[]; conflicts: TimeOffConflict[] }> {
   const { data } = await apiClient.post<{ timeOff: TimeOff; conflicts: TimeOffConflict[] }>(
     "/salon/me/time-off",

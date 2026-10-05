@@ -75,6 +75,12 @@ describe('CoiffeurApplicationsService', () => {
     await expect(service.getMine(USER_ID)).resolves.toMatchObject({ id: application.id });
   });
 
+  it("refuses a dossier from someone working in another salon's team (TODO.md Phase 3): they leave it first", async () => {
+    supabase.seedStaff({ salonId: 'other-salon', profileId: USER_ID });
+    await expect(service.submit(USER_ID, salonDto())).rejects.toThrow(/ALREADY_IN_SALON/);
+    await expect(service.getMine(USER_ID)).resolves.toBeNull();
+  });
+
   it('rejects a domicile application missing invoice fields but requiring travelRadiusKm', async () => {
     const application = await service.submit(
       USER_ID,

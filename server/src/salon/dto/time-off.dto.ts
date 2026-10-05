@@ -1,4 +1,4 @@
-import { IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsISO8601, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 /**
  * A closure is a plain time range: whole days are midnight to midnight
@@ -23,4 +23,9 @@ export class CreateTimeOffDto {
   @IsString()
   @MaxLength(60)
   label?: string;
+
+  /** One person's congé (TODO.md Phase 3); absent: the whole salon closes. */
+  @IsOptional()
+  @IsUUID()
+  staffId?: string;
 }

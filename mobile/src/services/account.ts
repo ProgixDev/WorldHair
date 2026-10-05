@@ -66,6 +66,11 @@ export async function accountStillExists(): Promise<boolean> {
 /** In French, for the deletion sheet. */
 export function accountErrorMessage(err: unknown): string {
   const status = isAxiosError(err) ? err.response?.status : undefined;
+  const body = isAxiosError(err) ? (err.response?.data as { message?: unknown } | undefined) : undefined;
+  // A salon's team member (TODO.md Phase 3): their bookings to come go to someone else first.
+  if (status === 409 && typeof body?.message === "string" && body.message.startsWith("STAFF_HAS_BOOKINGS")) {
+    return "Des rendez-vous à venir sont encore à votre nom : demandez au salon de les réattribuer à quelqu'un d'autre, puis réessayez.";
+  }
   if (status === 409) {
     return "Des paiements de vos clients vous sont dus, mais vos encaissements ne sont pas actifs : activez-les (Compte › Paiements) avant de supprimer votre compte, ou écrivez-nous.";
   }

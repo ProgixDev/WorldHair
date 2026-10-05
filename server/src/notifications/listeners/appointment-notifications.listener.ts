@@ -26,6 +26,8 @@ export interface AppointmentCancelledEvent {
   appointmentId: string;
   coiffeurId: string;
   particulierId: string;
+  /** The staff member it was accepted for (TODO.md Phase 3), told too; `null` while only a request. */
+  staffId?: string | null;
   /** Whichever side cancelled — only the other side is notified. */
   cancelledByUserId: string;
   serviceName: string;
@@ -37,6 +39,8 @@ export interface AppointmentCancelledByAdminEvent {
   appointmentId: string;
   coiffeurId: string;
   particulierId: string;
+  /** The staff member it was accepted for (TODO.md Phase 3), told too; `null` while only a request. */
+  staffId?: string | null;
   serviceName: string;
   startsAt: string;
   reason: string;
@@ -47,6 +51,8 @@ export interface AppointmentCancelledByAdminEvent {
 export interface AppointmentRescheduledEvent {
   appointmentId: string;
   coiffeurId: string;
+  /** The staff member it was accepted for (TODO.md Phase 3), told too; `null` while only a request. */
+  staffId?: string | null;
   serviceName: string;
   previousStartsAt: string;
   startsAt: string;
@@ -79,6 +85,8 @@ const euros = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR
 export interface AppointmentMovedEvent {
   appointmentId: string;
   particulierId: string;
+  /** The staff member it was accepted for (TODO.md Phase 3), told too; `null` while only a request. */
+  staffId?: string | null;
   serviceName: string;
   previousStartsAt: string;
   startsAt: string;

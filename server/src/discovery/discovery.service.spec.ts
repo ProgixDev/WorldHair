@@ -11,6 +11,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { SalonService } from '../salon/salon.service';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { DiscoveryService, SalonSearchResult } from './discovery.service';
+import { StaffService } from '../staff/staff.service';
 
 const PARIS = { lat: 48.8606, lng: 2.3376 };
 const LYON = { lat: 45.764, lng: 4.8357 };
@@ -31,7 +32,7 @@ describe('DiscoveryService', () => {
       applications,
       salon,
       payouts,
-      new NextSlotService(supabase as unknown as SupabaseService, salon),
+      new NextSlotService(supabase as unknown as SupabaseService, salon, new StaffService(supabase as unknown as SupabaseService, new EventEmitter2())),
     );
   });
 

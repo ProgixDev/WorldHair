@@ -15,6 +15,7 @@ import { FakeStripe } from '../../test/utils/fakes/fake-stripe';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { AdminAppointmentsService } from './admin-appointments.service';
 import { AppointmentsService } from './appointments.service';
+import { StaffService } from '../staff/staff.service';
 
 const STUDIO = 'coiffeur-1';
 const MAISON = 'coiffeur-2';
@@ -56,6 +57,7 @@ describe('AdminAppointmentsService', () => {
       events,
       payments,
       payouts,
+      new StaffService(supabase as unknown as SupabaseService, events),
     );
     admin = new AdminAppointmentsService(supabase as unknown as SupabaseService);
 
@@ -166,6 +168,21 @@ describe('AdminAppointmentsService', () => {
         payment: { amount: 40, paymentIntentId: 'pi_1' },
       });
       await expect(admin.detail('no-such-booking', NOW)).rejects.toThrow(NotFoundException);
+    });
+
+    it('says who of the salon does it (TODO.md Phase 3): the owner by his dossier name, or a colleague', async () => {
+      const ownerRow = supabase.seedStaff({ salonId: STUDIO, profileId: STUDIO });
+      supabase.addUser('nadia', { id: 'nadia-1', email: 'nadia@example.com', email_confirmed_at: null }, 'staff', {
+        firstName: 'Nadia',
+        lastName: 'Kaci',
+      });
+      const nadia = supabase.seedStaff({ salonId: STUDIO, profileId: 'nadia-1' });
+      const byOwner = supabase.seedAppointment({ particulierId: CAMILLE, coiffeurId: STUDIO, staffId: ownerRow, startsAt: at(29, 10) });
+      const byNadia = supabase.seedAppointment({ particulierId: CAMILLE, coiffeurId: STUDIO, staffId: nadia, startsAt: at(29, 14) });
+
+      await expect(admin.detail(byOwner, NOW)).resolves.toMatchObject({ staffName: 'Sofia Benali' });
+      await expect(admin.detail(byNadia, NOW)).resolves.toMatchObject({ staffName: 'Nadia Kaci' });
+      await expect(admin.detail(seed({ startsAt: at(29, 16) }), NOW)).resolves.toMatchObject({ staffName: null });
     });
 
     it('keeps a booking whose client, or salon, deleted their account — without them', async () => {

@@ -132,6 +132,8 @@ interface AppointmentRow {
   /** Null once that side deleted their account (on delete set null). */
   particulier_id: string | null;
   coiffeur_id: string | null;
+  /** The person of the salon's team holding it (Phase 3); null = none (a seeded or past booking). */
+  staff_id: string | null;
   service_id: string | null;
   service_name: string;
   price: number;
@@ -148,6 +150,51 @@ interface AppointmentRow {
   cancellation_reason: string | null;
   created_at: string;
 }
+
+interface SalonStaffRow {
+  id: string;
+  salon_id: string;
+  profile_id: string;
+  takes_bookings: boolean;
+  position: number;
+  created_at: string;
+}
+
+interface StaffAvailabilityRow {
+  staff_id: string;
+  weekday: number;
+  is_open: boolean;
+  opens_minute: number;
+  closes_minute: number;
+  break_start_minute: number | null;
+  break_end_minute: number | null;
+}
+
+interface SalonInviteRow {
+  code: string;
+  salon_id: string;
+  expires_at: string;
+  used_by: string | null;
+  used_at: string | null;
+  created_at: string;
+}
+
+const ACTIVE_APPOINTMENT_STATUSES = ['awaiting_payment', 'pending', 'confirmed'];
+
+/** schema.sql's appointments_no_overlap: one active booking at a time per person. Rows without a person aren't constrained. */
+function overlapsSamePerson(row: AppointmentRow, others: Iterable<AppointmentRow>): boolean {
+  if (!row.staff_id || !ACTIVE_APPOINTMENT_STATUSES.includes(row.status)) return false;
+  const start = new Date(row.starts_at).getTime();
+  const end = start + row.duration_min * 60_000;
+  for (const other of others) {
+    if (other.id === row.id || other.staff_id !== row.staff_id || !ACTIVE_APPOINTMENT_STATUSES.includes(other.status)) continue;
+    const otherStart = new Date(other.starts_at).getTime();
+    if (start < otherStart + other.duration_min * 60_000 && otherStart < end) return true;
+  }
+  return false;
+}
+
+const EXCLUSION_ERROR = { code: '23P01', message: 'conflicting key value violates exclusion constraint "appointments_no_overlap"' };
 
 interface AppointmentServiceRow {
   id: string;
@@ -477,7 +524,14 @@ class FakeSelectQuery<TRow extends object> implements PromiseLike<QueryResult> {
 class FakeMutationQuery<TRow extends object> {
   private readonly filters: ((row: TRow) => boolean)[] = [];
 
-  constructor(private readonly apply: (matches: (row: TRow) => boolean) => { data: TRow | null; count: number }) {}
+  constructor(
+    private readonly apply: (matches: (row: TRow) => boolean) => {
+      data: TRow | null;
+      count: number;
+      /** A constraint the write broke (Phase 3's per-person exclusion constraint): nothing was written. */
+      error?: { code: string; message: string };
+    },
+  ) {}
 
   eq(column: keyof TRow, value: unknown): this {
     this.filters.push((row) => row[column] === value);
@@ -501,15 +555,25 @@ class FakeMutationQuery<TRow extends object> {
     return this;
   }
 
+  /** A null never matches, like SQL. */
+  gte(column: keyof TRow, value: unknown): this {
+    this.filters.push((row) => row[column] !== null && compareValues(row[column], value) >= 0);
+    return this;
+  }
+
   private run() {
     return this.apply((row) => this.filters.every((matches) => matches(row)));
   }
 
   select() {
     return {
-      maybeSingle: async (): Promise<QueryResult> => ({ data: this.run().data, error: null }),
+      maybeSingle: async (): Promise<QueryResult> => {
+        const { data, error } = this.run();
+        return error ? { data: null, error } : { data, error: null };
+      },
       single: async (): Promise<QueryResult> => {
-        const { data } = this.run();
+        const { data, error } = this.run();
+        if (error) return { data: null, error };
         return data ? { data, error: null } : { data: null, error: { message: 'no rows found' } };
       },
     };
@@ -519,8 +583,8 @@ class FakeMutationQuery<TRow extends object> {
     onfulfilled?: ((value: QueryResult & { count: number }) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): PromiseLike<TResult1 | TResult2> {
-    const { data, count } = this.run();
-    return Promise.resolve({ data, count, error: null }).then(onfulfilled, onrejected);
+    const { data, count, error } = this.run();
+    return Promise.resolve({ data, count, error: error ?? null }).then(onfulfilled, onrejected);
   }
 }
 
@@ -556,6 +620,9 @@ export class FakeSupabaseService {
   private readonly timeOff = new Map<string, TimeOffRow>();
   private readonly appointments = new Map<string, AppointmentRow>();
   private readonly appointmentServices = new Map<string, AppointmentServiceRow>();
+  private readonly salonStaff = new Map<string, SalonStaffRow>();
+  private readonly staffAvailability = new Map<string, StaffAvailabilityRow>();
+  private readonly salonInvites = new Map<string, SalonInviteRow>();
   private nextAppointmentInsertError: string | null = null;
   private beforeAppointmentUpdate: (() => void) | null = null;
   private readonly reviews = new Map<string, ReviewRow>();
@@ -663,6 +730,45 @@ export class FakeSupabaseService {
       }
       if (table === 'appointment_services') {
         return this.appointmentServicesTable();
+      }
+      if (table === 'salon_staff') {
+        return this.simpleTable(
+          this.salonStaff,
+          (row) => row.id,
+          (row) =>
+            ({
+              id: randomUUID(),
+              takes_bookings: true,
+              position: 0,
+              created_at: new Date().toISOString(),
+              ...row,
+            }) as SalonStaffRow,
+          // salon_staff.profile_id is unique: one salon per person.
+          (row, all) => all.some((other) => other.id !== row.id && other.profile_id === row.profile_id),
+          (row) => this.forgetStaff(row.id),
+        );
+      }
+      if (table === 'staff_availability') {
+        return this.simpleTable(
+          this.staffAvailability,
+          (row) => `${row.staff_id}:${row.weekday}`,
+          (row) =>
+            ({
+              is_open: false,
+              opens_minute: 540,
+              closes_minute: 1140,
+              break_start_minute: null,
+              break_end_minute: null,
+              ...row,
+            }) as StaffAvailabilityRow,
+        );
+      }
+      if (table === 'salon_invites') {
+        return this.simpleTable(
+          this.salonInvites,
+          (row) => row.code,
+          (row) => ({ used_by: null, used_at: null, created_at: new Date().toISOString(), ...row }) as SalonInviteRow,
+        );
       }
       if (table === 'reviews') {
         return this.reviewsTable();
@@ -789,6 +895,9 @@ export class FakeSupabaseService {
     this.services.clear();
     this.galleryPhotos.clear();
     this.timeOff.clear();
+    this.salonStaff.clear();
+    this.staffAvailability.clear();
+    this.salonInvites.clear();
     this.appointments.clear();
     this.appointmentServices.clear();
     this.nextAppointmentInsertError = null;
@@ -889,6 +998,15 @@ export class FakeSupabaseService {
    */
   private deleteProfile(id: string): void {
     this.profiles.delete(id);
+    // salon_staff: on delete cascade from both the salon and the person; then
+    // their week and congés go too, and their bookings keep no person.
+    for (const [key, member] of this.salonStaff) {
+      if (member.profile_id === id || member.salon_id === id) this.forgetStaff(key);
+    }
+    for (const [code, invite] of this.salonInvites) {
+      if (invite.salon_id === id) this.salonInvites.delete(code);
+      else if (invite.used_by === id) this.salonInvites.set(code, { ...invite, used_by: null });
+    }
     for (const [key, row] of this.appointments) {
       if (row.particulier_id === id || row.coiffeur_id === id) {
         this.appointments.set(key, {
@@ -1029,6 +1147,8 @@ export class FakeSupabaseService {
     id?: string;
     particulierId: string | null;
     coiffeurId: string | null;
+    /** The person holding it (Phase 3); none by default, which the booking rules count as the owner's. */
+    staffId?: string | null;
     serviceId?: string | null;
     serviceName?: string;
     price?: number;
@@ -1045,6 +1165,7 @@ export class FakeSupabaseService {
       id,
       particulier_id: params.particulierId,
       coiffeur_id: params.coiffeurId,
+      staff_id: params.staffId ?? null,
       service_id: params.serviceId ?? null,
       service_name: params.serviceName ?? 'Coupe',
       price: params.price ?? 40,
@@ -1091,12 +1212,12 @@ export class FakeSupabaseService {
   }
 
   /** Test convenience: seeds a closure directly — e.g. one already over, which addTimeOff() would refuse. */
-  seedTimeOff(params: { profileId: string; startsAt: string; endsAt: string; label?: string }): string {
+  seedTimeOff(params: { profileId: string; staffId?: string | null; startsAt: string; endsAt: string; label?: string }): string {
     const id = randomUUID();
     this.timeOff.set(id, {
       id,
       profile_id: params.profileId,
-      staff_id: null,
+      staff_id: params.staffId ?? null,
       starts_at: params.startsAt,
       ends_at: params.endsAt,
       label: params.label ?? '',
@@ -1566,7 +1687,9 @@ export class FakeSupabaseService {
         break_end_minute: weekday === 0 ? null : 840,
       }));
     };
-    const closuresOf = (profileId: string) => [...this.timeOff.values()].filter((closure) => closure.profile_id === profileId);
+    // The salon's own closures: one person's congé leaves it open (TODO.md Phase 3).
+    const closuresOf = (profileId: string) =>
+      [...this.timeOff.values()].filter((closure) => closure.profile_id === profileId && closure.staff_id === null);
     const isOpenNow = (profileId: string) => {
       const paris = parisParts(now);
       const minute = paris.hour * 60 + paris.minute;
@@ -2010,6 +2133,7 @@ export class FakeSupabaseService {
             }
             const id = randomUUID();
             const created = {
+              staff_id: null,
               attendance: null,
               cancellation_notice_minutes: null,
               moved_by_salon: false,
@@ -2019,6 +2143,9 @@ export class FakeSupabaseService {
               id,
               created_at: new Date().toISOString(),
             } as AppointmentRow;
+            if (overlapsSamePerson(created, rows.values())) {
+              return { data: null, error: EXCLUSION_ERROR };
+            }
             rows.set(id, created);
             return { data: created, error: null };
           },
@@ -2032,6 +2159,9 @@ export class FakeSupabaseService {
           this.beforeAppointmentUpdate = null;
           before?.();
           const updated = [...rows.values()].filter(matches).map((existing) => ({ ...existing, ...patch }));
+          if (updated.some((row) => overlapsSamePerson(row, rows.values()))) {
+            return { data: null, count: 0, error: EXCLUSION_ERROR };
+          }
           for (const row of updated) rows.set(row.id, row);
           return { data: updated[0] ? withLines(updated[0]) : null, count: updated.length };
         }),
@@ -2365,6 +2495,101 @@ export class FakeSupabaseService {
         };
       },
     };
+  }
+
+  /**
+   * A plain table (Phase 3's salon_staff, staff_availability, salon_invites):
+   * select, insert and upsert by key, update and delete every row matched.
+   * `conflicts` stands for a unique constraint: Postgres' 23505.
+   */
+  private simpleTable<TRow extends object>(
+    rows: Map<string, TRow>,
+    keyOf: (row: TRow) => string,
+    withDefaults: (row: Record<string, unknown>) => TRow,
+    conflicts: (row: TRow, all: TRow[]) => boolean = () => false,
+    /** schema.sql's foreign keys to a row deleted. */
+    onDelete: (row: TRow) => void = () => {},
+  ) {
+    const write = (input: Record<string, unknown> | Record<string, unknown>[], upsert: boolean): QueryResult => {
+      const written: TRow[] = [];
+      for (const raw of Array.isArray(input) ? input : [input]) {
+        const draft = withDefaults(raw);
+        const existing = rows.get(keyOf(draft));
+        if (existing && !upsert) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+        const row = existing ? ({ ...existing, ...raw } as TRow) : draft;
+        if (conflicts(row, [...rows.values()])) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+        rows.set(keyOf(row), row);
+        written.push(row);
+      }
+      return { data: written, error: null };
+    };
+    const result = (outcome: QueryResult) => ({
+      select: () => ({
+        single: async (): Promise<QueryResult> =>
+          outcome.error ? outcome : { data: (outcome.data as TRow[])[0] ?? null, error: null },
+        then: <T>(onfulfilled: (value: QueryResult) => T) => Promise.resolve(outcome).then(onfulfilled),
+      }),
+      then: <T>(onfulfilled: (value: QueryResult) => T) => Promise.resolve({ data: null, error: outcome.error }).then(onfulfilled),
+    });
+
+    return {
+      select: () => new FakeSelectQuery<TRow>(() => [...rows.values()]),
+      insert: (input: Record<string, unknown> | Record<string, unknown>[]) => result(write(input, false)),
+      upsert: (input: Record<string, unknown> | Record<string, unknown>[]) => result(write(input, true)),
+      update: (patch: Record<string, unknown>) =>
+        new FakeMutationQuery<TRow>((matches) => {
+          const updated = [...rows.values()].filter(matches).map((existing) => ({ ...existing, ...patch }) as TRow);
+          for (const row of updated) rows.set(keyOf(row), row);
+          return { data: updated[0] ?? null, count: updated.length };
+        }),
+      delete: () =>
+        new FakeMutationQuery<TRow>((matches) => {
+          const deleted = [...rows.values()].filter(matches);
+          for (const row of deleted) {
+            rows.delete(keyOf(row));
+            onDelete(row);
+          }
+          return { data: deleted[0] ?? null, count: deleted.length };
+        }),
+    };
+  }
+
+  /** A team member gone (schema.sql): their week and congés go, their bookings keep no person. */
+  private forgetStaff(staffId: string): void {
+    this.salonStaff.delete(staffId);
+    for (const [weekKey, day] of this.staffAvailability) {
+      if (day.staff_id === staffId) this.staffAvailability.delete(weekKey);
+    }
+    for (const [offKey, off] of this.timeOff) {
+      if (off.staff_id === staffId) this.timeOff.delete(offKey);
+    }
+    for (const [appointmentKey, appointment] of this.appointments) {
+      if (appointment.staff_id === staffId) this.appointments.set(appointmentKey, { ...appointment, staff_id: null });
+    }
+  }
+
+  /** Test convenience: a member of a salon's team, as if they had joined (Phase 3). Returns their staff id. */
+  seedStaff(params: { salonId: string; profileId: string; takesBookings?: boolean; position?: number; id?: string }): string {
+    const id = params.id ?? randomUUID();
+    this.salonStaff.set(id, {
+      id,
+      salon_id: params.salonId,
+      profile_id: params.profileId,
+      takes_bookings: params.takesBookings ?? true,
+      position: params.position ?? this.staffOf(params.salonId).length,
+      created_at: new Date().toISOString(),
+    });
+    return id;
+  }
+
+  /** Test convenience: a salon's team as it stands, in team order. */
+  staffOf(salonId: string): SalonStaffRow[] {
+    return [...this.salonStaff.values()].filter((row) => row.salon_id === salonId).sort((a, b) => a.position - b.position);
+  }
+
+  /** Test convenience: an invite code as it stands. */
+  inviteFor(code: string): SalonInviteRow | undefined {
+    return this.salonInvites.get(code);
   }
 
   private favoritesTable() {

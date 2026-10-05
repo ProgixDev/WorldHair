@@ -70,6 +70,8 @@ export interface AdminAppointmentDetail extends AdminAppointmentSummary {
   salon: { id: string | null; name: string; phone: string; city: string; email: string | null };
   /** `paymentIntentId`: to find it in Stripe's dashboard. */
   payment: (AdminAppointmentPayment & { paymentIntentId: string | null }) | null;
+  /** Who of the salon's team does it (TODO.md Phase 3); `null` when unknown or gone. */
+  staffName: string | null;
 }
 
 /** A row of admin_appointments() (schema.sql). */
@@ -194,13 +196,22 @@ export class AdminAppointmentsService {
       throw new NotFoundException('Appointment not found');
     }
 
-    const [salon, application, client, clientEmail, salonEmail] = await Promise.all([
+    const [salon, application, client, clientEmail, salonEmail, member] = await Promise.all([
       this.single<{ salon_name: string; phone: string; city: string }>('coiffeur_profiles', 'profile_id', row.coiffeur_id),
       this.single<{ first_name: string; last_name: string }>('coiffeur_applications', 'profile_id', row.coiffeur_id),
       this.single<{ first_name: string; last_name: string }>('profiles', 'id', row.particulier_id),
       this.emailOf(row.particulier_id),
       this.emailOf(row.coiffeur_id),
+      this.single<{ profile_id: string; salon_id: string }>('salon_staff', 'id', row.staff_id ?? null),
     ]);
+    // The owner signed up through his dossier: that's where his name is.
+    const staffProfile =
+      member && member.profile_id !== member.salon_id
+        ? await this.single<{ first_name: string; last_name: string }>('profiles', 'id', member.profile_id)
+        : member
+          ? application
+          : null;
+    const staffName = staffProfile ? `${staffProfile.first_name} ${staffProfile.last_name}`.trim() || null : null;
     const payment = paymentOf(row);
 
     return {
@@ -229,6 +240,7 @@ export class AdminAppointmentsService {
       client: { id: row.particulier_id, name: clientName(row.particulier_id, client?.first_name, client?.last_name), email: clientEmail },
       payment: payment ? { ...toPayment(payment), paymentIntentId: payment.payment_intent_id } : null,
       createdAt: row.created_at,
+      staffName,
     };
   }
 

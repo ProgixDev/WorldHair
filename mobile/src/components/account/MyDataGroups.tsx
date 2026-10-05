@@ -21,7 +21,7 @@ import { Button } from "../ui/Button";
 import { Group, Row } from "../ui/SettingsList";
 
 /** What deleting the account does, as each side reads it. */
-const CONSEQUENCES: Record<"particulier" | "coiffeur", string[]> = {
+const CONSEQUENCES: Record<"particulier" | "coiffeur" | "staff", string[]> = {
   particulier: [
     "Vos rendez-vous à venir sont annulés et intégralement remboursés, et les salons prévenus — sauf ceux dont le délai d'annulation est passé, qui restent dus au salon.",
     "Votre profil, vos favoris et vos préférences sont effacés.",
@@ -32,12 +32,19 @@ const CONSEQUENCES: Record<"particulier" | "coiffeur", string[]> = {
     "Ce qui vous est dû pour vos rendez-vous passés vous est versé (vos encaissements doivent être actifs), et votre abonnement prend fin sans remboursement de la période en cours.",
     "Votre salon disparaît de WorldHair, avec vos photos, vos avis et vos justificatifs.",
   ],
+  // A salon's team member (TODO.md Phase 3): their bookings belong to the salon's clients.
+  staff: [
+    "Vos rendez-vous à venir doivent d'abord être réattribués par le salon : tant qu'il en reste à votre nom, la suppression est refusée.",
+    "Vous quittez l'équipe du salon ; vos rendez-vous passés y restent, sans votre nom.",
+    "Votre profil, votre photo et vos préférences sont effacés.",
+  ],
 };
 
 /**
  * « Mes données » and « Informations légales » (TODO.md Phase 8): export
  * everything WorldHair holds, delete the account, read the legal pages.
- * As settings rows at the bottom of the profile and the salon's account;
+ * As settings rows at the bottom of the profile, the salon's account and
+ * a staff member's;
  * as a few links wherever else a signed-in user can be held (a dossier
  * under review, an ended subscription, new terms to accept…).
  */
@@ -50,7 +57,7 @@ export function MyDataGroups({ variant = "rows" }: { variant?: "rows" | "links" 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const role = session?.role === "coiffeur" ? "coiffeur" : "particulier";
+  const role = session?.role ?? "particulier";
 
   const handleExport = async () => {
     setExporting(true);

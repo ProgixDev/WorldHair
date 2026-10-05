@@ -58,7 +58,7 @@ export default function ProDashboard() {
   const kpiColumns = isExpanded ? 4 : 2;
   const kpiWidth =
     (width - gutter * 2 - spacing.md * (kpiColumns - 1)) / kpiColumns;
-  const { profile, services, appointments, availability, timeOff, subscription, payoutStatus, isLoading } = usePro();
+  const { profile, services, appointments, availability, timeOff, team, subscription, payoutStatus, isLoading } = usePro();
 
   const stats = useMemo(() => computeStats(appointments), [appointments]);
   // Paid by clients, not sendable until the salon's payouts are active.
@@ -80,8 +80,8 @@ export default function ProDashboard() {
     };
   }, [timeOff]);
   const fill = useMemo(
-    () => weeklyFillRate(appointments, availability, weekClosures ?? timeOff),
-    [appointments, availability, weekClosures, timeOff],
+    () => weeklyFillRate(appointments, availability, weekClosures ?? timeOff, new Date(), team.filter((member) => member.takesBookings)),
+    [appointments, availability, weekClosures, timeOff, team],
   );
   const series = useMemo(() => weeklySeries(appointments, 8), [appointments]);
   const today = useMemo(

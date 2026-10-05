@@ -60,7 +60,9 @@ export default function VerifyEmail() {
       // application is actually submitted (see services/auth.ts). Kept
       // (not cleared) here on purpose — the app resuming this same intent
       // if it gets killed mid-wizard depends on it still being there; only
-      // a real submission clears it (see auth/pro/documents.tsx).
+      // a real submission clears it (see auth/pro/documents.tsx). Joining a
+      // salon (intent "staff") goes through resolveNextRoute: profile
+      // first, then the owner's code.
       const intent = await getSignupIntent();
       if (intent === "coiffeur" && !next.application) {
         router.replace(ROUTES.proIdentity as never);

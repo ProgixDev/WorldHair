@@ -4,9 +4,15 @@ import { accountErrorMessage, accountStillExists, termsUpToDate } from "./accoun
 
 jest.mock("../lib/apiClient", () => ({ apiClient: { get: jest.fn() } }));
 
-function httpError(status: number): AxiosError {
+function httpError(status: number, message?: string): AxiosError {
   const error = new AxiosError("Request failed");
-  error.response = { status, data: {}, statusText: "", headers: {}, config: { headers: new AxiosHeaders() } };
+  error.response = {
+    status,
+    data: message ? { message } : {},
+    statusText: "",
+    headers: {},
+    config: { headers: new AxiosHeaders() },
+  };
   return error;
 }
 
@@ -15,6 +21,15 @@ const get = apiClient.get as jest.Mock;
 describe("accountErrorMessage", () => {
   it("tells a salon owed money to set up its payouts first", () => {
     expect(accountErrorMessage(httpError(409))).toContain("vos encaissements ne sont pas actifs");
+  });
+
+  it("tells a staff member the salon has to reassign their bookings to come first", () => {
+    const message = accountErrorMessage(
+      httpError(409, "STAFF_HAS_BOOKINGS: the salon has to reassign your bookings to come first"),
+    );
+    expect(message).toBe(
+      "Des rendez-vous à venir sont encore à votre nom : demandez au salon de les réattribuer à quelqu'un d'autre, puis réessayez.",
+    );
   });
 
   it("says a deletion that stopped half-way can be tried again, without pretending nothing happened", () => {

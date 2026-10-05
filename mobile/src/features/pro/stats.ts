@@ -1,5 +1,6 @@
 import { addDays, startOfDay } from "../../utils/date";
 import type { AvailabilityDay, ProAppointment, ProService } from "./types";
+import { personDay } from "./staffPick";
 
 /** Pure aggregations over the coiffeur's bookings — no React, no storage. */
 
@@ -217,34 +218,44 @@ function closedMinutes(closures: { startsAt: string; endsAt: string }[], from: n
 /**
  * "Taux de remplissage" (TODO.md Phase 6): how full this week (Monday to
  * Sunday) is — accepted bookings' minutes over the salon's open minutes,
- * lunch breaks and closures left out.
+ * lunch breaks and closures left out. With a team (TODO.md Phase 3), the
+ * open time is everyone's: each on their own week inside the salon's
+ * hours, less the salon's closures and their own congés.
  */
 export function weeklyFillRate(
   appointments: ProAppointment[],
   availability: AvailabilityDay[],
-  closures: { startsAt: string; endsAt: string }[],
+  closures: { startsAt: string; endsAt: string; staffId?: string | null }[],
   now = new Date(),
+  team: { id: string; availability: AvailabilityDay[] | null }[] = [],
 ): FillRate {
   const weekStart = startOfWeek(now);
   const weekEnd = addDays(weekStart, 7);
 
   let openMinutes = 0;
-  for (let offset = 0; offset < 7; offset += 1) {
-    const day = addDays(weekStart, offset);
-    const hours = availability.find((entry) => entry.weekday === day.getDay());
-    if (!hours?.open) continue;
-    const windows =
-      hours.breakStart !== null && hours.breakEnd !== null
-        ? [
-            [hours.opens, hours.breakStart],
-            [hours.breakEnd, hours.closes],
-          ]
-        : [[hours.opens, hours.closes]];
-    for (const [from, to] of windows) {
-      if (to <= from) continue;
-      const start = day.getTime() + from * MINUTE_MS;
-      const end = day.getTime() + to * MINUTE_MS;
-      openMinutes += (end - start) / MINUTE_MS - closedMinutes(closures, start, end);
+  for (const person of team.length > 0 ? team : [null]) {
+    const theirClosures = closures.filter((closure) => !closure.staffId || closure.staffId === person?.id);
+    for (let offset = 0; offset < 7; offset += 1) {
+      const day = addDays(weekStart, offset);
+      const hours = personDay(
+        availability.find((entry) => entry.weekday === day.getDay()),
+        person?.availability ?? null,
+        day.getDay(),
+      );
+      if (!hours?.open) continue;
+      const windows =
+        hours.breakStart !== null && hours.breakEnd !== null
+          ? [
+              [hours.opens, hours.breakStart],
+              [hours.breakEnd, hours.closes],
+            ]
+          : [[hours.opens, hours.closes]];
+      for (const [from, to] of windows) {
+        if (to <= from) continue;
+        const start = day.getTime() + from * MINUTE_MS;
+        const end = day.getTime() + to * MINUTE_MS;
+        openMinutes += (end - start) / MINUTE_MS - closedMinutes(theirClosures, start, end);
+      }
     }
   }
 

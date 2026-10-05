@@ -1,6 +1,6 @@
 import { parisTime } from '../common/utils/paris-time';
 import { AvailabilityDay } from '../salon/salon.service';
-import { BookingRules, refusalFor, slotsForDay } from './booking-rules';
+import { BookingRules, pickPerson, PersonRules, refusalFor, slotsForDay, slotsForTeam, teamRefusal } from './booking-rules';
 
 /** Mon-Sat 9-19 with a 13-14 lunch break, Sunday closed — SalonService's default week. */
 const WEEK: AvailabilityDay[] = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
@@ -124,6 +124,86 @@ describe('booking rules', () => {
       expect(refusalFor(rules({ clientBookings: [{ startsAt: at(10).toISOString(), durationMin: 60 }] }), at(10, 30), 30)).toBe(
         'client_busy',
       );
+    });
+  });
+
+  describe("a person's own week (Phase 3)", () => {
+    /** Works Wednesday afternoons only, from 14:00 to 18:00. */
+    const AFTERNOONS: AvailabilityDay[] = WEEK.map((day) =>
+      day.weekday === 3 ? { ...day, opensMinute: 14 * 60, closesMinute: 18 * 60, breakStartMinute: null, breakEndMinute: null } : { ...day, isOpen: false },
+    );
+
+    it('needs both the salon open and the person working', () => {
+      const own = rules({ personalAvailability: AFTERNOONS });
+      expect(refusalFor(own, at(10), 30)).toBe('staff_off');
+      expect(refusalFor(own, at(17, 30), 60)).toBe('staff_off');
+      expect(refusalFor(own, at(15), 60)).toBeNull();
+      // The salon's own hours still bind: Sunday is closed whatever the person's week says.
+      expect(refusalFor(rules({ personalAvailability: WEEK.map((day) => ({ ...day, isOpen: true })) }), parisTime(2026, 10, 4, 10), 30)).toBe(
+        'closed',
+      );
+    });
+
+    it("shows a day the person doesn't work as closed", () => {
+      expect(slotsForDay(rules({ personalAvailability: AFTERNOONS }), '2026-10-01', 30)).toEqual({
+        date: '2026-10-01',
+        closed: true,
+        slots: [],
+      });
+    });
+  });
+
+  describe('a team (Phase 3)', () => {
+    const person = (staffId: string, position: number, overrides: Partial<BookingRules> = {}): PersonRules => ({
+      staffId,
+      position,
+      rules: rules(overrides),
+    });
+    const busy = (hour: number, durationMin = 60) => ({ startsAt: at(hour).toISOString(), durationMin });
+
+    it('offers a time as long as one person is free', () => {
+      const team = [person('sofia', 0, { salonBookings: [busy(10)] }), person('nadia', 1)];
+
+      expect(teamRefusal(team, at(10), 60)).toBeNull();
+      expect(freeLabels(slotsForTeam(team, WEDNESDAY, 60))).toContain('10:00');
+    });
+
+    it('refuses a time when everyone is taken, with the reason that tells the client most', () => {
+      const team = [
+        person('sofia', 0, { salonBookings: [busy(10)] }),
+        person('nadia', 1, { closures: [{ startsAt: at(9).toISOString(), endsAt: at(12).toISOString() }] }),
+      ];
+
+      expect(teamRefusal(team, at(10), 60)).toBe('taken');
+      expect(freeLabels(slotsForTeam(team, WEDNESDAY, 60))).not.toContain('10:00');
+      expect(teamRefusal([], at(10), 60)).toBe('staff_off');
+    });
+
+    it('is closed on a day nobody works', () => {
+      const off = { personalAvailability: WEEK.map((day) => ({ ...day, isOpen: day.weekday !== 3 })) };
+      expect(slotsForTeam([person('sofia', 0, off), person('nadia', 1, off)], WEDNESDAY, 30).closed).toBe(true);
+      expect(slotsForTeam([], WEDNESDAY, 30)).toEqual({ date: WEDNESDAY, closed: true, slots: [] });
+    });
+
+    it('holds the free person with the fewest booked minutes that day, then the first in the team', () => {
+      const team = [
+        person('sofia', 0, { salonBookings: [busy(9), busy(15, 120)] }),
+        person('nadia', 1, { salonBookings: [busy(9)] }),
+        person('lina', 2, { salonBookings: [busy(11)] }),
+      ];
+
+      expect(pickPerson(team, at(16), 60)?.staffId).toBe('nadia');
+      // A booking on another day doesn't count.
+      const tomorrowBusy = { startsAt: parisTime(2026, 10, 1, 10).toISOString(), durationMin: 240 };
+      expect(pickPerson([person('sofia', 0, { salonBookings: [tomorrowBusy] }), person('nadia', 1)], at(10), 60)?.staffId).toBe(
+        'sofia',
+      );
+    });
+
+    it('keeps the preferred person when they are free, and gives nobody when no one is', () => {
+      const team = [person('sofia', 0), person('nadia', 1)];
+      expect(pickPerson(team, at(10), 60, 'nadia')?.staffId).toBe('nadia');
+      expect(pickPerson([person('sofia', 0, { salonBookings: [busy(10)] })], at(10), 60, 'sofia')).toBeNull();
     });
   });
 });

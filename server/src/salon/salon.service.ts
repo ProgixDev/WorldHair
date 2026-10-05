@@ -80,6 +80,8 @@ export interface TimeOff {
   startsAt: string;
   endsAt: string;
   label: string;
+  /** One person's congé (TODO.md Phase 3); `null`: the whole salon is closed. */
+  staffId: string | null;
 }
 
 /** An active booking that falls inside a closure the coiffeur just added — listed so they can move or cancel it. */
@@ -94,13 +96,14 @@ export interface TimeOffConflict {
 interface TimeOffRow {
   id: string;
   profile_id: string;
+  staff_id: string | null;
   starts_at: string;
   ends_at: string;
   label: string;
 }
 
 function mapTimeOff(row: TimeOffRow): TimeOff {
-  return { id: row.id, startsAt: row.starts_at, endsAt: row.ends_at, label: row.label };
+  return { id: row.id, startsAt: row.starts_at, endsAt: row.ends_at, label: row.label, staffId: row.staff_id ?? null };
 }
 
 export interface AvailabilityDay {
@@ -590,7 +593,7 @@ export class SalonService {
    */
   async addTimeOff(
     userId: string,
-    input: { startsAt: string; endsAt: string; label?: string },
+    input: { startsAt: string; endsAt: string; label?: string; staffId?: string | null },
   ): Promise<{ timeOff: TimeOff; conflicts: TimeOffConflict[] }> {
     const startsMs = new Date(input.startsAt).getTime();
     const endsMs = new Date(input.endsAt).getTime();
@@ -600,11 +603,15 @@ export class SalonService {
     if (endsMs <= Date.now()) {
       throw new BadRequestException('This closure is already over');
     }
+    const staffId = input.staffId ?? null;
+    // The owner's own congé also covers the bookings without a person — his, from before teams.
+    const ownersLeave = staffId ? (await this.teamRowOf(userId, staffId)).profile_id === userId : false;
 
     const { data, error } = await this.supabase.client
       .from('coiffeur_time_off')
       .insert({
         profile_id: userId,
+        staff_id: staffId,
         starts_at: new Date(startsMs).toISOString(),
         ends_at: new Date(endsMs).toISOString(),
         label: input.label?.trim() ?? '',
@@ -624,8 +631,10 @@ export class SalonService {
       throw new InternalServerErrorException(bookingsError.message);
     }
     const conflicts = (
-      bookings as { id: string; starts_at: string; duration_min: number; service_name: string; status: string }[]
+      bookings as { id: string; staff_id?: string | null; starts_at: string; duration_min: number; service_name: string; status: string }[]
     )
+      // One person's congé only concerns their own bookings (TODO.md Phase 3).
+      .filter((booking) => staffId === null || booking.staff_id === staffId || (ownersLeave && !booking.staff_id))
       .filter((booking) => {
         const bookingStart = new Date(booking.starts_at).getTime();
         const bookingEnd = bookingStart + booking.duration_min * 60_000;
@@ -642,6 +651,23 @@ export class SalonService {
       }));
 
     return { timeOff: mapTimeOff(data as TimeOffRow), conflicts };
+  }
+
+  /** `staffId` of this salon's team (TODO.md Phase 3) — or not found. */
+  private async teamRowOf(salonId: string, staffId: string): Promise<{ profile_id: string }> {
+    const { data, error } = await this.supabase.client
+      .from('salon_staff')
+      .select('profile_id')
+      .eq('id', staffId)
+      .eq('salon_id', salonId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    if (!data) {
+      throw new NotFoundException('Staff member not found');
+    }
+    return data as { profile_id: string };
   }
 
   async deleteTimeOff(userId: string, id: string): Promise<void> {

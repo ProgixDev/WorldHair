@@ -7,10 +7,10 @@ import { DataExport, DataExportService } from './data-export.service';
 
 /**
  * The app's « Mes données » (TODO.md Phase 8): delete the account, export
- * its data. Clients and salons — an admin account goes from the back
- * office's own page instead.
+ * its data. Clients, salons and their staff (TODO.md Phase 3) — an admin
+ * account goes from the back office's own page instead.
  */
-@Roles('particulier', 'coiffeur')
+@Roles('particulier', 'coiffeur', 'staff')
 @Controller('users/me')
 export class AccountController {
   constructor(

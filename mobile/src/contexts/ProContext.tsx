@@ -14,6 +14,7 @@ import type {
   ProAppointmentStatus,
   ProProfile,
   ProService,
+  StaffMember,
   Subscription,
   TimeOff,
   TimeOffConflict,
@@ -30,8 +31,10 @@ interface ProContextValue {
   appointments: ProAppointment[];
   subscription: Subscription | null;
   reviews: Review[];
-  /** Upcoming congés and exceptional closures. */
+  /** Upcoming congés and exceptional closures — the salon's, and each person's (`staffId`). */
   timeOff: TimeOff[];
+  /** The salon's team, its owner first (TODO.md Phase 3); just him in a salon of one. */
+  team: StaffMember[];
   isLoading: boolean;
   /** The first read failed (no network, server down): the pro area offers to try again. */
   loadFailed: boolean;
@@ -45,18 +48,30 @@ interface ProContextValue {
   addGalleryPhoto: (localUri: string, mimeType?: string | null) => Promise<void>;
   deleteGalleryPhoto: (photo: GalleryPhoto) => Promise<void>;
   saveAvailability: (availability: AvailabilityDay[]) => Promise<void>;
+  /** Accepting: `staffId` is who does it (« Qui s'en occupe ? »). */
   setAppointmentStatus: (
     id: string,
     status: ProAppointmentStatus,
+    staffId?: string,
   ) => Promise<void>;
   /** Moves an accepted appointment; the client is notified. */
   moveAppointment: (id: string, startsAt: string) => Promise<void>;
+  /** Gives a booking to someone else of the team, free at its time. */
+  assignAppointment: (id: string, staffId: string) => Promise<void>;
+  /** The team again — after someone joined with a code. */
+  refreshTeam: () => Promise<void>;
+  setTakesBookings: (staffId: string, takesBookings: boolean) => Promise<void>;
+  /** `null` gives them back the salon's hours. */
+  saveStaffHours: (staffId: string, availability: AvailabilityDay[] | null) => Promise<void>;
+  removeStaff: (staffId: string) => Promise<void>;
   setAttendance: (id: string, attendance: Attendance) => Promise<void>;
   /** Resolves with the bookings already inside the new closure — they're kept, for the coiffeur to handle. */
   addTimeOff: (input: {
     startsAt: string;
     endsAt: string;
     label?: string;
+    /** One person's congé; absent: the whole salon closes. */
+    staffId?: string;
   }) => Promise<TimeOffConflict[]>;
   deleteTimeOff: (id: string) => Promise<void>;
   /** Reads the subscription again — after the coiffeur subscribed or renewed on the website. */
@@ -86,6 +101,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
+  const [team, setTeam] = useState<StaffMember[]>([]);
   const [payoutStatus, setPayoutStatus] = useState<PayoutStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -101,6 +117,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       nextReviews,
       nextTimeOff,
       nextPayoutStatus,
+      nextTeam,
     ] = await Promise.all([
       pro.getProProfile(),
       pro.listProServices(),
@@ -112,6 +129,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       pro.listTimeOff(),
       // Stripe may be unreachable: the rest of the workspace loads anyway.
       pro.getPayoutStatus().catch(() => null),
+      pro.listTeam(),
     ]);
 
     setProfile(nextProfile);
@@ -123,6 +141,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
     setReviews(nextReviews);
     setTimeOff(nextTimeOff);
     setPayoutStatus(nextPayoutStatus);
+    setTeam(nextTeam);
     setLoadFailed(false);
     setIsLoading(false);
   }, []);
@@ -150,6 +169,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       subscription,
       reviews,
       timeOff,
+      team,
       isLoading,
       loadFailed,
       retry,
@@ -169,10 +189,17 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
         setGallery(await pro.deleteGalleryPhoto(photo)),
       saveAvailability: async (next) =>
         setAvailability(await pro.saveAvailability(next)),
-      setAppointmentStatus: async (id, status) =>
-        setAppointments(await pro.setAppointmentStatus(id, status)),
+      setAppointmentStatus: async (id, status, staffId) =>
+        setAppointments(await pro.setAppointmentStatus(id, status, staffId)),
       moveAppointment: async (id, startsAt) =>
         setAppointments(await pro.moveAppointment(id, startsAt)),
+      assignAppointment: async (id, staffId) =>
+        setAppointments(await pro.assignAppointment(id, staffId)),
+      refreshTeam: async () => setTeam(await pro.listTeam()),
+      setTakesBookings: async (staffId, takesBookings) =>
+        setTeam(await pro.setTakesBookings(staffId, takesBookings)),
+      saveStaffHours: async (staffId, hours) => setTeam(await pro.saveStaffHours(staffId, hours)),
+      removeStaff: async (staffId) => setTeam(await pro.removeStaff(staffId)),
       setAttendance: async (id, attendance) =>
         setAppointments(await pro.setAttendance(id, attendance)),
       addTimeOff: async (input) => {
@@ -199,6 +226,7 @@ export function ProProvider({ children }: { children: React.ReactNode }) {
       subscription,
       reviews,
       timeOff,
+      team,
       payoutStatus,
       isLoading,
       loadFailed,

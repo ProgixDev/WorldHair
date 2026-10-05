@@ -11,6 +11,7 @@ import { SalonService } from '../salon/salon.service';
 import { StripeService } from '../stripe/stripe.service';
 import { FakeSupabaseService } from '../../test/utils/fakes/fake-supabase.service';
 import { FavoritesService } from './favorites.service';
+import { StaffService } from '../staff/staff.service';
 
 const CLIENT_ID = 'client-1';
 
@@ -27,7 +28,7 @@ describe('FavoritesService', () => {
       new CoiffeurApplicationsService(supabase as unknown as SupabaseService, new EventEmitter2()),
       salon,
       new PayoutAccountsService(supabase as unknown as SupabaseService, new StripeService(null, config), config),
-      new NextSlotService(supabase as unknown as SupabaseService, salon),
+      new NextSlotService(supabase as unknown as SupabaseService, salon, new StaffService(supabase as unknown as SupabaseService, new EventEmitter2())),
     );
     favorites = new FavoritesService(supabase as unknown as SupabaseService, discovery);
     for (const id of ['salon-a', 'salon-b', 'salon-c']) {

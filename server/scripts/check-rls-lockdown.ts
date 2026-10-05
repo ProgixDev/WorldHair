@@ -144,6 +144,22 @@ async function main(): Promise<void> {
       run: () => insertIncompleteRow(coiffeur.client, "coiffeur_time_off", { label: "check:rls" }),
     },
     {
+      // TODO.md Phase 3: joining a salon goes through the owner's code, on the API.
+      name: "particulier adds themselves to a salon's team (salon_staff) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(particulier.client, "salon_staff", { profile_id: particulier.userId }),
+    },
+    {
+      name: "coiffeur makes an invite code (salon_invites) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(coiffeur.client, "salon_invites", { code: "CHKRLS" }),
+    },
+    {
+      name: "coiffeur sets a staff member's week (staff_availability) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(coiffeur.client, "staff_availability", { weekday: "1" }),
+    },
+    {
       name: "particulier adds a prestation line (appointment_services) directly",
       expect: "blocked",
       run: () => insertIncompleteRow(particulier.client, "appointment_services", { service_name: "check:rls" }),

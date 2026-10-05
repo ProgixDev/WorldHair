@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { AuthHeader } from "../../components/ui/AuthHeader";
 import { AvatarPicker } from "../../components/ui/AvatarPicker";
@@ -11,8 +11,9 @@ import { spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import { ROUTES } from "../../features/auth/routing";
+import { resolveNextRoute } from "../../features/auth/routing";
 import { AuthError } from "../../services/auth";
+import { getSignupIntent } from "../../services/preferences";
 import { isValidName } from "../../utils/validation";
 import { MyDataGroups } from "../../components/account/MyDataGroups";
 
@@ -26,6 +27,19 @@ export default function ProfileSetup() {
   // whatever the session already holds.
   const existing = session?.profile ?? null;
   const isEditing = existing !== null;
+  // A salon's staff member, or someone about to join a salon (intent
+  // "staff"): their salon sees this, not salons they book.
+  const [joiningSalon, setJoiningSalon] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void getSignupIntent().then((intent) => {
+      if (!cancelled) setJoiningSalon(intent === "staff");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const isStaff = session?.role === "staff" || (joiningSalon && !isEditing);
 
   const [firstName, setFirstName] = useState(existing?.firstName ?? "");
   const [lastName, setLastName] = useState(existing?.lastName ?? "");
@@ -49,13 +63,15 @@ export default function ProfileSetup() {
     setFormError(null);
     setSaving(true);
     try {
-      await saveParticulierProfile({
+      const saved = await saveParticulierProfile({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         photoUri,
       });
+      // The map for a client; the owner's code for someone joining a salon
+      // (intent "staff"), or the agenda for a staff member already in one.
       if (isEditing && router.canGoBack()) router.back();
-      else router.replace(ROUTES.discover as never);
+      else router.replace((await resolveNextRoute(saved, true)) as never);
     } catch (err) {
       setFormError(
         err instanceof AuthError
@@ -85,9 +101,11 @@ export default function ProfileSetup() {
         <AuthHeader
           title={isEditing ? "Modifier mon profil" : "Votre profil"}
           subtitle={
-            isEditing
-              ? "Ces informations sont visibles par les salons que vous réservez."
-              : "Pour que les coiffeurs sachent qui ils accueillent."
+            isStaff
+              ? "Ces informations sont visibles par votre salon."
+              : isEditing
+                ? "Ces informations sont visibles par les salons que vous réservez."
+                : "Pour que les coiffeurs sachent qui ils accueillent."
           }
           showBack={isEditing}
         />

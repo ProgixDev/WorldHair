@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MailModule } from '../mail/mail.module';
 import { AppointmentRemindersJob } from './jobs/appointment-reminders.job';
 import { AppointmentNotificationsListener } from './listeners/appointment-notifications.listener';
+import { StaffNotificationsListener } from './listeners/staff-notifications.listener';
 import { CoiffeurApplicationNotificationsListener } from './listeners/coiffeur-application-notifications.listener';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
@@ -21,6 +22,7 @@ import { PushService } from './push.service';
     AppointmentRemindersJob,
     AppointmentNotificationsListener,
     CoiffeurApplicationNotificationsListener,
+    StaffNotificationsListener,
   ],
   exports: [NotificationsService],
 })

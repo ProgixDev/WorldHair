@@ -336,7 +336,8 @@ export class DiscoveryService {
       confirmationMode: (row.confirmation_mode ?? 'manual') as ConfirmationMode,
       bookingNoticeMinutes: row.booking_notice_minutes ?? 0,
       cancellationNoticeMinutes: row.cancellation_notice_minutes ?? 0,
-      closures: closures.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
+      // The salon's own closures: one person's congé leaves it open (TODO.md Phase 3).
+      closures: closures.filter((closure) => closure.staffId === null).map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
       onlineBooking,
       instagramUrl: row.instagram_url ?? null,
       facebookUrl: row.facebook_url ?? null,

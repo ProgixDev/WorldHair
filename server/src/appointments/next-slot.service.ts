@@ -4,8 +4,9 @@ import { parisParts } from '../common/utils/paris-time';
 import { slices } from '../common/utils/slices';
 import { SupabaseService } from '../database/supabase.service';
 import { SalonService } from '../salon/salon.service';
+import { StaffService } from '../staff/staff.service';
 import { SubscriptionRow, subscriptionEndsAt } from '../subscriptions/subscription-state';
-import { BookingRules, BusyBooking, closedAfter, slotsForDay } from './booking-rules';
+import { closedAfter, PersonRules, slotsForTeam } from './booking-rules';
 
 export interface NextSlotQuery {
   salonId: string;
@@ -23,6 +24,7 @@ const DAY_MS = 86_400_000;
 
 interface BookingRow {
   coiffeur_id: string;
+  staff_id: string | null;
   starts_at: string;
   duration_min: number;
 }
@@ -47,6 +49,7 @@ export class NextSlotService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly salon: SalonService,
+    private readonly staff: StaffService,
   ) {}
 
   /** Each salon's next free start (ISO), or `null`: not bookable online, nothing to book, or full for two weeks. */
@@ -58,28 +61,45 @@ export class NextSlotService {
     const ids = bookable.map((query) => query.salonId);
     // Nothing starting past the days looked at can take a slot in them.
     const until = new Date(now.getTime() + (NEXT_SLOT_DAYS + 1) * DAY_MS);
-    const [availability, closures, bookings, subscriptions] = await Promise.all([
+    const [availability, closures, bookings, subscriptions, teams] = await Promise.all([
       this.salon.availabilityFor(ids),
       this.salon.timeOffFor(ids, now, until),
       this.activeBookingsOf(ids, now, until),
       this.subscriptionsOf(ids),
+      this.staff.teamsFor(ids),
     ]);
     const days = upcomingDays(now, NEXT_SLOT_DAYS);
 
     for (const query of bookable) {
-      const rules: BookingRules = {
-        availability: availability.get(query.salonId) ?? [],
-        closures: [
-          ...(closures.get(query.salonId) ?? []).map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
-          ...closedAfter(subscriptionEndsAt(subscriptions.get(query.salonId) ?? null, now)),
-        ],
-        salonBookings: bookings.get(query.salonId) ?? [],
-        clientBookings: [],
-        bookingNoticeMinutes: query.bookingNoticeMinutes,
-        now,
-      };
+      const salonClosures = closures.get(query.salonId) ?? [];
+      const ends = closedAfter(subscriptionEndsAt(subscriptions.get(query.salonId) ?? null, now));
+      const team = teams.get(query.salonId) ?? [];
+      const ownerId = team.find((member) => member.isOwner)?.id;
+      // Free when someone who takes clients' bookings is (TODO.md Phase 3).
+      const people: PersonRules[] = team
+        .filter((member) => member.takesBookings)
+        .map((member) => ({
+          staffId: member.id,
+          position: member.position,
+          rules: {
+            availability: availability.get(query.salonId) ?? [],
+            personalAvailability: member.availability,
+            closures: [
+              ...salonClosures
+                .filter((closure) => closure.staffId === null || closure.staffId === member.id)
+                .map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
+              ...ends,
+            ],
+            salonBookings: (bookings.get(query.salonId) ?? [])
+              .filter((booking) => (booking.staff_id ?? ownerId) === member.id)
+              .map((booking) => ({ startsAt: booking.starts_at, durationMin: booking.duration_min })),
+            clientBookings: [],
+            bookingNoticeMinutes: query.bookingNoticeMinutes,
+            now,
+          },
+        }));
       for (const day of days) {
-        const free = slotsForDay(rules, day, query.durationMin!).slots.find((slot) => slot.available);
+        const free = slotsForTeam(people, day, query.durationMin!).slots.find((slot) => slot.available);
         if (free) {
           result.set(query.salonId, free.startsAt);
           break;
@@ -94,13 +114,13 @@ export class NextSlotService {
    * (a booking fits in a day) to `until` — every one of them, page by page:
    * a busy week at a hundred salons is past PostgREST's 1 000 rows.
    */
-  private async activeBookingsOf(ids: string[], now: Date, until: Date): Promise<Map<string, BusyBooking[]>> {
-    const byCoiffeur = new Map<string, BusyBooking[]>(ids.map((id) => [id, []]));
+  private async activeBookingsOf(ids: string[], now: Date, until: Date): Promise<Map<string, BookingRow[]>> {
+    const byCoiffeur = new Map<string, BookingRow[]>(ids.map((id) => [id, []]));
     for (const slice of slices(ids)) {
       const rows = await allPages<BookingRow>((from, to) =>
         this.supabase.client
           .from('appointments')
-          .select('coiffeur_id, starts_at, duration_min')
+          .select('coiffeur_id, staff_id, starts_at, duration_min')
           .in('coiffeur_id', slice)
           .in('status', ['awaiting_payment', 'pending', 'confirmed'])
           .gte('starts_at', new Date(now.getTime() - DAY_MS).toISOString())
@@ -110,7 +130,7 @@ export class NextSlotService {
           .range(from, to),
       );
       for (const row of rows) {
-        byCoiffeur.get(row.coiffeur_id)?.push({ startsAt: row.starts_at, durationMin: row.duration_min });
+        byCoiffeur.get(row.coiffeur_id)?.push(row);
       }
     }
     return byCoiffeur;

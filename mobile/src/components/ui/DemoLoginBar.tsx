@@ -19,6 +19,7 @@ const ICONS: Record<DemoPersona, keyof typeof MaterialCommunityIcons.glyphMap> =
     coiffeur_active: "content-cut",
     coiffeur_pending: "clock-outline",
     coiffeur_rejected: "alert-circle-outline",
+  staff: "account-group-outline",
   };
 
 /**

@@ -7,6 +7,11 @@ describe("notificationDestination", () => {
     expect(notificationDestination(undefined, undefined)).toBe("/appointments");
   });
 
+  it("opens a staff member's own agenda, whatever the push is about", () => {
+    expect(notificationDestination("staff", { appointmentId: "a1" })).toBe("/staff");
+    expect(notificationDestination("staff", { screen: "subscription" })).toBe("/staff");
+  });
+
   it("opens the coiffeur's subscription for news about it", () => {
     expect(notificationDestination("coiffeur", { screen: "subscription" })).toBe("/pro/account");
   });

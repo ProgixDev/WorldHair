@@ -45,6 +45,8 @@ function ProGate() {
         <Tabs.Screen name="account" options={{ title: "Compte" }} />
         {/* Reached from Compte (and Stripe's onboarding coming back); not in the tab bar. */}
         <Tabs.Screen name="payments" options={{ title: "Paiements" }} />
+        {/* Reached from Compte; not in the tab bar (TODO.md Phase 3). */}
+        <Tabs.Screen name="team" options={{ title: "Équipe" }} />
       </Tabs>
       {expired ? <SubscriptionExpiredOverlay /> : null}
       {loadFailed ? <ProLoadFailed /> : null}

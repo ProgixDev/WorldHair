@@ -13,6 +13,8 @@ export const ROUTES = {
   proZone: "/auth/pro/zone",
   proDocuments: "/auth/pro/documents",
   pending: "/auth/pending",
+  /** « Rejoindre un salon » with the owner's code (TODO.md Phase 3). */
+  joinSalon: "/auth/join-salon",
   /** Mandatory shop-profile completion, once per coiffeur (issue #7). */
   proShopSetup: "/pro-shop-setup",
   /** Particulier shell (map tab). */
@@ -26,6 +28,9 @@ export const ROUTES = {
   proSalonPage: "/pro/salon",
   proReviews: "/pro/reviews",
   proAccount: "/pro/account",
+  /** A salon's staff member: their own agenda, read-only, and their account. */
+  staffAgenda: "/staff",
+  staffAccount: "/staff/account",
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];
@@ -53,6 +58,12 @@ export function nextRouteForSession(
   }
 
   if (!session.profile) return ROUTES.profileSetup;
+
+  // Never the client or salon areas. An unknown salon (`undefined`: the
+  // server couldn't be asked) stays on the agenda, which offers a retry.
+  if (session.role === "staff")
+    return session.staffMembership === null ? ROUTES.joinSalon : ROUTES.staffAgenda;
+
   return ROUTES.discover;
 }
 
@@ -72,14 +83,27 @@ export function nextRouteForSession(
  * Kept as a separate async wrapper rather than folded into
  * nextRouteForSession itself so that function stays pure and callable
  * without a navigator or storage — see its own doc comment.
+ *
+ * « Rejoindre un salon » (intent `staff`, TODO.md Phase 3) works the same
+ * way: the account stays a client until the code is accepted, so a client
+ * with that intent goes through profile-setup (names and photo the salon
+ * sees), then on to the code — cleared once joined, or once they say
+ * they're a client after all (see auth/join-salon.tsx).
  */
 export async function resolveNextRoute(
   session: Session | null,
   onboardingSeen: boolean,
 ): Promise<AppRoute> {
   const defaultRoute = nextRouteForSession(session, onboardingSeen);
-  if (defaultRoute !== ROUTES.profileSetup) return defaultRoute;
+  // Only a client account is still on its way to the role it signed up for.
+  if (
+    session?.role !== "particulier" ||
+    (defaultRoute !== ROUTES.profileSetup && defaultRoute !== ROUTES.discover)
+  )
+    return defaultRoute;
 
   const intent = await getSignupIntent();
+  if (defaultRoute === ROUTES.discover)
+    return intent === "staff" ? ROUTES.joinSalon : defaultRoute;
   return intent === "coiffeur" ? ROUTES.proIdentity : defaultRoute;
 }

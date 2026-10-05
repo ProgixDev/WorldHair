@@ -511,6 +511,13 @@ export default function Profile() {
             value="Prénom, nom et photo"
             onPress={() => router.push(ROUTES.profileSetup as never)}
           />
+          {/* A coiffeur who signed up as a client can still join their salon's team (TODO.md Phase 3). */}
+          <Row
+            icon="account-group-outline"
+            label="Rejoindre l'équipe d'un salon"
+            value="Avec le code de votre salon"
+            onPress={() => router.push(ROUTES.joinSalon as never)}
+          />
           <Row
             icon="logout"
             label="Se déconnecter"

@@ -8,6 +8,7 @@ import { AvailabilityRow } from "../../components/pro/AvailabilityEditor";
 import { ClosuresSheet } from "../../components/pro/ClosuresSheet";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
+import { Chip } from "../../components/ui/Chip";
 import { elevation, TAB_BAR_CLEARANCE } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
@@ -15,6 +16,7 @@ import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { closureBlocksForDay } from "../../features/pro/closures";
+import { personDay, personOf, staffLabel } from "../../features/pro/staffPick";
 import {
   appointmentsForDay,
   occupancyForDay,
@@ -59,6 +61,7 @@ export default function ProAgenda() {
     saveAvailability,
     setAppointmentStatus,
     setAttendance,
+    team,
   } = usePro();
 
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
@@ -68,9 +71,28 @@ export default function ProAgenda() {
   const [draft, setDraft] = useState<AvailabilityDay[]>([]);
   const [sheetAppointment, setSheetAppointment] = useState<ProAppointment | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [sheetStart, setSheetStart] = useState<"details" | "accept">("details");
 
-  const openAppointment = (appointment: ProAppointment) => {
+  // A team (TODO.md Phase 3): the day column shows one person at a time, the owner first.
+  const hasTeam = team.length > 1;
+  const [pickedPerson, setPickedPerson] = useState<string | null>(null);
+  const person = team.find((member) => member.id === pickedPerson) ?? team[0] ?? null;
+  const ownerId = team.find((member) => member.isOwner)?.id ?? null;
+  const theirs = useMemo(
+    () => (hasTeam && person ? appointments.filter((appointment) => personOf(appointment, ownerId) === person.id) : appointments),
+    [appointments, hasTeam, person, ownerId],
+  );
+  const theirTimeOff = useMemo(
+    () =>
+      hasTeam && person
+        ? timeOff.filter((closure) => closure.staffId === null || closure.staffId === person.id)
+        : timeOff.filter((closure) => closure.staffId === null || closure.staffId === ownerId),
+    [timeOff, hasTeam, person, ownerId],
+  );
+
+  const openAppointment = (appointment: ProAppointment, startWith: "details" | "accept" = "details") => {
     setSheetAppointment(appointment);
+    setSheetStart(startWith);
     setSheetVisible(true);
   };
   // The sheet follows the live list, so a mark or a move shows in it at once.
@@ -113,16 +135,18 @@ export default function ProAgenda() {
       .slice(0, 5);
   }, [appointments]);
 
-  const dayConfig = availability.find(
+  const salonDay = availability.find(
     (day) => day.weekday === selectedDay.getDay(),
   );
+  // The person's own hours, inside the salon's: what their column shows.
+  const dayConfig = hasTeam && person ? personDay(salonDay, person.availability, selectedDay.getDay()) : salonDay;
   const dayAppointments = useMemo(
-    () => appointmentsForDay(appointments, selectedDay),
-    [appointments, selectedDay],
+    () => appointmentsForDay(theirs, selectedDay),
+    [theirs, selectedDay],
   );
   const dayClosures = useMemo(
-    () => closureBlocksForDay(timeOff, selectedDay),
-    [timeOff, selectedDay],
+    () => closureBlocksForDay(theirTimeOff, selectedDay),
+    [theirTimeOff, selectedDay],
   );
   const closedAllDay =
     dayConfig?.open === true &&
@@ -131,7 +155,7 @@ export default function ProAgenda() {
         block.startMinute <= dayConfig.opens && block.endMinute >= dayConfig.closes,
     );
   const openMinutes = dayConfig?.open ? dayConfig.closes - dayConfig.opens : 0;
-  const occupancy = occupancyForDay(appointments, selectedDay, openMinutes);
+  const occupancy = occupancyForDay(theirs, selectedDay, openMinutes);
 
   const decide = async (
     appointment: ProAppointment,
@@ -321,6 +345,12 @@ export default function ProAgenda() {
                   {servicesLabel(appointment, services)}
                 </Text>
 
+                {hasTeam ? (
+                  <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                    {"Prévu avec " + heldName(appointment, team) + " · vous choisissez en acceptant"}
+                  </Text>
+                ) : null}
+
                 {appointment.note ? (
                   <View
                     style={{
@@ -352,7 +382,10 @@ export default function ProAgenda() {
                   />
                   <Button
                     label="Accepter"
-                    onPress={() => void decide(appointment, "confirmed")}
+                    onPress={() =>
+                      // With a team, accepting means choosing who does it (« Qui s'en occupe ? »).
+                      hasTeam ? openAppointment(appointment, "accept") : void decide(appointment, "confirmed")
+                    }
                     loading={busyId === appointment.id}
                     background={theme.primary.main}
                     color={theme.primary.on}
@@ -437,10 +470,12 @@ export default function ProAgenda() {
           >
             {days.map((day) => {
               const selected = isSameDay(day, selectedDay);
-              const config = availability.find(
+              const salonConfig = availability.find(
                 (item) => item.weekday === day.getDay(),
               );
-              const count = appointmentsForDay(appointments, day).length;
+              const config =
+                hasTeam && person ? personDay(salonConfig, person.availability, day.getDay()) : salonConfig;
+              const count = appointmentsForDay(theirs, day).length;
 
               return (
                 <Pressable
@@ -514,6 +549,24 @@ export default function ProAgenda() {
             })}
           </ScrollView>
 
+          {hasTeam ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: gutter, gap: spacing.sm }}
+            >
+              {team.map((member) => (
+                <Chip
+                  key={member.id}
+                  label={staffLabel({ ...member, lastName: "" })}
+                  icon="account-outline"
+                  selected={member.id === person?.id}
+                  onPress={() => setPickedPerson(member.id)}
+                />
+              ))}
+            </ScrollView>
+          ) : null}
+
           <View
             style={{
               paddingHorizontal: gutter,
@@ -566,13 +619,15 @@ export default function ProAgenda() {
                   { color: theme.foreground.gray, textAlign: "center" },
                 ]}
               >
-                Salon fermé ce jour-là.
+                {hasTeam && salonDay?.open ? "Ne travaille pas ce jour-là." : "Salon fermé ce jour-là."}
               </Text>
-              <Button
-                label="Ouvrir ce jour"
-                variant="outline"
-                onPress={() => openHours(selectedDay.getDay())}
-              />
+              {hasTeam && salonDay?.open ? null : (
+                <Button
+                  label="Ouvrir ce jour"
+                  variant="outline"
+                  onPress={() => openHours(selectedDay.getDay())}
+                />
+              )}
             </View>
           ) : (
             <>
@@ -620,6 +675,7 @@ export default function ProAgenda() {
         appointment={liveSheetAppointment}
         visible={sheetVisible}
         onClose={() => setSheetVisible(false)}
+        startWith={sheetStart}
       />
 
       <ClosuresSheet visible={closuresOpen} onClose={() => setClosuresOpen(false)} />
@@ -901,4 +957,10 @@ function DayColumn({
       </View>
     </View>
   );
+}
+
+/** Who a request is held on, as the owner reads it. */
+function heldName(appointment: ProAppointment, team: { id: string; firstName: string; lastName: string; isOwner: boolean }[]): string {
+  const member = team.find((person) => person.id === appointment.staffId);
+  return member ? (member.isOwner ? "vous" : member.firstName) : (appointment.staffName ?? "quelqu'un de l'équipe");
 }
