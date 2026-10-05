@@ -65,6 +65,12 @@ describe("staffErrorMessage", () => {
     );
   });
 
+  it("says a salon whose team is full must move to the Équipe formula, and that the code isn't spent", () => {
+    expect(staffErrorMessage(httpError(409, "TEAM_FULL: your salon's formula has no place left"))).toBe(
+      "Ce salon a atteint la taille de son équipe. Demandez au gérant de passer à la formule Équipe, puis réessayez avec le même code.",
+    );
+  });
+
   it("says leaving waits until the salon has reassigned the bookings to come", () => {
     expect(
       staffErrorMessage(httpError(409, "STAFF_HAS_BOOKINGS: the salon has to reassign your bookings to come first")),

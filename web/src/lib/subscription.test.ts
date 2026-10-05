@@ -1,10 +1,37 @@
-import { describeMySubscription, landingAfterSignIn, yearlySaving } from "./subscription";
-import type { MySubscription } from "@/services/proApi";
+import {
+  describeFormula,
+  describeMySubscription,
+  describePrice,
+  formatEuros,
+  formulaLabel,
+  landingAfterSignIn,
+  priceFor,
+  TIER_INFO,
+  tierSaving,
+  trialSentence,
+  yearlySaving,
+} from "./subscription";
+import type { MySubscription, PlanPrice } from "@/services/proApi";
+
+/** Intl puts no-break spaces around the euro sign: compare with plain ones. */
+function plain(text: string | null): string | null {
+  return text && text.replace(/\s/g, " ");
+}
+
+// What GET /subscriptions/prices answers today.
+const PRICES: PlanPrice[] = [
+  { tier: "solo", plan: "monthly", amount: 29.99, currency: "eur" },
+  { tier: "solo", plan: "yearly", amount: 239.88, currency: "eur" },
+  { tier: "team", plan: "monthly", amount: 49.99, currency: "eur" },
+  { tier: "team", plan: "yearly", amount: 479.88, currency: "eur" },
+];
 
 function subscription(overrides: Partial<MySubscription>): MySubscription {
   return {
     state: "none",
     plan: "monthly",
+    tier: "solo",
+    teamLimit: 1,
     listed: false,
     offered: false,
     trialEndsAt: null,
@@ -74,6 +101,125 @@ describe("yearlySaving", () => {
     expect(yearlySaving(19, 182)).toBe("2 mois offerts");
     expect(yearlySaving(19, 205)).toBe("1 mois offert");
     expect(yearlySaving(19, 228)).toBeNull();
+  });
+});
+
+describe("tierSaving", () => {
+  it("computes what each tier's yearly plan saves against twelve monthly payments", () => {
+    // Solo: 12 × 29,99 − 239,88 = 120 € = 4 months; Équipe: 12 × 49,99 − 479,88 = 120 € = 2,4 months.
+    expect(tierSaving(PRICES, "solo")).toBe("4 mois offerts");
+    expect(tierSaving(PRICES, "team")).toBe("2 mois offerts");
+  });
+
+  it("follows the prices it is given", () => {
+    const cheaper = PRICES.map((price) =>
+      price.tier === "team" && price.plan === "yearly" ? { ...price, amount: 515 } : price,
+    );
+    expect(tierSaving(cheaper, "team")).toBe("1 mois offert");
+  });
+
+  it("says nothing when a price is missing or the yearly plan saves nothing", () => {
+    expect(tierSaving(PRICES.filter((price) => price.tier !== "team"), "team")).toBeNull();
+    expect(tierSaving(PRICES.filter((price) => price.plan !== "yearly"), "solo")).toBeNull();
+    const same = PRICES.map((price) => (price.tier === "solo" && price.plan === "yearly" ? { ...price, amount: 359.88 } : price));
+    expect(tierSaving(same, "solo")).toBeNull();
+  });
+});
+
+describe("yearlySaving rounding", () => {
+  it("doesn't lose a whole month to floating point", () => {
+    // Nine monthly payments of 29,99 € (269,91 €) are exactly three free months; in floating point it comes to 2,9999….
+    expect(yearlySaving(29.99, 269.91)).toBe("3 mois offerts");
+    expect(yearlySaving(29.99, 269.92)).toBe("2 mois offerts");
+    expect(yearlySaving(9.99, 109.89)).toBe("1 mois offert");
+  });
+});
+
+describe("TIER_INFO", () => {
+  it("names the two formulas", () => {
+    expect(TIER_INFO.solo).toEqual({ name: "Solo", tagline: "Vous seul·e dans votre salon" });
+    expect(TIER_INFO.team).toEqual({
+      name: "Équipe",
+      tagline: "Jusqu'à 5 personnes, vous compris : un agenda par coiffeur",
+    });
+  });
+});
+
+describe("formatEuros", () => {
+  it("writes euros the French way, cents only when there are some", () => {
+    expect(plain(formatEuros(29.99, "eur"))).toBe("29,99 €");
+    expect(plain(formatEuros(30, "eur"))).toBe("30 €");
+    expect(plain(formatEuros(239.88, "EUR"))).toBe("239,88 €");
+  });
+});
+
+describe("formulaLabel", () => {
+  it("puts a formula and its billing period on one line", () => {
+    expect(formulaLabel("team", "yearly")).toBe("Équipe · annuelle");
+    expect(formulaLabel("solo", "monthly")).toBe("Solo · mensuelle");
+  });
+
+  it("doesn't pretend an offered subscription is billed", () => {
+    expect(formulaLabel("team", "monthly", true)).toBe("Équipe · offerte");
+  });
+});
+
+describe("priceFor", () => {
+  it("finds the price of a tier and a billing period", () => {
+    expect(priceFor(PRICES, "team", "yearly")?.amount).toBe(479.88);
+    expect(priceFor(PRICES, "solo", "monthly")?.amount).toBe(29.99);
+    expect(priceFor(null, "solo", "monthly")).toBeUndefined();
+    expect(priceFor([], "solo", "monthly")).toBeUndefined();
+  });
+});
+
+describe("describePrice", () => {
+  it("shows a monthly plan as it is billed", () => {
+    const display = describePrice(PRICES[0]);
+    expect(plain(display.perMonth)).toBe("29,99 €");
+    expect(display.billing).toBeNull();
+  });
+
+  it("shows a yearly plan per month, with what is billed once a year", () => {
+    const solo = describePrice(PRICES[1]);
+    expect(plain(solo.perMonth)).toBe("19,99 €");
+    expect(plain(solo.billing)).toBe("facturé 239,88 € par an");
+    const team = describePrice(PRICES[3]);
+    expect(plain(team.perMonth)).toBe("39,99 €");
+    expect(plain(team.billing)).toBe("facturé 479,88 € par an");
+  });
+});
+
+describe("trialSentence", () => {
+  it("promises the free days, then the first charge", () => {
+    expect(plain(trialSentence(30, PRICES[0]))).toBe("30 jours d'essai gratuit, puis 29,99 € par mois.");
+    expect(plain(trialSentence(30, PRICES[3]))).toBe("30 jours d'essai gratuit, puis 479,88 € par an.");
+    expect(plain(trialSentence(1, PRICES[0]))).toBe("1 jour d'essai gratuit, puis 29,99 € par mois.");
+  });
+
+  it("says nothing without free days", () => {
+    expect(trialSentence(0, PRICES[0])).toBe("");
+  });
+});
+
+describe("describeFormula", () => {
+  it("names the formula, the billing period and the team size of a paying salon", () => {
+    expect(
+      describeFormula(subscription({ state: "active", tier: "team", plan: "yearly", teamLimit: 5 })),
+    ).toBe("Formule Équipe · Annuelle · jusqu'à 5 personnes");
+    expect(describeFormula(subscription({ state: "trialing", tier: "solo", plan: "monthly", teamLimit: 1 }))).toBe(
+      "Formule Solo · Mensuelle · vous seul·e",
+    );
+  });
+
+  it("leaves the billing period out of an offered subscription, which isn't billed", () => {
+    expect(describeFormula(subscription({ state: "active", offered: true, tier: "team", teamLimit: 5 }))).toBe(
+      "Formule Équipe · jusqu'à 5 personnes",
+    );
+  });
+
+  it("has nothing to say before a first subscription", () => {
+    expect(describeFormula(subscription({ state: "none" }))).toBeNull();
   });
 });
 

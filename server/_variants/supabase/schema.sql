@@ -1175,6 +1175,9 @@ values ('data-exports', 'data-exports', false);
 create table public.coiffeur_subscriptions (
   profile_id uuid primary key references public.profiles (id) on delete cascade,
   plan text not null default 'monthly' check (plan in ('monthly', 'yearly')),
+  -- What the salon pays for (TODO.md Phase 3): 'solo' (the owner alone) or
+  -- 'team' (up to five people, owner included). `plan` is its billing period.
+  tier text not null default 'solo' check (tier in ('solo', 'team')),
   -- Stripe's own subscription statuses, word for word; 'none' until the
   -- coiffeur completes a first Checkout. 'expired' is never stored: the API
   -- derives it, like appointments' 'done'.

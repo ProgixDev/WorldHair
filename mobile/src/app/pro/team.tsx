@@ -15,6 +15,7 @@ import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { inviteValidity, memberName, weekSummary } from "../../features/pro/team";
+import { inviteBlockedMessage, inviteRefusal, teamUsageLabel } from "../../features/pro/tiers";
 import type { SalonInvite, StaffMember } from "../../features/pro/types";
 import { createInvite, listInvites, proErrorMessage, revokeInvite } from "../../services/pro";
 
@@ -35,7 +36,7 @@ export default function ProTeamScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
-  const { profile, team, isLoading, refreshTeam } = usePro();
+  const { profile, team, subscription, isLoading, refreshTeam, refreshSubscription } = usePro();
 
   /** `null` while the first read is on its way. */
   const [invites, setInvites] = useState<SalonInvite[] | null>(null);
@@ -61,6 +62,13 @@ export default function ProTeamScreen() {
     [team, selected],
   );
 
+  // The formula sets how many people the salon holds, owner included; each
+  // code still open keeps a place for whoever it will let in. The server
+  // decides in the end (a 409 `TEAM_FULL`), this only spares a refused tap.
+  const tier = subscription?.tier ?? "solo";
+  const space = { limit: subscription?.teamLimit ?? 1, members: team.length, openInvites: invites?.length ?? 0 };
+  const inviteBlocked = inviteBlockedMessage({ ...space, tier });
+
   const loadInvites = useCallback(async () => {
     try {
       setInvites(await listInvites());
@@ -70,13 +78,15 @@ export default function ProTeamScreen() {
     }
   }, []);
 
+  // The formula too: the owner may have changed it on the website since the
+  // last visit. A stale one is no reason to fail, hence the catch.
   const reloadTeam = useCallback(
     () =>
-      refreshTeam().then(
+      Promise.all([refreshTeam(), refreshSubscription().catch(() => undefined)]).then(
         () => setTeamError(null),
         () => setTeamError("L'équipe n'a pas pu être actualisée. Vérifiez votre connexion."),
       ),
-    [refreshTeam],
+    [refreshTeam, refreshSubscription],
   );
 
   // Someone may have joined, or a code been used, since the last visit. A
@@ -110,7 +120,11 @@ export default function ProTeamScreen() {
       setShownInvite(created);
       setInviteVisible(true);
     } catch (err) {
-      setCreateError(proErrorMessage(err, "Le code n'a pas pu être créé. Réessayez."));
+      // Refused for want of a place although the screen showed one: say so,
+      // and read the team, the codes and the formula again.
+      const refusal = inviteRefusal(err, tier);
+      setCreateError(refusal ?? proErrorMessage(err, "Le code n'a pas pu être créé. Réessayez."));
+      if (refusal) void Promise.all([reloadTeam(), loadInvites()]);
     } finally {
       setCreating(false);
     }
@@ -247,7 +261,7 @@ export default function ProTeamScreen() {
                 <Text style={[typography.caption, { color: theme.danger }]}>{teamError}</Text>
               ) : null}
 
-              {team.length <= 1 ? (
+              {team.length <= 1 && !inviteBlocked ? (
                 <View
                   style={{
                     padding: spacing.lg,
@@ -274,18 +288,43 @@ export default function ProTeamScreen() {
 
             {/* ── Invite ───────────────────────────────────────────────── */}
             <View style={{ gap: spacing.sm }}>
-              <Button
-                label="Inviter un coiffeur"
-                icon="account-plus-outline"
-                onPress={() => void invite()}
-                loading={creating}
-                background={theme.primary.main}
-                color={theme.primary.on}
-              />
-              <Text style={[typography.caption, { color: theme.foreground.gray, textAlign: "center" }]}>
-                Un code à lui envoyer, valable 7 jours et une seule fois.
+              <Text style={[typography.label, { color: theme.foreground.white, textAlign: "center" }]}>
+                {teamUsageLabel(space)}
               </Text>
-              {createError ? (
+              {inviteBlocked ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: spacing.sm,
+                    padding: spacing.md,
+                    borderRadius: radius.lg,
+                    backgroundColor: theme.surface.raised,
+                    borderWidth: 1,
+                    borderColor: theme.divider,
+                  }}
+                >
+                  <MaterialCommunityIcons name="information-outline" size={18} color={theme.foreground.gray} />
+                  <Text style={[typography.bodySmall, { color: theme.foreground.white, flex: 1 }]}>
+                    {inviteBlocked}
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Button
+                    label="Inviter un coiffeur"
+                    icon="account-plus-outline"
+                    onPress={() => void invite()}
+                    loading={creating}
+                    background={theme.primary.main}
+                    color={theme.primary.on}
+                  />
+                  <Text style={[typography.caption, { color: theme.foreground.gray, textAlign: "center" }]}>
+                    Un code à lui envoyer, valable 7 jours et une seule fois.
+                  </Text>
+                </>
+              )}
+              {/* Once the screen knows it's full, its own explanation says it all. */}
+              {createError && !inviteBlocked ? (
                 <Text style={[typography.caption, { color: theme.danger, textAlign: "center" }]}>{createError}</Text>
               ) : null}
             </View>

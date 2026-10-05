@@ -15,6 +15,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
 import { countBookingsAfterEnd, describeSubscription } from "../../features/pro/subscription";
 import { teamSizeLabel } from "../../features/pro/team";
+import { tierLabel } from "../../features/pro/tiers";
 import type { Subscription } from "../../features/pro/types";
 import { fullDate } from "../../utils/date";
 import { MyDataGroups } from "../../components/account/MyDataGroups";
@@ -180,7 +181,7 @@ export default function ProAccount() {
           <RowShell
             icon="calendar-sync-outline"
             label="Formule"
-            value={subscription.plan === "yearly" ? "Annuelle" : "Mensuelle"}
+            value={tierLabel(subscription.tier) + " · " + (subscription.plan === "yearly" ? "Annuelle" : "Mensuelle")}
           />
         ) : null}
         {date ? (

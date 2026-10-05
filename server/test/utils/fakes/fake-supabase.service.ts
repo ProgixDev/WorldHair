@@ -254,6 +254,8 @@ interface NotificationLogRow {
 interface SubscriptionRow {
   profile_id: string;
   plan: string;
+  /** TODO.md Phase 3: 'solo' (one person) or 'team' (up to five). */
+  tier: string;
   status: string;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
@@ -1244,6 +1246,7 @@ export class FakeSupabaseService {
   seedSubscription(params: {
     profileId: string;
     plan?: string;
+    tier?: 'solo' | 'team';
     status?: string;
     stripeCustomerId?: string | null;
     stripeSubscriptionId?: string | null;
@@ -1257,6 +1260,7 @@ export class FakeSupabaseService {
     this.subscriptions.set(params.profileId, {
       profile_id: params.profileId,
       plan: params.plan ?? existing?.plan ?? 'monthly',
+      tier: params.tier ?? existing?.tier ?? 'solo',
       status: params.status ?? existing?.status ?? 'none',
       stripe_customer_id: pick(params.stripeCustomerId, existing?.stripe_customer_id ?? null),
       stripe_subscription_id: pick(params.stripeSubscriptionId, existing?.stripe_subscription_id ?? null),
@@ -2353,6 +2357,7 @@ export class FakeSupabaseService {
         const existing = rows.get(profileId);
         const merged = {
           plan: 'monthly',
+          tier: 'solo',
           status: 'none',
           stripe_customer_id: null,
           stripe_subscription_id: null,

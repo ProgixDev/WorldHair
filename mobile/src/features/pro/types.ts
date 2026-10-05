@@ -176,6 +176,9 @@ export interface PayoutStatus {
 
 export type PlanId = "monthly" | "yearly";
 
+/** « Solo » (the owner alone) or « Équipe » (five people in all, owner included) — sold on the website only. */
+export type SubscriptionTier = "solo" | "team";
+
 /** How the server reads the coiffeur's Stripe subscription (server/src/subscriptions/subscription-state.ts). */
 export type SubscriptionState =
   | "none"
@@ -195,7 +198,11 @@ export type SubscriptionState =
  */
 export interface Subscription {
   state: SubscriptionState;
+  /** The billing period; the formula is `tier`. */
   plan: PlanId;
+  tier: SubscriptionTier;
+  /** People the formula allows in the salon, its owner included (1 or 5). */
+  teamLimit: number;
   /** Visible in search and bookable right now. */
   listed: boolean;
   /** Offered without Stripe (demo salons, launch partners). */

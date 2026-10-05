@@ -42,6 +42,7 @@ describe('staff (e2e)', () => {
       services: [{ name: 'Coupe', price: 40, durationMin: 60, specialty: 'coupe' }],
       confirmationMode: 'manual',
     });
+    harness.supabase.seedSubscription({ profileId: owner.id, tier: 'team' });
     // Signed up through « Rejoindre un salon »: a client account until the code is in.
     harness.supabase.addUser(nadiaToken, nadia, 'particulier', { firstName: 'Nadia', lastName: 'Kaci' });
     harness.supabase.addUser(clientToken, client, 'particulier', { firstName: 'Camille', lastName: 'Durand' });

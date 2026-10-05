@@ -14,6 +14,8 @@ function subscription(overrides: Partial<Subscription>): Subscription {
   return {
     state: "active",
     plan: "monthly",
+    tier: "solo",
+    teamLimit: 1,
     listed: true,
     offered: false,
     trialEndsAt: null,

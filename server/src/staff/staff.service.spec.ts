@@ -28,6 +28,8 @@ describe('StaffService', () => {
     events = new EventEmitter2();
     staff = new StaffService(supabase as unknown as SupabaseService, events);
     supabase.seedValidatedSalon({ profileId: OWNER, firstName: 'Sofia', lastName: 'Benali', salonName: 'Studio W' });
+    // Most of these specs are about a team: the salon's on Équipe, the one that has one.
+    supabase.seedSubscription({ profileId: OWNER, tier: 'team', status: 'active' });
     supabase.addUser('nadia-token', { id: NADIA, email: 'nadia@example.com', email_confirmed_at: '2026-01-01T00:00:00Z' }, 'staff', {
       firstName: 'Nadia',
       lastName: 'Kaci',
@@ -140,6 +142,61 @@ describe('StaffService', () => {
 
       await expect(staff.join(NADIA, code)).rejects.toThrow(ConflictException);
       await expect(staff.join(OWNER, code)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe("a subscription's team size (TODO.md Phase 3)", () => {
+    const makeStaff = (index: number) => {
+      const id = `member-${index}`;
+      supabase.addUser(`token-${id}`, { id, email: `${id}@example.com`, email_confirmed_at: '2026-01-01T00:00:00Z' }, 'particulier');
+      return id;
+    };
+
+    it('lets a solo salon work alone: no invite, whatever the codes already made', async () => {
+      supabase.seedSubscription({ profileId: OWNER, tier: 'solo', status: 'active' });
+      await expect(staff.createInvite(OWNER)).rejects.toThrow(/TEAM_FULL/);
+    });
+
+    it('lets an Équipe salon bring four people besides its owner, never a fifth', async () => {
+      supabase.seedSubscription({ profileId: OWNER, tier: 'team', status: 'active' });
+      for (let index = 1; index <= 4; index += 1) {
+        const { code } = await staff.createInvite(OWNER);
+        await staff.join(makeStaff(index), code);
+      }
+      expect(await staff.team(OWNER)).toHaveLength(5);
+
+      await expect(staff.createInvite(OWNER)).rejects.toThrow(/TEAM_FULL/);
+    });
+
+    it('counts the codes still open as places taken, so two codes cannot make a sixth', async () => {
+      supabase.seedSubscription({ profileId: OWNER, tier: 'team', status: 'active' });
+      const codes: string[] = [];
+      for (let index = 1; index <= 4; index += 1) codes.push((await staff.createInvite(OWNER)).code);
+
+      await expect(staff.createInvite(OWNER)).rejects.toThrow(/TEAM_FULL/);
+      await staff.revokeInvite(OWNER, codes[0]);
+      await expect(staff.createInvite(OWNER)).resolves.toMatchObject({ code: expect.any(String) });
+    });
+
+    it('checks again when a code is used: a salon that dropped to solo meanwhile takes nobody', async () => {
+      supabase.seedSubscription({ profileId: OWNER, tier: 'team', status: 'active' });
+      const { code } = await staff.createInvite(OWNER);
+      supabase.seedSubscription({ profileId: OWNER, tier: 'solo' });
+
+      await expect(staff.join(NADIA, code)).rejects.toThrow(/TEAM_FULL/);
+      // The code isn't spent: the salon can still use it once it's back on Équipe.
+      supabase.seedSubscription({ profileId: OWNER, tier: 'team' });
+      await expect(staff.join(NADIA, code)).resolves.toMatchObject({ salonId: OWNER });
+    });
+
+    it('keeps a team that outgrew its tier, and says how many places are left', async () => {
+      supabase.seedSubscription({ profileId: OWNER, tier: 'team', status: 'active' });
+      const { code } = await staff.createInvite(OWNER);
+      await staff.join(NADIA, code);
+      supabase.seedSubscription({ profileId: OWNER, tier: 'solo' });
+
+      expect(await staff.team(OWNER)).toHaveLength(2);
+      await expect(staff.capacity(OWNER)).resolves.toEqual({ tier: 'solo', limit: 1, members: 2, openInvites: 0, free: 0 });
     });
   });
 

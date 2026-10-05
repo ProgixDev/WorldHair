@@ -1,20 +1,24 @@
 import Stripe from "stripe";
 import { subscriptionPageUrl } from "../src/common/utils/web-links";
 import { PLAN_LOOKUP_KEYS, PORTAL_CONFIGURATION_APP } from "../src/subscriptions/stripe-catalog";
+import { SUBSCRIPTION_TIERS, type SubscriptionTier } from "../src/subscriptions/tiers";
 
 /**
  * Prepares the Stripe account the server's STRIPE_SECRET_KEY points at
  * (TODO.md Phase 4). Safe to run again: it finds what it made before.
  *
  *   bun run stripe:setup
- *   bun run stripe:setup -- --monthly 19 --yearly 182
+ *   bun run stripe:setup -- --solo-monthly 29.99 --solo-yearly 239.88 --team-monthly 49.99 --team-yearly 479.88
  *   bun run stripe:setup -- --webhook-url https://worldhair-server.onrender.com/webhooks/stripe
  *
- * Creates: the "WorldHair Pro" product; a monthly and a yearly price (found
- * by the server through their lookup keys — a price change makes a new
- * price and moves the key to it, existing subscribers keep theirs until they
- * change plan); the Customer Portal settings (plan switch, card, invoices,
- * cancellation at period end); with --webhook-url, the two webhook
+ * Creates: the "WorldHair Solo" and "WorldHair Équipe" products (TODO.md
+ * Phase 3: one person, or up to five), each with a monthly and a yearly
+ * price (found by the server through their lookup keys — a price change
+ * makes a new price and moves the key to it, existing subscribers keep
+ * theirs until they change plan; a yearly price is twelve months paid at
+ * once, so 19,99 € a month yearly is 239,88); the Customer Portal settings
+ * (tier or period switch, card, invoices, cancellation at period end); with
+ * --webhook-url, the two webhook
  * endpoints — WorldHair's own account, and the salons' connected accounts
  * at <url>/connect — whose signing secrets it prints once, for
  * STRIPE_WEBHOOK_SECRET and STRIPE_CONNECT_WEBHOOK_SECRET.
@@ -38,6 +42,12 @@ const WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
 /** The salons' connected accounts (Phase 5): whether their payouts are set up. */
 const CONNECT_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = ["account.updated"];
 
+/** Prices in euros the client chose (TODO.md Phase 3): Solo 29,99 a month or 19,99 a month paid yearly; Équipe 49,99 or 39,99. */
+const DEFAULT_EUROS: Record<SubscriptionTier, { monthly: number; yearly: number }> = {
+  solo: { monthly: 29.99, yearly: 239.88 },
+  team: { monthly: 49.99, yearly: 479.88 },
+};
+
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
   return index === -1 ? undefined : process.argv[index + 1];
@@ -52,19 +62,31 @@ function euros(name: string, fallback: number): number {
   return value;
 }
 
-async function ensureProduct(stripe: Stripe): Promise<Stripe.Product> {
+const PRODUCTS: Record<SubscriptionTier, { name: string; description: string }> = {
+  solo: {
+    name: "WorldHair Solo",
+    description: "Référencement d'un salon tenu par une seule personne : fiche visible, réservations en ligne, agenda et statistiques.",
+  },
+  team: {
+    name: "WorldHair Équipe",
+    description: "Référencement d'un salon jusqu'à cinq personnes : un agenda par coiffeur, fiche visible, réservations en ligne et statistiques.",
+  },
+};
+
+async function ensureProduct(stripe: Stripe, tier: SubscriptionTier): Promise<Stripe.Product> {
   const products = await stripe.products.list({ active: true, limit: 100 });
-  const existing = products.data.find((product) => product.metadata.app === PORTAL_CONFIGURATION_APP);
+  const existing = products.data.find(
+    (product) => product.metadata.app === PORTAL_CONFIGURATION_APP && product.metadata.tier === tier,
+  );
   if (existing) {
-    console.log(`Product      ${existing.id} (already there)`);
+    console.log(`Product      ${existing.id} ${existing.name} (already there)`);
     return existing;
   }
   const product = await stripe.products.create({
-    name: "WorldHair Pro",
-    description: "Référencement du salon sur WorldHair : fiche visible, réservations en ligne, agenda et statistiques.",
-    metadata: { app: PORTAL_CONFIGURATION_APP },
+    ...PRODUCTS[tier],
+    metadata: { app: PORTAL_CONFIGURATION_APP, tier },
   });
-  console.log(`Product      ${product.id} (created)`);
+  console.log(`Product      ${product.id} ${product.name} (created)`);
   return product;
 }
 
@@ -96,7 +118,7 @@ async function ensurePrice(
   return price;
 }
 
-async function ensurePortal(stripe: Stripe, product: Stripe.Product, prices: Stripe.Price[]): Promise<void> {
+async function ensurePortal(stripe: Stripe, catalog: { product: Stripe.Product; prices: Stripe.Price[] }[]): Promise<void> {
   const returnUrl = subscriptionPageUrl(process.env.WEB_APP_URL);
   const settings: Stripe.BillingPortal.ConfigurationCreateParams = {
     business_profile: { headline: "WorldHair — votre abonnement professionnel" },
@@ -114,7 +136,7 @@ async function ensurePortal(stripe: Stripe, product: Stripe.Product, prices: Str
         enabled: true,
         default_allowed_updates: ["price"],
         proration_behavior: "create_prorations",
-        products: [{ product: product.id, prices: prices.map((price) => price.id) }],
+        products: catalog.map(({ product, prices }) => ({ product: product.id, prices: prices.map((price) => price.id) })),
       },
     },
     metadata: { app: PORTAL_CONFIGURATION_APP },
@@ -173,10 +195,14 @@ async function main(): Promise<void> {
   const stripe = new Stripe(key);
   console.log(`Stripe account in ${key.startsWith("sk_live_") ? "LIVE" : "test"} mode\n`);
 
-  const product = await ensureProduct(stripe);
-  const monthly = await ensurePrice(stripe, product, PLAN_LOOKUP_KEYS.monthly, "month", euros("monthly", 19));
-  const yearly = await ensurePrice(stripe, product, PLAN_LOOKUP_KEYS.yearly, "year", euros("yearly", 182));
-  await ensurePortal(stripe, product, [monthly, yearly]);
+  const catalog: { product: Stripe.Product; prices: Stripe.Price[] }[] = [];
+  for (const tier of SUBSCRIPTION_TIERS) {
+    const product = await ensureProduct(stripe, tier);
+    const monthly = await ensurePrice(stripe, product, PLAN_LOOKUP_KEYS[tier].monthly, "month", euros(`${tier}-monthly`, DEFAULT_EUROS[tier].monthly));
+    const yearly = await ensurePrice(stripe, product, PLAN_LOOKUP_KEYS[tier].yearly, "year", euros(`${tier}-yearly`, DEFAULT_EUROS[tier].yearly));
+    catalog.push({ product, prices: [monthly, yearly] });
+  }
+  await ensurePortal(stripe, catalog);
 
   const webhookUrl = argument("webhook-url");
   if (webhookUrl) {

@@ -16,6 +16,7 @@ import { SupabaseService } from '../database/supabase.service';
 import { PlatformSettingsService } from '../settings/platform-settings.service';
 import { StripeService } from '../stripe/stripe.service';
 import { PLAN_LOOKUP_KEYS, PORTAL_CONFIGURATION_APP } from './stripe-catalog';
+import { SUBSCRIPTION_TIERS, SubscriptionTier, teamLimitOf, tierOfLookupKey } from './tiers';
 import { SubscriptionNotifier } from './subscription-notifier';
 import {
   isListed,
@@ -32,6 +33,10 @@ import {
 export interface SubscriptionView {
   state: SubscriptionState;
   plan: SubscriptionPlan;
+  /** Solo, or Équipe (TODO.md Phase 3). */
+  tier: SubscriptionTier;
+  /** People the salon may have working in it, owner included. */
+  teamLimit: number;
   /** Visible in search and bookable right now. */
   listed: boolean;
   /** Offered without Stripe (seeded demo salons, launch partners). */
@@ -51,6 +56,7 @@ export interface SubscriptionView {
 }
 
 export interface PlanPrice {
+  tier: SubscriptionTier;
   plan: SubscriptionPlan;
   /** Euros, TTC. */
   amount: number;
@@ -63,6 +69,7 @@ export interface AdminSubscriptionSummary {
   lastName: string;
   email: string;
   plan: SubscriptionPlan;
+  tier: SubscriptionTier;
   state: SubscriptionState;
   /** Stripe's own status; `null` for an offered subscription or none at all. */
   stripeStatus: StripeSubscriptionStatus | null;
@@ -81,7 +88,7 @@ interface ProfileRow {
 interface PriceBook {
   fetchedAt: number;
   prices: PlanPrice[];
-  ids: Record<SubscriptionPlan, string>;
+  ids: Record<SubscriptionTier, Record<SubscriptionPlan, string>>;
 }
 
 const PRICE_CACHE_MS = 10 * 60_000;
@@ -116,7 +123,7 @@ function knownStatus(status: Stripe.Subscription.Status): StripeSubscriptionStat
 }
 
 function planOf(price: Stripe.Price | undefined): SubscriptionPlan {
-  return price?.lookup_key === PLAN_LOOKUP_KEYS.yearly || price?.recurring?.interval === 'year' ? 'yearly' : 'monthly';
+  return price?.lookup_key?.endsWith('_yearly') || price?.recurring?.interval === 'year' ? 'yearly' : 'monthly';
 }
 
 /**
@@ -156,6 +163,8 @@ export class SubscriptionsService {
     return {
       state: subscriptionState(row, now),
       plan: row?.plan ?? 'monthly',
+      tier: row?.tier ?? 'solo',
+      teamLimit: teamLimitOf(row),
       // What search shows: the subscription, and a salon page complete in the app.
       listed: isListed(row, now) && validated && Boolean(application?.shopProfileComplete),
       offered: row !== null && row.status !== 'none' && row.stripe_subscription_id === null,
@@ -175,7 +184,7 @@ export class SubscriptionsService {
     return (await this.priceBook()).prices;
   }
 
-  async createCheckoutSession(profileId: string, plan: SubscriptionPlan): Promise<{ url: string }> {
+  async createCheckoutSession(profileId: string, tier: SubscriptionTier, plan: SubscriptionPlan): Promise<{ url: string }> {
     // Paying before the admin's validation would charge for a salon that can't be listed.
     if (!(await this.isValidated(profileId))) {
       throw new ForbiddenException('The application must be validated before subscribing');
@@ -193,7 +202,7 @@ export class SubscriptionsService {
       mode: 'subscription',
       customer,
       client_reference_id: profileId,
-      line_items: [{ price: book.ids[plan], quantity: 1 }],
+      line_items: [{ price: book.ids[tier][plan], quantity: 1 }],
       subscription_data: {
         metadata: { profile_id: profileId },
         ...this.trialFor(row, settings.trialDays, new Date()),
@@ -358,6 +367,7 @@ export class SubscriptionsService {
         lastName: profile.last_name,
         email: emailById.get(profile.id) ?? '',
         plan: row?.plan ?? 'monthly',
+        tier: row?.tier ?? 'solo',
         state: subscriptionState(row, now),
         stripeStatus: row?.stripe_subscription_id ? row.status : null,
         trialEndsAt: row?.trial_ends_at ?? null,
@@ -422,6 +432,7 @@ export class SubscriptionsService {
     const next: SubscriptionRow = {
       profile_id: profileId,
       plan: planOf(item?.price),
+      tier: tierOfLookupKey(item?.price?.lookup_key),
       status,
       stripe_customer_id: customerId,
       stripe_subscription_id: subscription.id,
@@ -486,25 +497,22 @@ export class SubscriptionsService {
       return this.priceBookCache;
     }
     const { data } = await this.stripe.client.prices.list({
-      lookup_keys: Object.values(PLAN_LOOKUP_KEYS),
+      lookup_keys: SUBSCRIPTION_TIERS.flatMap((tier) => Object.values(PLAN_LOOKUP_KEYS[tier])),
       active: true,
     });
-    const find = (plan: SubscriptionPlan) => data.find((price) => price.lookup_key === PLAN_LOOKUP_KEYS[plan]);
-    const monthly = find('monthly');
-    const yearly = find('yearly');
-    if (!monthly || !yearly) {
-      throw new ServiceUnavailableException('Stripe prices are missing: run `bun run stripe:setup`');
+    const prices: PlanPrice[] = [];
+    const ids = { solo: {}, team: {} } as PriceBook['ids'];
+    for (const tier of SUBSCRIPTION_TIERS) {
+      for (const plan of ['monthly', 'yearly'] as const) {
+        const price = data.find((candidate) => candidate.lookup_key === PLAN_LOOKUP_KEYS[tier][plan]);
+        if (!price) {
+          throw new ServiceUnavailableException('Stripe prices are missing: run `bun run stripe:setup`');
+        }
+        prices.push({ tier, plan, amount: (price.unit_amount ?? 0) / 100, currency: price.currency });
+        ids[tier][plan] = price.id;
+      }
     }
-    const toPlanPrice = (plan: SubscriptionPlan, price: Stripe.Price): PlanPrice => ({
-      plan,
-      amount: (price.unit_amount ?? 0) / 100,
-      currency: price.currency,
-    });
-    this.priceBookCache = {
-      fetchedAt: Date.now(),
-      prices: [toPlanPrice('monthly', monthly), toPlanPrice('yearly', yearly)],
-      ids: { monthly: monthly.id, yearly: yearly.id },
-    };
+    this.priceBookCache = { fetchedAt: Date.now(), prices, ids };
     return this.priceBookCache;
   }
 

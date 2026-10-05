@@ -129,10 +129,12 @@ describe('SubscriptionsService', () => {
   });
 
   describe('listPrices', () => {
-    it("reads both plans' prices from Stripe, in euros", async () => {
+    it("reads each tier's monthly and yearly prices from Stripe, in euros", async () => {
       await expect(service.listPrices()).resolves.toEqual([
-        { plan: 'monthly', amount: 19, currency: 'eur' },
-        { plan: 'yearly', amount: 182, currency: 'eur' },
+        { tier: 'solo', plan: 'monthly', amount: 29.99, currency: 'eur' },
+        { tier: 'solo', plan: 'yearly', amount: 239.88, currency: 'eur' },
+        { tier: 'team', plan: 'monthly', amount: 49.99, currency: 'eur' },
+        { tier: 'team', plan: 'yearly', amount: 479.88, currency: 'eur' },
       ]);
     });
 
@@ -146,8 +148,8 @@ describe('SubscriptionsService', () => {
     it("creates the coiffeur's Stripe customer once, then a subscription Checkout with the admin's trial", async () => {
       supabase.seedPlatformSettings({ trialDays: 14 });
 
-      const { url } = await service.createCheckoutSession(COIFFEUR_ID, 'yearly');
-      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+      const { url } = await service.createCheckoutSession(COIFFEUR_ID, 'solo', 'yearly');
+      await service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly');
 
       expect(url).toBe('https://checkout.stripe.test/cs_test_1');
       expect(stripe.customersCreated).toHaveLength(1);
@@ -158,7 +160,7 @@ describe('SubscriptionsService', () => {
         mode: 'subscription',
         customer: 'cus_test_1',
         client_reference_id: COIFFEUR_ID,
-        line_items: [{ price: 'price_yearly', quantity: 1 }],
+        line_items: [{ price: 'price_solo_yearly', quantity: 1 }],
         subscription_data: { trial_period_days: 14, metadata: { profile_id: COIFFEUR_ID } },
         success_url: 'https://worldhair.test/pro/abonnement?checkout=success',
         cancel_url: 'https://worldhair.test/pro/abonnement?checkout=cancel',
@@ -166,10 +168,20 @@ describe('SubscriptionsService', () => {
       expect(supabase.subscriptionFor(COIFFEUR_ID)).toMatchObject({ status: 'none', stripe_customer_id: 'cus_test_1' });
     });
 
+    it('starts Checkout on the tier picked: Équipe has its own prices', async () => {
+      await service.createCheckoutSession(COIFFEUR_ID, 'team', 'monthly');
+      await service.createCheckoutSession(COIFFEUR_ID, 'team', 'yearly');
+
+      expect(stripe.checkoutSessionsCreated.map((session) => session.line_items?.[0].price)).toEqual([
+        'price_team_monthly',
+        'price_team_yearly',
+      ]);
+    });
+
     it("refuses a coiffeur whose application isn't validated: they'd pay without ever being listed", async () => {
       supabase.seedApplication({ profileId: COIFFEUR_ID, status: 'pending' });
 
-      await expect(service.createCheckoutSession(COIFFEUR_ID, 'monthly')).rejects.toThrow(ForbiddenException);
+      await expect(service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly')).rejects.toThrow(ForbiddenException);
       expect(stripe.customersCreated).toHaveLength(0);
     });
 
@@ -177,7 +189,7 @@ describe('SubscriptionsService', () => {
       supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'canceled', stripeCustomerId: 'cus_old', stripeSubscriptionId: 'sub_old' });
       await stripe.customers.del('cus_old');
 
-      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+      await service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly');
 
       expect(stripe.customersCreated).toHaveLength(1);
       expect(stripe.customersCreated[0].idempotencyKey).toBe(`worldhair-customer-${COIFFEUR_ID}-after-cus_old`);
@@ -193,7 +205,7 @@ describe('SubscriptionsService', () => {
         stripeSubscriptionId: 'sub_old',
       });
 
-      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+      await service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly');
 
       expect(stripe.customersCreated).toHaveLength(0);
       expect(stripe.checkoutSessionsCreated[0].customer).toBe('cus_9');
@@ -204,7 +216,7 @@ describe('SubscriptionsService', () => {
       supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'none', stripeCustomerId: 'cus_1' });
       stripe.putSubscription({ id: 'sub_1', customer: 'cus_1', status: 'trialing' });
 
-      await expect(service.createCheckoutSession(COIFFEUR_ID, 'monthly')).rejects.toThrow(BadRequestException);
+      await expect(service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly')).rejects.toThrow(BadRequestException);
       expect(stripe.checkoutSessionsCreated).toHaveLength(0);
     });
 
@@ -212,7 +224,7 @@ describe('SubscriptionsService', () => {
       supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'none', stripeCustomerId: 'cus_1' });
       const otherTab = stripe.openSessionFor('cus_1');
 
-      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+      await service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly');
 
       expect(stripe.sessionStatus(otherTab)).toBe('expired');
     });
@@ -221,7 +233,7 @@ describe('SubscriptionsService', () => {
       const offeredEnd = new Date(Date.now() + 200 * DAY_SECONDS * 1000);
       supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', currentPeriodEnd: offeredEnd.toISOString() });
 
-      await service.createCheckoutSession(COIFFEUR_ID, 'monthly');
+      await service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly');
 
       expect(stripe.checkoutSessionsCreated[0].subscription_data).toMatchObject({
         trial_end: Math.floor(offeredEnd.getTime() / 1000),
@@ -238,13 +250,13 @@ describe('SubscriptionsService', () => {
         stripeSubscriptionId: 'sub_1',
       });
 
-      await expect(service.createCheckoutSession(COIFFEUR_ID, 'monthly')).rejects.toThrow(BadRequestException);
+      await expect(service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly')).rejects.toThrow(BadRequestException);
     });
 
     it('lets a salon with an offered subscription subscribe for real', async () => {
       supabase.seedSubscription({ profileId: COIFFEUR_ID, status: 'active', currentPeriodEnd: '2030-01-01T00:00:00.000Z' });
 
-      await expect(service.createCheckoutSession(COIFFEUR_ID, 'monthly')).resolves.toEqual({
+      await expect(service.createCheckoutSession(COIFFEUR_ID, 'solo', 'monthly')).resolves.toEqual({
         url: 'https://checkout.stripe.test/cs_test_1',
       });
     });
@@ -272,6 +284,17 @@ describe('SubscriptionsService', () => {
   });
 
   describe('Stripe events', () => {
+    it("records the tier a subscription bills, and follows a change of tier from the portal", async () => {
+      const periodEnd = nowSeconds() + 30 * DAY_SECONDS;
+      stripe.putSubscription({ id: 'sub_t', customer: 'cus_t', status: 'active', profileId: COIFFEUR_ID, tier: 'team', plan: 'yearly', currentPeriodEnd: periodEnd });
+      await service.handleStripeEvent(stripeEvent('customer.subscription.created', { id: 'sub_t' }));
+      await expect(service.getMine(COIFFEUR_ID)).resolves.toMatchObject({ tier: 'team', plan: 'yearly', teamLimit: 5 });
+
+      stripe.putSubscription({ id: 'sub_t', customer: 'cus_t', status: 'active', profileId: COIFFEUR_ID, tier: 'solo', plan: 'monthly', currentPeriodEnd: periodEnd });
+      await service.handleStripeEvent(stripeEvent('customer.subscription.updated', { id: 'sub_t' }));
+      await expect(service.getMine(COIFFEUR_ID)).resolves.toMatchObject({ tier: 'solo', plan: 'monthly', teamLimit: 1 });
+    });
+
     it('records the subscription once Checkout completes', async () => {
       const trialEnd = nowSeconds() + 30 * DAY_SECONDS;
       stripe.putSubscription({

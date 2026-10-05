@@ -240,6 +240,17 @@ Taken up again 2026-10-05. Decisions (user, 2026-10-05):
   - Done when: two people in one salon take overlapping bookings, a request
     can't be accepted without someone free picked, and a solo salon works as
     before.
+  - Formulas (client, 2026-10-03): **Solo**, the owner alone, 29,99 €/month
+    billed monthly or 19,99 €/month billed yearly (239,88 €); **Équipe**, up
+    to 5 people owner included, 49,99 or 39,99 (479,88 €). One Stripe
+    product per formula, each with a monthly and a yearly price
+    (`worldhair_solo_*`, `worldhair_team_*`; `bun run stripe:setup` makes
+    them, prices are its arguments). `coiffeur_subscriptions.tier` (migration
+    `phase3_subscription_tier`), `GET /subscriptions/mine` says `tier` and
+    `teamLimit`. Invites are refused (`TEAM_FULL`) when
+    members + open codes reach the limit, and a code is checked again when
+    used. A salon that drops to Solo keeps its team but takes nobody new.
+    The website's `/pro/abonnement` sells both; the app only shows it.
   - Built 2026-10-05 (migration `phase3_staff` applied to the dev database:
     every salon's owner is its first member, every booking his). Also: the
     owner sees who is free when accepting (`GET /appointments/:id/staff`); a

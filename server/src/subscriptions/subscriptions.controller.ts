@@ -29,7 +29,7 @@ export class SubscriptionsController {
     @CurrentUser() current: AuthenticatedUser,
     @Body() dto: CreateCheckoutSessionDto,
   ): Promise<{ url: string }> {
-    return this.subscriptions.createCheckoutSession(current.id, dto.plan);
+    return this.subscriptions.createCheckoutSession(current.id, dto.tier ?? 'solo', dto.plan);
   }
 
   @Post('portal-session')

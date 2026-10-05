@@ -8,6 +8,7 @@ function row(overrides: Partial<SubscriptionRow>): SubscriptionRow {
   return {
     profile_id: 'coiffeur-1',
     plan: 'monthly',
+    tier: 'solo',
     status: 'active',
     stripe_customer_id: 'cus_1',
     stripe_subscription_id: 'sub_1',

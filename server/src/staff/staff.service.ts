@@ -9,8 +9,10 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomInt } from 'node:crypto';
 import { slices } from '../common/utils/slices';
+import { findSalonSubscription } from '../common/utils/subscription-status';
 import { SupabaseService } from '../database/supabase.service';
 import { AvailabilityDay } from '../salon/salon.service';
+import { SubscriptionTier, teamLimitOf } from '../subscriptions/tiers';
 
 /**
  * A salon's team (TODO.md Phase 3): its owner and the coiffeurs who joined
@@ -39,6 +41,17 @@ export interface SalonInvite {
   code: string;
   expiresAt: string;
   createdAt: string;
+}
+
+/** How many people the salon's formula allows, and how many places are left (TODO.md Phase 3). */
+export interface TeamCapacity {
+  tier: SubscriptionTier;
+  /** People working in the salon, its owner included. */
+  limit: number;
+  members: number;
+  /** Codes made and not used yet: each holds a place. */
+  openInvites: number;
+  free: number;
 }
 
 /** What the invite link's page and the join screen show before joining. */
@@ -91,6 +104,9 @@ interface InviteRow {
 }
 
 /** No 0/O, 1/I: read out loud or typed from a message without a doubt. */
+/** The salon's formula has no place left: the owner moves to Équipe, or frees one. */
+const TEAM_FULL = 'TEAM_FULL: your salon\'s formula has no place left';
+
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 6;
 const INVITE_DAYS = 7;
@@ -260,6 +276,27 @@ export class StaffService {
     await this.deleteRow(row.id);
   }
 
+  /**
+   * The formula's team size against who's in the team and the codes still
+   * open. A salon that dropped from Équipe to Solo keeps its people (`free`
+   * is 0, never negative) but takes nobody new.
+   */
+  async capacity(salonId: string): Promise<TeamCapacity> {
+    const [row, members, invites] = await Promise.all([
+      findSalonSubscription(this.supabase, salonId),
+      this.team(salonId),
+      this.listInvites(salonId),
+    ]);
+    const limit = teamLimitOf(row);
+    return {
+      tier: row?.tier ?? 'solo',
+      limit,
+      members: members.length,
+      openInvites: invites.length,
+      free: Math.max(0, limit - members.length - invites.length),
+    };
+  }
+
   /** Bookings still to come on this person, held or accepted — one in progress included. */
   async upcomingCount(staffId: string): Promise<number> {
     const now = Date.now();
@@ -294,6 +331,10 @@ export class StaffService {
       throw new ForbiddenException('Your salon has to be validated before it takes a team');
     }
     await this.team(salonId);
+    // The formula's places: a code holds one until it's used, expires or is cancelled.
+    if ((await this.capacity(salonId)).free <= 0) {
+      throw new ConflictException(TEAM_FULL);
+    }
     // A code already taken (one chance in a billion) gets another.
     for (let attempt = 0; attempt < 5; attempt++) {
       const { data, error } = await this.supabase.client
@@ -418,6 +459,10 @@ export class StaffService {
 
   private async addMember(salonId: string, profileId: string): Promise<StaffRow> {
     const team = await this.team(salonId);
+    // Checked again here: the salon may have dropped to Solo since it made the code. This code is the claimed one, no longer open.
+    if (team.length >= teamLimitOf(await findSalonSubscription(this.supabase, salonId))) {
+      throw new ConflictException(TEAM_FULL);
+    }
     const { data, error } = await this.supabase.client
       .from('salon_staff')
       .insert({

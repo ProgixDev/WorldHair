@@ -5,6 +5,9 @@
  * (seeded demo salons, launch partners), good until `current_period_end`.
  */
 
+import type { SubscriptionTier } from './tiers';
+
+/** The billing period; the tier (Solo or Équipe) is separate. */
 export type SubscriptionPlan = 'monthly' | 'yearly';
 
 /** Stripe's own subscription statuses, word for word; 'none' before any Checkout. */
@@ -35,6 +38,8 @@ export type SubscriptionState =
 export interface SubscriptionRow {
   profile_id: string;
   plan: SubscriptionPlan;
+  /** What the salon pays for (TODO.md Phase 3): Solo, or Équipe. */
+  tier: SubscriptionTier;
   status: StripeSubscriptionStatus;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;

@@ -95,6 +95,10 @@ export function staffErrorMessage(err: unknown): string {
   if (message.startsWith("ALREADY_IN_SALON")) {
     return "Votre compte fait déjà partie d'un salon : quittez-le d'abord pour en rejoindre un autre.";
   }
+  // The salon dropped to Solo, or filled up, since the code was made: the code stays valid.
+  if (message.startsWith("TEAM_FULL")) {
+    return "Ce salon a atteint la taille de son équipe. Demandez au gérant de passer à la formule Équipe, puis réessayez avec le même code.";
+  }
   if (message.startsWith("STAFF_HAS_BOOKINGS")) {
     return "Des rendez-vous à venir sont encore à votre nom : demandez au salon de les réattribuer à quelqu'un d'autre, puis réessayez.";
   }

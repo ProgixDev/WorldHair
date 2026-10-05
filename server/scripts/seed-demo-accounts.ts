@@ -547,7 +547,8 @@ async function seedSalonWorkspace(
   ]);
   if (servicesError) throw servicesError;
 
-  await offerSubscription(supabase, userId);
+  // Studio W has a team (TODO.md Phase 3): the Équipe formula.
+  await offerSubscription(supabase, userId, "team");
 
   // Bookable without the salon's own Stripe payouts, so paying in the app can be
   // tried end to end; a real onboarding later (test mode) takes over.

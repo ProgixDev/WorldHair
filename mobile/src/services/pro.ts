@@ -507,12 +507,18 @@ export async function deleteTimeOff(id: string): Promise<TimeOff[]> {
 
 // ─── Subscription ────────────────────────────────────────────────────────────
 
+/** `tier` and `teamLimit` are absent from a server older than the two formulas. */
+type SubscriptionResponse = Omit<Subscription, "tier" | "teamLimit"> & Partial<Pick<Subscription, "tier" | "teamLimit">>;
+
 /** Read-only: subscriptions are sold and managed on the website, through Stripe. */
 export async function getSubscription(): Promise<Subscription> {
-  const { data } = await apiClient.get<Subscription>("/subscriptions/mine");
+  const { data } = await apiClient.get<SubscriptionResponse>("/subscriptions/mine");
   return {
     state: data.state,
     plan: data.plan,
+    // A server from before the formulas answers neither: every salon was alone then.
+    tier: data.tier ?? "solo",
+    teamLimit: data.teamLimit ?? 1,
     listed: data.listed,
     offered: data.offered,
     trialEndsAt: data.trialEndsAt,

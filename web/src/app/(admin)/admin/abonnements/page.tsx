@@ -2,15 +2,11 @@
 
 import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { Pagination, pageSlice } from "@/components/admin/Pagination";
+import { formulaLabel } from "@/lib/subscription";
 import { cn } from "@/lib/utils";
 import { type AdminSubscriptionSummary, listSubscriptions } from "@/services/adminApi";
 import { ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-
-const PLAN_LABELS: Record<AdminSubscriptionSummary["plan"], string> = {
-  monthly: "Mensuel",
-  yearly: "Annuel",
-};
 
 const STATE_STYLES: Record<AdminSubscriptionSummary["state"], string> = {
   none: "bg-white/10 text-[#93a6bc]",
@@ -108,7 +104,9 @@ export default function AdminAbonnementsPage() {
 
                   <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                     <span className="text-xs text-[#93a6bc]">
-                      {subscription.state === "none" ? "—" : offered ? "Offert" : PLAN_LABELS[subscription.plan]}
+                      {subscription.state === "none"
+                        ? "—"
+                        : formulaLabel(subscription.tier, subscription.plan, offered)}
                     </span>
                     <span
                       className={cn(

@@ -1,7 +1,8 @@
 import { AxiosError, AxiosHeaders } from "axios";
-import { proErrorMessage } from "./pro";
+import { apiClient } from "../lib/apiClient";
+import { getSubscription, proErrorMessage } from "./pro";
 
-jest.mock("../lib/apiClient", () => ({ apiClient: {} }));
+jest.mock("../lib/apiClient", () => ({ apiClient: { get: jest.fn() } }));
 jest.mock("../lib/supabase", () => ({ supabase: {} }));
 jest.mock("../lib/uploadPhoto", () => ({}));
 
@@ -61,5 +62,28 @@ describe("proErrorMessage", () => {
 
   it("falls back to a generic message for anything else", () => {
     expect(proErrorMessage(new Error("network down"))).toBe("Une erreur est survenue. Réessayez.");
+  });
+});
+
+describe("getSubscription", () => {
+  const base = {
+    state: "active",
+    plan: "yearly",
+    listed: true,
+    offered: false,
+    trialEndsAt: null,
+    currentPeriodEnd: "2027-10-01T00:00:00.000Z",
+    endsAt: null,
+  };
+
+  it("reads the formula and how many people it allows, apart from the billing period", async () => {
+    (apiClient.get as jest.Mock).mockResolvedValueOnce({ data: { ...base, tier: "team", teamLimit: 5 } });
+    await expect(getSubscription()).resolves.toMatchObject({ plan: "yearly", tier: "team", teamLimit: 5 });
+    expect(apiClient.get).toHaveBeenCalledWith("/subscriptions/mine");
+  });
+
+  it("takes a server from before the formulas for Solo, one person", async () => {
+    (apiClient.get as jest.Mock).mockResolvedValueOnce({ data: base });
+    await expect(getSubscription()).resolves.toMatchObject({ tier: "solo", teamLimit: 1 });
   });
 });

@@ -54,20 +54,41 @@ describe('subscriptions (e2e)', () => {
         .get('/subscriptions/mine')
         .set('Authorization', `Bearer ${coiffeurToken}`)
         .expect(200)
-        .expect((res) => expect(res.body).toMatchObject({ state: 'none', listed: false, trialDays: 30 }));
+        .expect((res) => expect(res.body).toMatchObject({ state: 'none', listed: false, trialDays: 30, tier: 'solo', teamLimit: 1 }));
 
       await request(server)
         .get('/subscriptions/prices')
         .set('Authorization', `Bearer ${coiffeurToken}`)
         .expect(200)
-        .expect((res) => expect(res.body.map((price: { amount: number }) => price.amount)).toEqual([19, 182]));
+        .expect((res) =>
+          expect(res.body.map((price: { tier: string; plan: string; amount: number }) => [price.tier, price.plan, price.amount])).toEqual([
+            ['solo', 'monthly', 29.99],
+            ['solo', 'yearly', 239.88],
+            ['team', 'monthly', 49.99],
+            ['team', 'yearly', 479.88],
+          ]),
+        );
 
       await request(server)
         .post('/subscriptions/checkout-session')
         .set('Authorization', `Bearer ${coiffeurToken}`)
-        .send({ plan: 'yearly' })
+        .send({ tier: 'team', plan: 'yearly' })
         .expect(201)
         .expect((res) => expect(res.body.url).toMatch(/^https:\/\/checkout\.stripe\.test\//));
+      // A website from before tiers sends the period alone: Solo.
+      await request(server)
+        .post('/subscriptions/checkout-session')
+        .set('Authorization', `Bearer ${coiffeurToken}`)
+        .send({ plan: 'monthly' })
+        .expect(201);
+    });
+
+    it('rejects an unknown tier', async () => {
+      await request(server)
+        .post('/subscriptions/checkout-session')
+        .set('Authorization', `Bearer ${coiffeurToken}`)
+        .send({ tier: 'gold', plan: 'monthly' })
+        .expect(400);
     });
 
     it('rejects an unknown plan, and the old in-app plan/cancel endpoints are gone', async () => {

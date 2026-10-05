@@ -1,9 +1,11 @@
 import type Stripe from 'stripe';
 
-/** What the setup script (scripts/stripe-setup.ts) creates: one price per plan, found by lookup key. */
+/** What the setup script (scripts/stripe-setup.ts) creates: a monthly and a yearly price per tier, found by lookup key. */
 const PRICES = [
-  { id: 'price_monthly', lookup_key: 'worldhair_pro_monthly', unit_amount: 1900, currency: 'eur', recurring: { interval: 'month' } },
-  { id: 'price_yearly', lookup_key: 'worldhair_pro_yearly', unit_amount: 18200, currency: 'eur', recurring: { interval: 'year' } },
+  { id: 'price_solo_monthly', lookup_key: 'worldhair_solo_monthly', unit_amount: 2999, currency: 'eur', recurring: { interval: 'month' } },
+  { id: 'price_solo_yearly', lookup_key: 'worldhair_solo_yearly', unit_amount: 23988, currency: 'eur', recurring: { interval: 'year' } },
+  { id: 'price_team_monthly', lookup_key: 'worldhair_team_monthly', unit_amount: 4999, currency: 'eur', recurring: { interval: 'month' } },
+  { id: 'price_team_yearly', lookup_key: 'worldhair_team_yearly', unit_amount: 47988, currency: 'eur', recurring: { interval: 'year' } },
 ];
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -14,6 +16,8 @@ export interface FakeSubscriptionInput {
   status: Stripe.Subscription.Status;
   profileId?: string;
   plan?: 'monthly' | 'yearly';
+  /** Which tier's price it bills (TODO.md Phase 3); solo by default. */
+  tier?: 'solo' | 'team';
   /** Unix seconds, like Stripe. */
   trialEnd?: number | null;
   /** Unix seconds; a month ahead by default, as a running subscription has. */
@@ -409,7 +413,9 @@ export class FakeStripe {
 
   /** Test convenience: the subscription as `subscriptions.retrieve` returns it from now on. */
   putSubscription(input: FakeSubscriptionInput): Stripe.Subscription {
-    const price = PRICES[input.plan === 'yearly' ? 1 : 0];
+    const price = PRICES.find(
+      (candidate) => candidate.lookup_key === `worldhair_${input.tier ?? 'solo'}_${input.plan === 'yearly' ? 'yearly' : 'monthly'}`,
+    )!;
     const subscription = {
       id: input.id,
       object: 'subscription',

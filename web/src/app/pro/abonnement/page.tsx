@@ -1,8 +1,9 @@
 "use client";
 
+import { FormulaPicker } from "@/components/pro/FormulaPicker";
 import { useCoiffeurSession } from "@/components/pro/ProAuthGuard";
 import { Button } from "@/components/ui/Button";
-import { describeMySubscription, yearlySaving } from "@/lib/subscription";
+import { describeFormula, describeMySubscription } from "@/lib/subscription";
 import { cn } from "@/lib/utils";
 import { signOutAdmin } from "@/services/adminAuth";
 import {
@@ -13,9 +14,10 @@ import {
   type PlanId,
   type PlanPrice,
   startCheckout,
+  type SubscriptionTier,
 } from "@/services/proApi";
 import { isAxiosError } from "axios";
-import { Check, CreditCard, FileText, Lock, RefreshCw } from "lucide-react";
+import { CreditCard, FileText, Lock, RefreshCw } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -25,19 +27,6 @@ const TONE_STYLES = {
   warning: "border-[#e4b980] text-[#e4b980]",
   danger: "border-[#ff7a70] text-[#ff7a70]",
 } as const;
-
-const PLAN_LABELS: Record<PlanId, { name: string; period: string }> = {
-  monthly: { name: "Mensuel", period: "par mois" },
-  yearly: { name: "Annuel", period: "par an" },
-};
-
-function formatPrice(price: PlanPrice): string {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: price.currency.toUpperCase(),
-    maximumFractionDigits: Number.isInteger(price.amount) ? 0 : 2,
-  }).format(price.amount);
-}
 
 function messageFor(error: unknown): string {
   const status = isAxiosError(error) ? error.response?.status : undefined;
@@ -64,7 +53,8 @@ export default function AbonnementPage() {
   const [plan, setPlan] = useState<PlanId>("monthly");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [redirecting, setRedirecting] = useState(false);
+  // What the coiffeur is being sent to: a formula's Checkout, or the Customer Portal.
+  const [redirecting, setRedirecting] = useState<SubscriptionTier | "portal" | null>(null);
   const [checkout, setCheckout] = useState<"success" | "cancel" | null>(null);
   const [activationSlow, setActivationSlow] = useState(false);
 
@@ -73,6 +63,7 @@ export default function AbonnementPage() {
       getMySubscription()
         .then(async (mine) => {
           setSubscription(mine);
+          // A salon that has subscribed sees its own billing period (and formula, highlighted) first.
           if (mine.state !== "none") setPlan(mine.plan);
           setLoadError(null);
           if (mine.canSubscribe) setPrices(await listPlanPrices());
@@ -109,14 +100,14 @@ export default function AbonnementPage() {
     return () => clearInterval(timer);
   }, [activating]);
 
-  const goTo = async (getUrl: () => Promise<string>) => {
+  const goTo = async (target: SubscriptionTier | "portal", getUrl: () => Promise<string>) => {
     setActionError(null);
-    setRedirecting(true);
+    setRedirecting(target);
     try {
       window.location.assign(await getUrl());
     } catch (error) {
       setActionError(messageFor(error));
-      setRedirecting(false);
+      setRedirecting(null);
     }
   };
 
@@ -126,10 +117,7 @@ export default function AbonnementPage() {
   };
 
   const summary = subscription ? describeMySubscription(subscription) : null;
-  const monthly = prices?.find((price) => price.plan === "monthly");
-  const yearly = prices?.find((price) => price.plan === "yearly");
-  const saving = monthly && yearly ? yearlySaving(monthly.amount, yearly.amount) : null;
-  const picked = prices?.find((price) => price.plan === plan);
+  const formula = subscription ? describeFormula(subscription) : null;
 
   return (
     <div className="min-h-screen bg-[#17243a] px-4 py-6 sm:py-10">
@@ -180,6 +168,7 @@ export default function AbonnementPage() {
             <>
               <section className={cn("flex flex-col gap-2 rounded-2xl border bg-[#111c2e] p-5", TONE_STYLES[summary.tone])}>
                 <p className="text-base font-medium">{summary.title}</p>
+                {formula && <p className="text-sm font-medium text-[#f2f6fb]">{formula}</p>}
                 <p className="text-sm text-[#93a6bc]">{summary.detail}</p>
                 <p className="text-xs text-[#93a6bc]">
                   Visible dans la recherche :{" "}
@@ -194,49 +183,19 @@ export default function AbonnementPage() {
                   <p className="text-sm font-medium text-[#f2f6fb]">Choisissez votre formule</p>
                   {!prices && !actionError && <p className="text-sm text-[#93a6bc]">Chargement des tarifs…</p>}
                   {prices && (
-                    <div role="radiogroup" className="grid gap-3 sm:grid-cols-2">
-                      {prices.map((price) => {
-                        const selected = price.plan === plan;
-                        return (
-                          <button
-                            key={price.plan}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            onClick={() => setPlan(price.plan)}
-                            className={cn(
-                              "flex flex-col items-start gap-1 rounded-2xl border bg-[#111c2e] p-5 text-left transition-colors",
-                              selected ? "border-[#2a93d5]" : "border-transparent hover:border-[#1e2e45]",
-                            )}
-                          >
-                            <span className="flex w-full items-center justify-between text-sm font-medium text-[#f2f6fb]">
-                              {PLAN_LABELS[price.plan].name}
-                              {selected && <Check className="size-4 text-[#2a93d5]" />}
-                            </span>
-                            <span className="text-2xl font-semibold text-[#e4b980]">{formatPrice(price)}</span>
-                            <span className="text-xs text-[#93a6bc]">
-                              {PLAN_LABELS[price.plan].period}
-                              {price.plan === "yearly" && saving ? ` · ${saving}` : ""}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <FormulaPicker
+                      prices={prices}
+                      plan={plan}
+                      onPlanChange={setPlan}
+                      currentTier={subscription.state !== "none" ? subscription.tier : null}
+                      trialDays={subscription.trialDays}
+                      redirecting={redirecting}
+                      onChoose={(tier) => void goTo(tier, () => startCheckout(tier, plan))}
+                    />
                   )}
                   <p className="text-xs text-[#93a6bc]">
-                    {subscription.trialDays > 0 && picked
-                      ? `${subscription.trialDays} jours d'essai gratuit, puis ${formatPrice(picked)} ${PLAN_LABELS[plan].period}. `
-                      : ""}
                     Sans engagement : résiliable à tout moment, jusqu&apos;à la fin de la période payée.
                   </p>
-                  <Button
-                    type="button"
-                    disabled={!picked || redirecting}
-                    onClick={() => void goTo(() => startCheckout(plan))}
-                    className="h-11 rounded-xl bg-[#2a93d5] text-white hover:bg-[#2a93d5]/90"
-                  >
-                    {redirecting ? "Redirection…" : "Continuer vers le paiement"}
-                  </Button>
                 </section>
               )}
 
@@ -245,7 +204,7 @@ export default function AbonnementPage() {
                   <p className="text-sm font-medium text-[#f2f6fb]">Gérer mon abonnement</p>
                   <ul className="flex flex-col gap-2 text-sm text-[#93a6bc]">
                     <li className="flex items-center gap-2">
-                      <RefreshCw className="size-4 shrink-0" /> Changer de formule, réactiver ou résilier
+                      <RefreshCw className="size-4 shrink-0" /> Changer de formule (Solo ou Équipe) ou de période, réactiver ou résilier
                     </li>
                     <li className="flex items-center gap-2">
                       <CreditCard className="size-4 shrink-0" /> Mettre à jour votre carte bancaire
@@ -256,8 +215,8 @@ export default function AbonnementPage() {
                   </ul>
                   <Button
                     type="button"
-                    disabled={redirecting}
-                    onClick={() => void goTo(openCustomerPortal)}
+                    disabled={redirecting !== null}
+                    onClick={() => void goTo("portal", openCustomerPortal)}
                     className={cn(
                       "h-11 rounded-xl text-white",
                       subscription.state === "past_due"
@@ -265,7 +224,7 @@ export default function AbonnementPage() {
                         : "bg-[#2a93d5] hover:bg-[#2a93d5]/90",
                     )}
                   >
-                    {redirecting
+                    {redirecting === "portal"
                       ? "Redirection…"
                       : subscription.state === "past_due"
                         ? "Mettre à jour ma carte"

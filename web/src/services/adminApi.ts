@@ -281,6 +281,7 @@ export interface AdminSubscriptionSummary {
   lastName: string;
   email: string;
   plan: "monthly" | "yearly";
+  tier: "solo" | "team";
   state: "none" | "trialing" | "active" | "ending" | "past_due" | "incomplete" | "expired";
   /** Stripe's own status; `null` for an offered subscription or none at all. */
   stripeStatus: string | null;

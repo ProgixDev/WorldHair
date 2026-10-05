@@ -10,12 +10,19 @@ export type SubscriptionState =
   | "incomplete"
   | "expired";
 
+/** The billing period; the tier (formula) is separate. */
 export type PlanId = "monthly" | "yearly";
+
+/** The two formulas: « Solo » (the owner alone) and « Équipe » (up to 5 people, owner included). */
+export type SubscriptionTier = "solo" | "team";
 
 /** Mirrors server/src/subscriptions/subscriptions.service.ts's SubscriptionView. */
 export interface MySubscription {
   state: SubscriptionState;
   plan: PlanId;
+  tier: SubscriptionTier;
+  /** People the salon may have working in it, owner included: 1 (Solo) or 5 (Équipe). */
+  teamLimit: number;
   /** Visible in search and bookable right now. */
   listed: boolean;
   /** Offered without Stripe (demo salons, launch partners). */
@@ -35,8 +42,9 @@ export interface MySubscription {
 }
 
 export interface PlanPrice {
+  tier: SubscriptionTier;
   plan: PlanId;
-  /** Euros, TTC. */
+  /** Euros, TTC; for a yearly plan, the price of the whole year. */
   amount: number;
   currency: string;
 }
@@ -52,12 +60,12 @@ export async function listPlanPrices(): Promise<PlanPrice[]> {
 }
 
 /** Stripe Checkout's URL — the card is typed on Stripe's page, never on ours. */
-export async function startCheckout(plan: PlanId): Promise<string> {
-  const { data } = await apiClient.post<{ url: string }>("/subscriptions/checkout-session", { plan });
+export async function startCheckout(tier: SubscriptionTier, plan: PlanId): Promise<string> {
+  const { data } = await apiClient.post<{ url: string }>("/subscriptions/checkout-session", { tier, plan });
   return data.url;
 }
 
-/** Stripe's Customer Portal: plan, card, invoices, cancellation. */
+/** Stripe's Customer Portal: formula, billing period, card, invoices, cancellation. */
 export async function openCustomerPortal(): Promise<string> {
   const { data } = await apiClient.post<{ url: string }>("/subscriptions/portal-session");
   return data.url;
