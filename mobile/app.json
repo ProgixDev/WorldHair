@@ -4,7 +4,7 @@
     "slug": "worldhair",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/Logo.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "worldhair",
     "userInterfaceStyle": "automatic",
     "platforms": [
@@ -28,8 +28,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/Logo.png"
+        "backgroundColor": "#080f1a",
+        "foregroundImage": "./assets/images/adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "config": {
@@ -80,6 +80,7 @@
       ],
       "expo-font",
       "expo-web-browser",
+      "expo-video",
       "./plugins/withTransparentNavigationBar",
       "./plugins/withTransparentStatusBar",
       "./plugins/withReleaseSigning",

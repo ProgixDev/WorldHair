@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
+import { useVideoPlayer, VideoView } from "expo-video";
 import React from "react";
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -94,6 +95,37 @@ export function OnboardingSlide({
     </View>
   );
 
+  if (slide.fullBleed && slide.video) {
+    return (
+      <View
+        style={{
+          width,
+          flex: 1,
+          backgroundColor: palette.surface,
+          paddingTop: insets.top + spacing.xl,
+          paddingBottom: insets.bottom + space(spacing.xl),
+        }}
+      >
+        {slide.wordmark ? (
+          <View style={{ alignItems: "center", gap: spacing.xs, paddingHorizontal: gutter }}>
+            <Text style={[typography.wordmark, { color: palette.onSurface }]}>
+              {slide.wordmark.title}
+            </Text>
+            <Text style={[typography.overline, { color: palette.rule }]}>
+              {slide.wordmark.tagline}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <SlideVideo source={slide.video} width={width} surface={palette.surface} />
+        </View>
+
+        <View style={{ paddingHorizontal: gutter }}>{copy}</View>
+      </View>
+    );
+  }
+
   if (slide.fullBleed) {
     return (
       <View style={{ width, flex: 1, backgroundColor: palette.surface }}>
@@ -169,6 +201,32 @@ export function OnboardingSlide({
       >
         {copy}
       </View>
+    </View>
+  );
+}
+
+/** The video's own frame: 720×544. */
+const VIDEO_ASPECT = 720 / 544;
+
+/**
+ * A slide's looping film, whole and full width (it's wider than tall:
+ * cropping it to the screen would cut the map off), silent, no controls;
+ * its edges fade into the slide's surface.
+ */
+function SlideVideo({ source, width, surface }: { source: number; width: number; surface: string }) {
+  const player = useVideoPlayer(source, (videoPlayer) => {
+    videoPlayer.loop = true;
+    videoPlayer.muted = true;
+    videoPlayer.play();
+  });
+  const height = width / VIDEO_ASPECT;
+  const fade = surface + "00";
+
+  return (
+    <View style={{ width, height }} pointerEvents="none">
+      <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+      <LinearGradient colors={[surface, fade]} style={{ position: "absolute", left: 0, right: 0, top: 0, height: height * 0.12 }} />
+      <LinearGradient colors={[fade, surface]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: height * 0.18 }} />
     </View>
   );
 }

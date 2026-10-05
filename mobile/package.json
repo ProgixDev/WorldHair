@@ -18,12 +18,12 @@
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
-    "@react-navigation/bottom-tabs": "^7.4.0",
-    "@react-navigation/elements": "^2.9.40",
-    "@react-navigation/native": "^7.1.8",
-    "@rnmapbox/maps": "^10.3.5",
-    "@supabase/supabase-js": "^2.116.0",
-    "@tanstack/react-query": "^5.102.8",
+    "@react-navigation/bottom-tabs": "7.20.0",
+    "@react-navigation/elements": "2.9.44",
+    "@react-navigation/native": "7.5.0",
+    "@rnmapbox/maps": "^10.3.7",
+    "@supabase/supabase-js": "^2.117.2",
+    "@tanstack/react-query": "^5.104.1",
     "axios": "^1.20.0",
     "expo": "~54.0.37",
     "expo-constants": "~18.0.14",
@@ -42,9 +42,10 @@
     "expo-store-review": "~9.0.9",
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
+    "expo-video": "~3.0.16",
     "expo-web-browser": "~15.0.11",
-    "libphonenumber-js": "^1.13.13",
-    "qrcode-generator": "^1.4.4",
+    "libphonenumber-js": "^1.13.14",
+    "qrcode-generator": "^1.5.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -53,7 +54,7 @@
     "react-native-reanimated": "~4.1.7",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.16.0",
-    "react-native-web": "~0.21.2",
+    "react-native-web": "~0.21.3",
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
@@ -65,7 +66,7 @@
     "eslint-config-prettier": "^10.1.8",
     "jest": "~29.7.0",
     "jest-expo": "~54.0.18",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.9",
     "prettier-plugin-tailwindcss": "^0.7.4",
     "react-test-renderer": "19.1.0",
     "sharp": "^0.34.5",
@@ -76,5 +77,13 @@
       "prettier-plugin-tailwindcss"
     ]
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@react-navigation/core": "7.23.0",
+    "@react-navigation/native": "7.5.0",
+    "@react-navigation/native-stack": "7.18.10",
+    "@react-navigation/bottom-tabs": "7.20.0",
+    "@react-navigation/elements": "2.9.44",
+    "@react-navigation/routers": "7.6.4"
+  }
 }

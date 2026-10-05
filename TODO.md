@@ -247,7 +247,9 @@ Taken up again 2026-10-05. Decisions (user, 2026-10-05):
     agenda shows one person at a time; the fill rate counts everyone's
     hours; admin › Rendez-vous says who did it; a client account can join
     from Profil › Compte; a staff member can't file a dossier of their own
-    while in a team. Demo: `demo.coiffeur.equipe@worldhair.app` (Nadia) is in
+    while in a team. « Inviter » also shows a QR code and a link
+    (`/rejoindre/CODE` on the website, which opens the app on « Rejoindre un
+    salon » with the code in; `GET /staff/invites/:code` is public). Demo: `demo.coiffeur.equipe@worldhair.app` (Nadia) is in
     Studio W's team. Known limits: joining turns a client account into a
     staff one (its client bookings and favorites no longer show); a booking
     made by a server older than this phase has no person until it's

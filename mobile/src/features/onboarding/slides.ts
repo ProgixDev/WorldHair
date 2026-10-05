@@ -16,6 +16,8 @@ export interface OnboardingSlideData {
   id: string;
   /** Bundled asset, a remote/admin-uploaded photo, or none yet. */
   art: number | { uri: string } | null;
+  /** A bundled looping video shown instead of `art` (slide 1, the client's). Muted: it has no sound. */
+  video?: number;
   /** Shown instead of the photo panel while `art` is null. */
   iconFallback?: keyof typeof MaterialCommunityIcons.glyphMap;
   palette: SlidePalette;
@@ -42,9 +44,12 @@ export interface OnboardingSlideData {
 export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
   {
     id: "welcome",
-    art: require("../../../assets/images/OnBoarding/OnBoarding1.png"),
+    art: null,
+    // The client's film (Guadeloupe opening onto the world map), 720×544:
+    // shown whole under the wordmark, on its own near-black background.
+    video: require("../../../assets/videos/onboarding-welcome.mp4"),
     palette: {
-      surface: "#000f20",
+      surface: "#02050e",
       onSurface: "#f6f1ea",
       muted: "#a9bccd",
       rule: "#d8b48a",

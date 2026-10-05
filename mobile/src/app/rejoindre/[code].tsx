@@ -25,8 +25,9 @@ export default function InviteLink() {
     let current = true;
     void (async () => {
       const route = routeForInviteLink(session);
-      // Only an account that can join keeps the code: never an owner's, nor a staff member's already in a salon.
-      const canJoin = !session || session.role === "particulier" || (session.role === "staff" && session.staffMembership === null);
+      // Only an account that can join keeps the code: never an owner's, nor a staff member's already in a salon
+      // (`undefined`: their salon couldn't be read — kept, for when it can).
+      const canJoin = !session || session.role === "particulier" || (session.role === "staff" && !session.staffMembership);
       if (canJoin) {
         await setPendingJoinCode(normalizeInviteCode(code ?? ""));
         if (!session || session.role === "particulier") await setSignupIntent("staff");
@@ -38,7 +39,7 @@ export default function InviteLink() {
           "Vous faites déjà partie d'un salon",
           "Pour rejoindre celui-ci, quittez d'abord " + session.staffMembership.salonName + " depuis votre compte.",
         );
-      } else if (session && !canJoin) {
+      } else if (session?.role === "coiffeur") {
         Alert.alert("Lien pour les coiffeurs d'un salon", "Ce lien sert à rejoindre l'équipe d'un salon : votre compte gère déjà le sien.");
       }
     })();
