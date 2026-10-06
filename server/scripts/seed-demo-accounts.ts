@@ -211,6 +211,8 @@ interface AppointmentSeed {
   cancellationReason?: string;
   /** Who of Studio W's team does it (TODO.md Phase 3): the owner unless « nadia ». */
   staff?: "nadia";
+  /** The client scanned the end-of-service code, an hour after the start. */
+  confirmedByClient?: boolean;
 }
 
 const APPOINTMENT_SEEDS: AppointmentSeed[] = [
@@ -232,7 +234,7 @@ const APPOINTMENT_SEEDS: AppointmentSeed[] = [
   // In the past — the API derives "confirmed and past" as "done" at read time.
   // Left unmarked, so demo.particulier can still review it by hand.
   { serviceIndexes: [2], dayOffset: -6, hour: 11, minute: 0, status: "confirmed" },
-  { serviceIndexes: [3], dayOffset: -13, hour: 16, minute: 0, status: "confirmed", attendance: "attended" },
+  { serviceIndexes: [3], dayOffset: -13, hour: 16, minute: 0, status: "confirmed", attendance: "attended", confirmedByClient: true },
   { serviceIndexes: [0], dayOffset: -20, hour: 9, minute: 30, status: "cancelled", cancelledBy: "client" },
   // A dispute WorldHair settled from the back office (admin → Rendez-vous): both sides read the reason.
   {
@@ -334,6 +336,7 @@ async function seedDemoAppointments(particulierId: string, coiffeurId: string, t
         particulier_id: particulierId,
         coiffeur_id: coiffeurId,
         staff_id: seed.staff === "nadia" ? team.nadia : team.owner,
+        confirmed_by_client_at: seed.confirmedByClient ? new Date(startsAt.getTime() + 3_600_000).toISOString() : null,
         service_id: picked[0].id as string,
         service_name: picked.map((service) => service.name as string).join(" + "),
         price: picked.reduce((sum, service) => sum + Number(service.price), 0),

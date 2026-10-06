@@ -538,6 +538,8 @@ interface ReviewApiResponse {
   createdAt: string;
   status?: Review["status"];
   reportedByMe?: boolean;
+  /** The client confirmed on the spot with the end-of-service code. */
+  verified?: boolean;
 }
 
 function toReview(review: ReviewApiResponse): Review {
@@ -550,6 +552,7 @@ function toReview(review: ReviewApiResponse): Review {
     reply: review.reply,
     status: review.status ?? "visible",
     reportedByMe: review.reportedByMe ?? false,
+    verified: review.verified ?? false,
   };
 }
 

@@ -19,6 +19,7 @@ function booking(id: string, startsAt: Date, overrides: Partial<ProAppointment> 
     payment: null,
     staffId: "s1",
     staffName: "Léa Martin",
+    confirmedByClientAt: null,
     ...overrides,
   };
 }

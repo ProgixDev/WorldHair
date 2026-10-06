@@ -19,6 +19,7 @@ function appointment(overrides: Partial<ProAppointment>): ProAppointment {
     payment: null,
     staffId: null,
     staffName: null,
+    confirmedByClientAt: null,
     ...overrides,
   };
 }

@@ -170,6 +170,12 @@ describe('AdminAppointmentsService', () => {
       await expect(admin.detail('no-such-booking', NOW)).rejects.toThrow(NotFoundException);
     });
 
+    it('says when the client confirmed the service with the end-of-service code', async () => {
+      const scanned = supabase.seedAppointment({ particulierId: CAMILLE, coiffeurId: STUDIO, startsAt: at(29, 10), confirmedByClientAt: at(29, 11) });
+      await expect(admin.detail(scanned, NOW)).resolves.toMatchObject({ confirmedByClientAt: at(29, 11) });
+      await expect(admin.detail(seed({ startsAt: at(29, 16) }), NOW)).resolves.toMatchObject({ confirmedByClientAt: null });
+    });
+
     it('says who of the salon does it (TODO.md Phase 3): the owner by his dossier name, or a colleague', async () => {
       const ownerRow = supabase.seedStaff({ salonId: STUDIO, profileId: STUDIO });
       supabase.addUser('nadia', { id: 'nadia-1', email: 'nadia@example.com', email_confirmed_at: null }, 'staff', {

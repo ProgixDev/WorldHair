@@ -388,6 +388,8 @@ export interface AdminAppointmentDetail extends AdminAppointment {
   payment: (AdminAppointmentPayment & { paymentIntentId: string | null }) | null;
   /** Who of the salon's team does it (TODO.md Phase 3); `null` when unknown or gone. */
   staffName: string | null;
+  /** The client scanned the end-of-service code on the spot: proof of presence only. `null` otherwise. */
+  confirmedByClientAt: string | null;
 }
 
 export interface AdminAppointmentFilters {

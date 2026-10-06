@@ -46,6 +46,8 @@ export interface Appointment {
   movedBySalon: boolean;
   /** What was paid in the app, and refunded since; `null` for a booking made before payments. */
   payment: { amount: number; refundedAmount: number } | null;
+  /** When the client confirmed on the spot with the salon's « code de fin » (proof of presence only); `null` otherwise. */
+  confirmedByClientAt: string | null;
   /** Who cancelled it; `null` unless cancelled. */
   cancelledBy?: CancelledBy | null;
   /** WorldHair's reason, when it cancelled (a dispute). */
@@ -67,6 +69,8 @@ export interface UserReview {
   /** Praise tags picked as chips. */
   tags: string[];
   comment: string;
+  /** The client confirmed on the spot (« code de fin »): « Avis vérifié ». */
+  verified: boolean;
   createdAt: string;
 }
 
@@ -262,6 +266,15 @@ export function canStillChange(appointment: Appointment, now = new Date()): bool
   );
 }
 
+/** « Confirmé sur place »: the client scanned the salon's end-of-service code — a booking cancelled since doesn't claim it. */
+export function isConfirmedOnSite(appointment: Appointment): boolean {
+  return (
+    appointment.confirmedByClientAt !== null &&
+    appointment.status !== "cancelled" &&
+    appointment.status !== "refused"
+  );
+}
+
 // ─── Payment ─────────────────────────────────────────────────────────────────
 
 function euros(amount: number): string {
@@ -285,6 +298,7 @@ interface ReviewApiResponse {
   rating: number;
   tags: string[];
   comment: string;
+  verified?: boolean;
   createdAt: string;
 }
 
@@ -295,6 +309,7 @@ function toUserReview(review: ReviewApiResponse): UserReview {
     rating: review.rating,
     tags: review.tags,
     comment: review.comment,
+    verified: review.verified ?? false,
     createdAt: review.createdAt,
   };
 }

@@ -251,6 +251,17 @@ Taken up again 2026-10-05. Decisions (user, 2026-10-05):
     members + open codes reach the limit, and a code is checked again when
     used. A salon that drops to Solo keeps its team but takes nobody new.
     The website's `/pro/abonnement` sells both; the app only shows it.
+  - End-of-service code (client request 2026-10-05, outside the devis: an
+    avenant): when the service is done, the salon — or the staff member who
+    did it — taps « Afficher le code de fin » on the booking and shows a QR
+    code (`POST /presence/:id/code`, random, 5 minutes, one live code per
+    booking). The client scans it with their phone's camera; the link
+    `/rdv/CODE` on the website opens the app, which confirms
+    (`POST /presence/confirm`, the booking's own client only). The booking
+    then reads « Confirmé par le client » (`confirmed_by_client_at`, attended)
+    and its review gets « Avis vérifié ». It only proves presence: payment
+    timing is unchanged and scanning is optional (« Honoré / Absent » stay).
+    Migration `presence_completion_codes`.
   - Built 2026-10-05 (migration `phase3_staff` applied to the dev database:
     every salon's owner is its first member, every booking his). Also: the
     owner sees who is free when accepting (`GET /appointments/:id/staff`); a

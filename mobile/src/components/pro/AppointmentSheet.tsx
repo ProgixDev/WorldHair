@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from "react";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { radius, spacing } from "../../constants/spacing";
 import { typography } from "../../constants/typography";
 import { usePro } from "../../contexts/ProContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { cancellationNote, cancelledLabel } from "../../features/appointments/cancellation";
+import { canShowCompletionCode, confirmedLabel } from "../../features/pro/presence";
 import type { Attendance, ProAppointment } from "../../features/pro/types";
 import { proErrorMessage } from "../../services/pro";
 import { formatDuration, formatPrice, fullDate, relativeDay, timeOfDay } from "../../utils/date";
@@ -12,6 +14,7 @@ import { BottomSheet } from "../ui/BottomSheet";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { TextField } from "../ui/TextField";
+import { CompletionCodeSheet } from "./CompletionCodeSheet";
 import { SlotPicker } from "./SlotPicker";
 import { StaffPicker } from "./StaffPicker";
 import { personOf } from "../../features/pro/staffPick";
@@ -19,6 +22,9 @@ import { personOf } from "../../features/pro/staffPick";
 function euros(amount: number): string {
   return (Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(".", ",")) + " €";
 }
+
+/** Same wait as the team screen's sheet swaps: the first sheet has slid away before the next one rises. */
+const SHEET_SWAP_MS = 300;
 
 const STATUS_LABELS: Record<ProAppointment["status"], string> = {
   pending: "En attente de votre réponse",
@@ -34,6 +40,8 @@ const STATUS_LABELS: Record<ProAppointment["status"], string> = {
  * mark it attended or missed. Moving picks from the server's own slot grid.
  * With a team (TODO.md Phase 3), accepting means choosing who does it
  * (« Qui s'en occupe ? »), and an accepted booking can go to someone else.
+ * Once it has started, « Afficher le code de fin » shows the QR code the
+ * client scans as proof of presence (components/pro/CompletionCodeSheet.tsx).
  */
 export function AppointmentSheet({
   appointment,
@@ -58,6 +66,7 @@ export function AppointmentSheet({
     setAttendance,
     refundAppointment,
     team,
+    refresh,
   } = usePro();
   const [mode, setMode] = useState<"details" | "move" | "accept" | "assign">("details");
   const [pickedStaff, setPickedStaff] = useState<string | null>(null);
@@ -66,6 +75,11 @@ export function AppointmentSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
+  // The code sheet takes this one's place (never two modals stacked): `codeOpen` hides the details at once, `codeShown` raises the code once they have slid away.
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [codeShown, setCodeShown] = useState(false);
+  const swapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(swapTimer.current), []);
 
   // A salon of one has nobody to choose between: accepting stays one tap.
   const hasTeam = team.length > 1;
@@ -77,6 +91,12 @@ export function AppointmentSheet({
     setError(null);
     setRefundAmount("");
   }, [appointment?.id, visible, startWith, hasTeam]);
+
+  useEffect(() => {
+    clearTimeout(swapTimer.current);
+    setCodeOpen(false);
+    setCodeShown(false);
+  }, [appointment?.id, visible]);
 
   if (!appointment) {
     return <BottomSheet visible={false} title="" onClose={onClose}>{null}</BottomSheet>;
@@ -123,6 +143,19 @@ export function AppointmentSheet({
 
   const mark = (attendance: Attendance) =>
     void run(() => setAttendance(appointment.id, attendance), false);
+
+  const openCode = () => {
+    setCodeOpen(true);
+    clearTimeout(swapTimer.current);
+    swapTimer.current = setTimeout(() => setCodeShown(true), SHEET_SWAP_MS);
+  };
+
+  // Back to the details, where the booking now reads « Confirmé par le client » if they scanned.
+  const closeCode = () => {
+    setCodeShown(false);
+    clearTimeout(swapTimer.current);
+    swapTimer.current = setTimeout(() => setCodeOpen(false), SHEET_SWAP_MS);
+  };
 
   const payment = appointment.payment;
   const refundable = payment ? Math.round((payment.amount - payment.refundedAmount) * 100) / 100 : 0;
@@ -253,195 +286,227 @@ export function AppointmentSheet({
     ) : undefined;
 
   return (
-    <BottomSheet
-      visible={visible}
-      title={
-        mode === "move"
-          ? "Déplacer le rendez-vous"
-          : mode === "accept" || mode === "assign"
-            ? "Qui s'en occupe ?"
-            : appointment.clientName
-      }
-      onClose={onClose}
-      footer={footer}
-    >
-      {mode === "accept" || mode === "assign" ? (
-        <View style={{ gap: spacing.md }}>
-          <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
-            {appointment.clientName +
-              " · " +
-              relativeDay(start).toLowerCase() +
-              " à " +
-              timeOfDay(start) +
-              " · " +
-              formatDuration(appointment.durationMin) +
-              (mode === "assign" ? ". La personne choisie est prévenue." : ".")}
-          </Text>
-          <StaffPicker appointmentId={appointment.id} selected={pickedStaff} onSelect={setPickedStaff} />
-        </View>
-      ) : mode === "move" && profile ? (
-        <View style={{ gap: spacing.md }}>
-          <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
-            {appointment.clientName +
-              " sera prévenu du nouvel horaire. Actuellement : " +
-              relativeDay(start).toLowerCase() +
-              " à " +
-              timeOfDay(start) +
-              "."}
-          </Text>
-          <SlotPicker
-            salonId={profile.salonId}
-            appointmentId={appointment.id}
-            availability={availability}
-            timeOff={timeOff}
-            selected={moveTo}
-            onSelect={setMoveTo}
-            version={gridVersion}
-          />
-        </View>
-      ) : (
-        <View style={{ gap: spacing.md }}>
-          <Text style={[typography.label, { color: theme.foreground.white }]}>
-            {relativeDay(start) +
-              " · " +
-              timeOfDay(start) +
-              " · " +
-              formatDuration(appointment.durationMin)}
-          </Text>
-          <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-            {(appointment.status === "cancelled"
-              ? cancelledLabel(appointment.cancelledBy, "salon")
-              : STATUS_LABELS[appointment.status]) +
-              (appointment.attendance === "attended"
-                ? " · honoré"
-                : appointment.attendance === "no_show"
-                  ? " · absent"
-                  : "")}
-          </Text>
-          {cancellationNote(appointment) ? (
-            <Text style={[typography.caption, { color: theme.danger }]}>{cancellationNote(appointment)}</Text>
-          ) : null}
+    <>
+      <BottomSheet
+        visible={visible && !codeOpen}
+        title={
+          mode === "move"
+            ? "Déplacer le rendez-vous"
+            : mode === "accept" || mode === "assign"
+              ? "Qui s'en occupe ?"
+              : appointment.clientName
+        }
+        onClose={onClose}
+        footer={footer}
+      >
+        {mode === "accept" || mode === "assign" ? (
+          <View style={{ gap: spacing.md }}>
+            <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
+              {appointment.clientName +
+                " · " +
+                relativeDay(start).toLowerCase() +
+                " à " +
+                timeOfDay(start) +
+                " · " +
+                formatDuration(appointment.durationMin) +
+                (mode === "assign" ? ". La personne choisie est prévenue." : ".")}
+            </Text>
+            <StaffPicker appointmentId={appointment.id} selected={pickedStaff} onSelect={setPickedStaff} />
+          </View>
+        ) : mode === "move" && profile ? (
+          <View style={{ gap: spacing.md }}>
+            <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
+              {appointment.clientName +
+                " sera prévenu du nouvel horaire. Actuellement : " +
+                relativeDay(start).toLowerCase() +
+                " à " +
+                timeOfDay(start) +
+                "."}
+            </Text>
+            <SlotPicker
+              salonId={profile.salonId}
+              appointmentId={appointment.id}
+              availability={availability}
+              timeOff={timeOff}
+              selected={moveTo}
+              onSelect={setMoveTo}
+              version={gridVersion}
+            />
+          </View>
+        ) : (
+          <View style={{ gap: spacing.md }}>
+            <Text style={[typography.label, { color: theme.foreground.white }]}>
+              {relativeDay(start) +
+                " · " +
+                timeOfDay(start) +
+                " · " +
+                formatDuration(appointment.durationMin)}
+            </Text>
+            <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+              {(appointment.status === "cancelled"
+                ? cancelledLabel(appointment.cancelledBy, "salon")
+                : STATUS_LABELS[appointment.status]) +
+                (appointment.attendance === "attended"
+                  ? " · honoré"
+                  : appointment.attendance === "no_show"
+                    ? " · absent"
+                    : "")}
+            </Text>
+            {cancellationNote(appointment) ? (
+              <Text style={[typography.caption, { color: theme.danger }]}>{cancellationNote(appointment)}</Text>
+            ) : null}
 
-          {hasTeam ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-              <Text style={[typography.bodySmall, { color: theme.foreground.white, flex: 1 }]}>
-                {(isPending ? "Prévu avec " : "Avec ") + staffNameOf(appointment, team)}
-              </Text>
-              {canMoveOrCancel ? (
-                <Button label="Changer" variant="outline" onPress={() => setMode("assign")} disabled={busy} />
+            {hasTeam ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <Text style={[typography.bodySmall, { color: theme.foreground.white, flex: 1 }]}>
+                  {(isPending ? "Prévu avec " : "Avec ") + staffNameOf(appointment, team)}
+                </Text>
+                {canMoveOrCancel ? (
+                  <Button label="Changer" variant="outline" onPress={() => setMode("assign")} disabled={busy} />
+                ) : null}
+              </View>
+            ) : null}
+
+            <View
+              style={{
+                gap: spacing.sm,
+                padding: spacing.md,
+                borderRadius: radius.lg,
+                backgroundColor: theme.surface.base,
+              }}
+            >
+              {lines.map((line, index) => (
+                <View
+                  key={index}
+                  style={{ flexDirection: "row", justifyContent: "space-between", gap: spacing.md }}
+                >
+                  <Text style={[typography.bodySmall, { color: theme.foreground.white, flex: 1 }]}>
+                    {line.name + " · " + formatDuration(line.durationMin)}
+                  </Text>
+                  <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
+                    {formatPrice(line.price)}
+                  </Text>
+                </View>
+              ))}
+              {lines.length > 1 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={[typography.label, { color: theme.foreground.white }]}>Total</Text>
+                  <Text style={[typography.label, { color: theme.accent.warm }]}>
+                    {formatPrice(appointment.price)}
+                  </Text>
+                </View>
               ) : null}
             </View>
-          ) : null}
 
-          <View
-            style={{
-              gap: spacing.sm,
-              padding: spacing.md,
-              borderRadius: radius.lg,
-              backgroundColor: theme.surface.base,
-            }}
-          >
-            {lines.map((line, index) => (
-              <View
-                key={index}
-                style={{ flexDirection: "row", justifyContent: "space-between", gap: spacing.md }}
-              >
-                <Text style={[typography.bodySmall, { color: theme.foreground.white, flex: 1 }]}>
-                  {line.name + " · " + formatDuration(line.durationMin)}
+            {appointment.note ? (
+              <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                {"« " + appointment.note + " »"}
+              </Text>
+            ) : null}
+
+            {payment ? (
+              <View style={{ gap: spacing.sm }}>
+                <Text style={[typography.overline, { color: theme.foreground.gray }]}>PAIEMENT</Text>
+                <Text style={[typography.bodySmall, { color: theme.foreground.white }]}>
+                  {"Payé " +
+                    euros(payment.amount) +
+                    (payment.refundedAmount > 0 ? " · remboursé " + euros(payment.refundedAmount) : "")}
                 </Text>
-                <Text style={[typography.bodySmall, { color: theme.foreground.gray }]}>
-                  {formatPrice(line.price)}
-                </Text>
+                {refundable > 0 ? (
+                  <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                    {(payment.paidOutAt
+                      ? "Versé " + euros(payment.payoutAmount) + " le " + fullDate(new Date(payment.paidOutAt))
+                      : "Votre part : " + euros(payment.payoutAmount) + ", versée 24 h après le rendez-vous") +
+                      " · commission " +
+                      euros(payment.commissionAmount)}
+                  </Text>
+                ) : null}
+                {canRefund ? (
+                  <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <TextField
+                        label="Rembourser (€)"
+                        value={refundAmount}
+                        onChangeText={setRefundAmount}
+                        placeholder={"Tout : " + euros(refundable)}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <Button
+                      label="Rembourser"
+                      variant="outline"
+                      background={theme.danger}
+                      color={theme.danger}
+                      onPress={confirmRefund}
+                      disabled={busy}
+                    />
+                  </View>
+                ) : null}
               </View>
-            ))}
-            {lines.length > 1 ? (
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={[typography.label, { color: theme.foreground.white }]}>Total</Text>
-                <Text style={[typography.label, { color: theme.accent.warm }]}>
-                  {formatPrice(appointment.price)}
+            ) : null}
+
+            {canMark ? (
+              <View style={{ gap: spacing.sm }}>
+                <Text style={[typography.overline, { color: theme.foreground.gray }]}>
+                  LE CLIENT EST-IL VENU ?
+                </Text>
+                {appointment.confirmedByClientAt ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                    <MaterialCommunityIcons name="check-circle" size={18} color={theme.success} />
+                    <Text style={[typography.label, { color: theme.success, flex: 1 }]}>
+                      {confirmedLabel(appointment.confirmedByClientAt)}
+                    </Text>
+                  </View>
+                ) : canShowCompletionCode(appointment) ? (
+                  <>
+                    <Button
+                      label="Afficher le code de fin"
+                      icon="qrcode"
+                      onPress={openCode}
+                      disabled={busy}
+                      background={theme.primary.main}
+                      color={theme.primary.on}
+                    />
+                    <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                      Facultatif : le client scanne le code avec son téléphone, preuve qu&apos;il était là. Votre paiement
+                      ne change pas.
+                    </Text>
+                  </>
+                ) : null}
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Chip
+                    label="Honoré"
+                    icon="check-circle-outline"
+                    selected={appointment.attendance === "attended"}
+                    onPress={() => mark("attended")}
+                  />
+                  <Chip
+                    label="Absent"
+                    icon="account-cancel-outline"
+                    selected={appointment.attendance === "no_show"}
+                    onPress={() => mark("no_show")}
+                  />
+                </View>
+                <Text style={[typography.caption, { color: theme.foreground.gray }]}>
+                  Un client absent ne peut pas laisser d&apos;avis sur ce rendez-vous.
                 </Text>
               </View>
             ) : null}
           </View>
+        )}
 
-          {appointment.note ? (
-            <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-              {"« " + appointment.note + " »"}
-            </Text>
-          ) : null}
+        {error ? (
+          <Text style={[typography.bodySmall, { color: theme.danger }]}>{error}</Text>
+        ) : null}
+      </BottomSheet>
 
-          {payment ? (
-            <View style={{ gap: spacing.sm }}>
-              <Text style={[typography.overline, { color: theme.foreground.gray }]}>PAIEMENT</Text>
-              <Text style={[typography.bodySmall, { color: theme.foreground.white }]}>
-                {"Payé " +
-                  euros(payment.amount) +
-                  (payment.refundedAmount > 0 ? " · remboursé " + euros(payment.refundedAmount) : "")}
-              </Text>
-              {refundable > 0 ? (
-                <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-                  {(payment.paidOutAt
-                    ? "Versé " + euros(payment.payoutAmount) + " le " + fullDate(new Date(payment.paidOutAt))
-                    : "Votre part : " + euros(payment.payoutAmount) + ", versée 24 h après le rendez-vous") +
-                    " · commission " +
-                    euros(payment.commissionAmount)}
-                </Text>
-              ) : null}
-              {canRefund ? (
-                <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}>
-                  <View style={{ flex: 1 }}>
-                    <TextField
-                      label="Rembourser (€)"
-                      value={refundAmount}
-                      onChangeText={setRefundAmount}
-                      placeholder={"Tout : " + euros(refundable)}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <Button
-                    label="Rembourser"
-                    variant="outline"
-                    background={theme.danger}
-                    color={theme.danger}
-                    onPress={confirmRefund}
-                    disabled={busy}
-                  />
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-
-          {canMark ? (
-            <View style={{ gap: spacing.sm }}>
-              <Text style={[typography.overline, { color: theme.foreground.gray }]}>
-                LE CLIENT EST-IL VENU ?
-              </Text>
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <Chip
-                  label="Honoré"
-                  icon="check-circle-outline"
-                  selected={appointment.attendance === "attended"}
-                  onPress={() => mark("attended")}
-                />
-                <Chip
-                  label="Absent"
-                  icon="account-cancel-outline"
-                  selected={appointment.attendance === "no_show"}
-                  onPress={() => mark("no_show")}
-                />
-              </View>
-              <Text style={[typography.caption, { color: theme.foreground.gray }]}>
-                Un client absent ne peut pas laisser d&apos;avis sur ce rendez-vous.
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      )}
-
-      {error ? (
-        <Text style={[typography.bodySmall, { color: theme.danger }]}>{error}</Text>
-      ) : null}
-    </BottomSheet>
+      <CompletionCodeSheet
+        appointment={appointment}
+        visible={visible && codeShown}
+        onClose={closeCode}
+        onConfirmed={() => void refresh().catch(() => undefined)}
+      />
+    </>
   );
 }
 

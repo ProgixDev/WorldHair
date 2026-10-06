@@ -113,6 +113,7 @@ interface ReviewResponse {
   reply?: string;
   createdAt: string;
   reportedByMe?: boolean;
+  verified?: boolean;
 }
 
 function toReview(review: ReviewResponse): Review {
@@ -124,6 +125,7 @@ function toReview(review: ReviewResponse): Review {
     comment: review.comment,
     reply: review.reply,
     reportedByMe: review.reportedByMe ?? false,
+    verified: review.verified ?? false,
   };
 }
 

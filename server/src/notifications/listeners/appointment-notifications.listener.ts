@@ -81,6 +81,14 @@ export interface PaymentRefundedEvent {
 
 const euros = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 
+/** The client scanned the end-of-service code (appointments/presence.service.ts): the salon is told. */
+export interface AppointmentPresenceConfirmedEvent {
+  appointmentId: string;
+  coiffeurId: string;
+  serviceName: string;
+  startsAt: string;
+}
+
 /** The coiffeur moved an accepted appointment — the particulier is told. */
 export interface AppointmentMovedEvent {
   appointmentId: string;
@@ -118,6 +126,20 @@ export class AppointmentNotificationsListener {
         ...(event.status === 'confirmed'
           ? { title: 'Nouveau rendez-vous', body: `${event.serviceName}, le ${when}.` }
           : { title: 'Nouvelle demande de rendez-vous', body: `${event.serviceName}, le ${when}. À accepter ou refuser.` }),
+        data: { appointmentId: event.appointmentId },
+      }),
+    );
+  }
+
+  @OnEvent('appointment.presence_confirmed')
+  async onPresenceConfirmed(event: AppointmentPresenceConfirmedEvent): Promise<void> {
+    await this.safe(() =>
+      this.notifications.notifyUser({
+        userId: event.coiffeurId,
+        type: 'appointment_presence_confirmed',
+        dedupeKey: event.appointmentId,
+        title: 'Rendez-vous confirmé par le client',
+        body: `${event.serviceName}, le ${formatParisDateTime(event.startsAt)} : le client a confirmé sur place.`,
         data: { appointmentId: event.appointmentId },
       }),
     );

@@ -7,6 +7,8 @@ const KEYS = {
   signupIntent: "@worldhair/signup_intent",
   /** The code from the owner's QR code or link (TODO.md Phase 3), until it's used. */
   pendingJoinCode: "@worldhair/pending_join_code",
+  /** The « code de fin » scanned while signed out (app/rdv/[code].tsx), until the client shell resumes it. */
+  pendingPresenceCode: "@worldhair/pending_presence_code",
   manualCity: "@worldhair/manual_city",
 } as const;
 
@@ -181,6 +183,31 @@ export async function clearPendingJoinCode(): Promise<void> {
   }
 }
 
+/** The « code de fin » of a booking, scanned before signing in: kept for the client shell to resume (app/(particulier)/_layout.tsx). */
+export async function getPendingPresenceCode(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(KEYS.pendingPresenceCode);
+  } catch {
+    return null;
+  }
+}
+
+export async function setPendingPresenceCode(code: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.pendingPresenceCode, code);
+  } catch {
+    // Not kept: the client scans the code again after signing in.
+  }
+}
+
+export async function clearPendingPresenceCode(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(KEYS.pendingPresenceCode);
+  } catch {
+    // ignore
+  }
+}
+
 /** Wipes onboarding state — used by the dev reset action. */
 export async function clearPreferences(): Promise<void> {
   try {
@@ -189,6 +216,7 @@ export async function clearPreferences(): Promise<void> {
       KEYS.locationIntent,
       KEYS.signupIntent,
       KEYS.pendingJoinCode,
+      KEYS.pendingPresenceCode,
       KEYS.manualCity,
     ]);
   } catch {

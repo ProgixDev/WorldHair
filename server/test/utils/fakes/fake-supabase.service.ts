@@ -144,6 +144,8 @@ interface AppointmentRow {
   attendance: string | null;
   cancellation_notice_minutes: number | null;
   moved_by_salon: boolean;
+  /** The client scanned the end-of-service code (TODO.md): they confirmed it was done. */
+  confirmed_by_client_at: string | null;
   /** Who cancelled: 'client' | 'salon' | 'admin' | 'system'; null unless cancelled. */
   cancelled_by: string | null;
   /** An admin's cancellation only: why, as both sides were told. */
@@ -168,6 +170,13 @@ interface StaffAvailabilityRow {
   closes_minute: number;
   break_start_minute: number | null;
   break_end_minute: number | null;
+}
+
+interface CompletionCodeRow {
+  code: string;
+  appointment_id: string;
+  expires_at: string;
+  created_at: string;
 }
 
 interface SalonInviteRow {
@@ -625,6 +634,7 @@ export class FakeSupabaseService {
   private readonly salonStaff = new Map<string, SalonStaffRow>();
   private readonly staffAvailability = new Map<string, StaffAvailabilityRow>();
   private readonly salonInvites = new Map<string, SalonInviteRow>();
+  private readonly completionCodes = new Map<string, CompletionCodeRow>();
   private nextAppointmentInsertError: string | null = null;
   private beforeAppointmentUpdate: (() => void) | null = null;
   private readonly reviews = new Map<string, ReviewRow>();
@@ -765,6 +775,13 @@ export class FakeSupabaseService {
             }) as StaffAvailabilityRow,
         );
       }
+      if (table === 'completion_codes') {
+        return this.simpleTable(
+          this.completionCodes,
+          (row) => row.code,
+          (row) => ({ created_at: new Date().toISOString(), ...row }) as CompletionCodeRow,
+        );
+      }
       if (table === 'salon_invites') {
         return this.simpleTable(
           this.salonInvites,
@@ -900,6 +917,7 @@ export class FakeSupabaseService {
     this.salonStaff.clear();
     this.staffAvailability.clear();
     this.salonInvites.clear();
+    this.completionCodes.clear();
     this.appointments.clear();
     this.appointmentServices.clear();
     this.nextAppointmentInsertError = null;
@@ -1161,6 +1179,8 @@ export class FakeSupabaseService {
     cancelledBy?: string | null;
     note?: string | null;
     createdAt?: string;
+    /** The client already scanned the end-of-service code. */
+    confirmedByClientAt?: string | null;
   }): string {
     const id = params.id ?? randomUUID();
     this.appointments.set(id, {
@@ -1178,6 +1198,7 @@ export class FakeSupabaseService {
       attendance: params.attendance ?? null,
       cancellation_notice_minutes: null,
       moved_by_salon: false,
+      confirmed_by_client_at: params.confirmedByClientAt ?? null,
       cancelled_by: params.cancelledBy ?? null,
       cancellation_reason: null,
       created_at: params.createdAt ?? new Date().toISOString(),
@@ -2141,6 +2162,7 @@ export class FakeSupabaseService {
               attendance: null,
               cancellation_notice_minutes: null,
               moved_by_salon: false,
+              confirmed_by_client_at: null,
               cancelled_by: null,
               cancellation_reason: null,
               ...row,

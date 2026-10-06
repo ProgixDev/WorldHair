@@ -1,4 +1,4 @@
-import { canStillChange, paymentLabel, type Appointment } from "./booking";
+import { canStillChange, isConfirmedOnSite, paymentLabel, type Appointment } from "./booking";
 
 jest.mock("../lib/apiClient", () => ({ apiClient: {} }));
 
@@ -18,6 +18,7 @@ function appointment(overrides: Partial<Appointment>): Appointment {
     modifiableUntil: null,
     movedBySalon: false,
     payment: null,
+    confirmedByClientAt: null,
     createdAt: "2026-09-20T08:00:00.000Z",
     ...overrides,
   };
@@ -50,5 +51,17 @@ describe("paymentLabel", () => {
 
   it("says nothing for a booking paid outside the app", () => {
     expect(paymentLabel(appointment({ payment: null }))).toBeNull();
+  });
+});
+
+describe("isConfirmedOnSite", () => {
+  it("is true once the client scanned the salon's code", () => {
+    expect(isConfirmedOnSite(appointment({ status: "done", confirmedByClientAt: "2026-10-02T09:00:00.000Z" }))).toBe(true);
+    expect(isConfirmedOnSite(appointment({ status: "confirmed", confirmedByClientAt: "2026-10-02T09:00:00.000Z" }))).toBe(true);
+  });
+
+  it("is false without a scan, or for a booking cancelled since", () => {
+    expect(isConfirmedOnSite(appointment({ status: "done", confirmedByClientAt: null }))).toBe(false);
+    expect(isConfirmedOnSite(appointment({ status: "cancelled", confirmedByClientAt: "2026-10-02T09:00:00.000Z" }))).toBe(false);
   });
 });

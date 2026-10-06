@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { CompletionCodeSheet } from "../../components/pro/CompletionCodeSheet";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { elevation } from "../../constants/elevation";
@@ -12,6 +13,7 @@ import { typography } from "../../constants/typography";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ROUTES } from "../../features/auth/routing";
+import { canShowCompletionCode, confirmedLabel } from "../../features/pro/presence";
 import { servicesLabel } from "../../features/pro/stats";
 import type { Attendance, ProAppointment } from "../../features/pro/types";
 import { avatarFor, initials } from "../../features/salons/images";
@@ -25,7 +27,8 @@ const CLOCK_TICK_MS = 60_000;
 /**
  * A staff member's own agenda (TODO.md Phase 3): the bookings the salon
  * gave them, read-only — accepting, moving and cancelling stay with the
- * owner. Once a booking has started they mark whether the client came.
+ * owner. Once a booking has started they mark whether the client came, or
+ * show the end-of-service code the client scans (« Afficher le code de fin »).
  */
 export default function StaffAgenda() {
   const router = useRouter();
@@ -38,6 +41,9 @@ export default function StaffAgenda() {
   const [refreshing, setRefreshing] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // The code's booking stays set while the sheet slides away.
+  const [codeFor, setCodeFor] = useState<ProAppointment | null>(null);
+  const [codeVisible, setCodeVisible] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
   // `refresh` changes with every session; held here so loading on focus
@@ -118,6 +124,10 @@ export default function StaffAgenda() {
       now={now}
       busy={busyId === appointment.id}
       onMark={(attendance) => void mark(appointment, attendance)}
+      onShowCode={() => {
+        setCodeFor(appointment);
+        setCodeVisible(true);
+      }}
     />
   );
 
@@ -260,6 +270,14 @@ export default function StaffAgenda() {
           </>
         )}
       </ScrollView>
+
+      {/* The client confirmed: read the list again so the card says so. */}
+      <CompletionCodeSheet
+        appointment={codeFor}
+        visible={codeVisible}
+        onClose={() => setCodeVisible(false)}
+        onConfirmed={() => void load()}
+      />
     </View>
   );
 }
@@ -289,19 +307,21 @@ function Section({
   );
 }
 
-/** One booking: who, when, what — and once it has started, whether the client came. */
+/** One booking: who, when, what — and once it has started, the code the client scans and whether they came. */
 function BookingCard({
   appointment,
   showDay,
   now,
   busy,
   onMark,
+  onShowCode,
 }: {
   appointment: ProAppointment;
   showDay: boolean;
   now: Date;
   busy: boolean;
   onMark: (attendance: Attendance) => void;
+  onShowCode: () => void;
 }) {
   const { theme } = useTheme();
   const start = new Date(appointment.startsAt);
@@ -365,6 +385,24 @@ function BookingCard({
         <View style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: theme.surface.base }}>
           <Text style={[typography.caption, { color: theme.foreground.gray }]}>{"« " + appointment.note + " »"}</Text>
         </View>
+      ) : null}
+
+      {appointment.confirmedByClientAt ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+          <MaterialCommunityIcons name="check-circle" size={16} color={theme.success} />
+          <Text style={[typography.label, { color: theme.success, flex: 1 }]}>
+            {confirmedLabel(appointment.confirmedByClientAt, now)}
+          </Text>
+        </View>
+      ) : canShowCompletionCode(appointment, now) ? (
+        <Button
+          label="Afficher le code de fin"
+          icon="qrcode"
+          onPress={onShowCode}
+          disabled={busy}
+          background={theme.primary.main}
+          color={theme.primary.on}
+        />
       ) : null}
 
       {markable ? (

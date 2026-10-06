@@ -115,6 +115,8 @@ export interface ProAppointment {
   /** Who in the salon's team does it (TODO.md Phase 3); `null` for a booking whose person has left. */
   staffId: string | null;
   staffName: string | null;
+  /** ISO — when the client confirmed the service with the end-of-service code (features/pro/presence.ts); `null` until then. */
+  confirmedByClientAt: string | null;
 }
 
 // ─── The salon's team (TODO.md Phase 3) ─────────────────────────────────────

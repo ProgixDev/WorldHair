@@ -1532,6 +1532,25 @@ describe('AppointmentsService', () => {
       expect(personOf(request)).toBe(owner);
     });
 
+    it('tells both sides when the client confirmed the service with the end-of-service code', async () => {
+      const scannedAt = TEN_MINUTES_AGO();
+      const scanned = supabase.seedAppointment({
+        particulierId: PARTICULIER_ID,
+        coiffeurId: COIFFEUR_ID,
+        staffId: owner,
+        startsAt: YESTERDAY(),
+        confirmedByClientAt: scannedAt,
+      });
+      const plain = supabase.seedAppointment({ particulierId: PARTICULIER_ID, coiffeurId: COIFFEUR_ID, staffId: owner, startsAt: new Date(Date.now() - 3 * 86_400_000).toISOString() });
+
+      const mine = await service.listForParticulier(PARTICULIER_ID);
+      const forSalon = await service.listForCoiffeur(COIFFEUR_ID);
+
+      expect(mine.find((item) => item.id === scanned)?.confirmedByClientAt).toBe(scannedAt);
+      expect(mine.find((item) => item.id === plain)?.confirmedByClientAt).toBeNull();
+      expect(forSalon.find((item) => item.id === scanned)?.confirmedByClientAt).toBe(scannedAt);
+    });
+
     it('says who does each booking in the agenda', async () => {
       const booked = await bookAt(PARTICULIER_ID, WEDNESDAY_10AM());
       await service.decide(COIFFEUR_ID, booked.id, 'confirmed', nadia);

@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportReviewSheet } from "../../components/ReportReviewSheet";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
+import { VerifiedReviewMark } from "../../components/ui/VerifiedReviewMark";
 import { Chip } from "../../components/ui/Chip";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingStars } from "../../components/ui/RatingStars";
@@ -290,6 +291,8 @@ export default function ProReviews() {
                   >
                     {review.comment}
                   </Text>
+
+                  {review.verified ? <VerifiedReviewMark /> : null}
 
                   {!reply ? (
                     <Button

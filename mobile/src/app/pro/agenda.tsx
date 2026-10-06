@@ -906,6 +906,7 @@ function DayColumn({
                 appointment.clientName +
                 ", " +
                 timeOfDay(start) +
+                (appointment.confirmedByClientAt ? ", confirmé par le client" : "") +
                 ". Touchez pour voir le détail, déplacer ou annuler."
               }
               style={({ pressed }) => ({
@@ -928,12 +929,18 @@ function DayColumn({
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <Text
-                style={[typography.label, { color: theme.foreground.white }]}
-                numberOfLines={1}
-              >
-                {timeOfDay(start) + " · " + appointment.clientName}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                <Text
+                  style={[typography.label, { color: theme.foreground.white, flexShrink: 1 }]}
+                  numberOfLines={1}
+                >
+                  {timeOfDay(start) + " · " + appointment.clientName}
+                </Text>
+                {/* The client scanned the end-of-service code: the sheet says when. */}
+                {appointment.confirmedByClientAt ? (
+                  <MaterialCommunityIcons name="check-circle" size={14} color={theme.success} />
+                ) : null}
+              </View>
               {blockHeight > 44 ? (
                 <Text
                   style={[

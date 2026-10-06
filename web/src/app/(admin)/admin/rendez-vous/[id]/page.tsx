@@ -17,7 +17,7 @@ import {
   refundPayment,
 } from "@/services/adminApi";
 import { isAxiosError } from "axios";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -226,6 +226,12 @@ function AppointmentView({
             {appointment.serviceName} · {appointment.durationMin} min · réservé le{" "}
             {shortDate.format(new Date(appointment.createdAt))}
           </p>
+          {appointment.confirmedByClientAt && (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-[#1f9d55]">
+              <Check className="size-3.5" aria-hidden="true" />
+              Confirmé par le client le {shortDate.format(new Date(appointment.confirmedByClientAt))}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-base font-medium text-[#f2f6fb]">{euros.format(appointment.price)}</span>

@@ -82,6 +82,8 @@ export interface ParticulierAppointment {
   cancelledBy: CancelledBy | null;
   /** WorldHair's reason, when it cancelled — both sides are also sent it. */
   cancellationReason: string | null;
+  /** The client scanned the salon's end-of-service code: they confirmed it was done. */
+  confirmedByClientAt: string | null;
   createdAt: string;
 }
 
@@ -121,6 +123,8 @@ export interface CoiffeurAppointment {
   payment: CoiffeurPayment | null;
   cancelledBy: CancelledBy | null;
   cancellationReason: string | null;
+  /** The client scanned the end-of-service code: they confirmed it was done. */
+  confirmedByClientAt: string | null;
   /** Who in the salon's team does it (TODO.md Phase 3); `null` for a booking whose person has left. */
   staffId: string | null;
   staffName: string | null;
@@ -187,6 +191,8 @@ export interface AppointmentRow {
   cancelled_by?: CancelledBy | null;
   /** An admin's cancellation only: why, as both sides were told. */
   cancellation_reason?: string | null;
+  /** The client scanned the salon's end-of-service code (`PresenceService`). */
+  confirmed_by_client_at?: string | null;
   created_at: string;
   /** Embedded by `select(WITH_LINES)`. */
   appointment_services?: AppointmentServiceRow[];
@@ -1532,6 +1538,7 @@ export class AppointmentsService {
       payment: clientPayment(row),
       cancelledBy: row.cancelled_by ?? null,
       cancellationReason: row.cancellation_reason ?? null,
+      confirmedByClientAt: row.confirmed_by_client_at ?? null,
       createdAt: row.created_at,
     };
   }
@@ -1559,6 +1566,7 @@ export class AppointmentsService {
       payment: salonPayment(row),
       cancelledBy: row.cancelled_by ?? null,
       cancellationReason: row.cancellation_reason ?? null,
+      confirmedByClientAt: row.confirmed_by_client_at ?? null,
       staffId: row.staff_id ?? null,
       staffName,
     };

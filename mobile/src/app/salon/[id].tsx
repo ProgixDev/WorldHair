@@ -13,6 +13,7 @@ import { SalonRating } from "../../components/particulier/SalonRating";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { RatingStars } from "../../components/ui/RatingStars";
+import { VerifiedReviewMark } from "../../components/ui/VerifiedReviewMark";
 import { elevation } from "../../constants/elevation";
 import { useResponsive } from "../../constants/responsive";
 import { radius, spacing } from "../../constants/spacing";
@@ -558,6 +559,8 @@ export default function SalonDetail() {
                       </Pressable>
                     )}
                   </View>
+
+                  {review.verified ? <VerifiedReviewMark /> : null}
 
                   <Text
                     style={[

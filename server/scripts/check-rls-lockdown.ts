@@ -160,6 +160,18 @@ async function main(): Promise<void> {
       run: () => insertIncompleteRow(coiffeur.client, "staff_availability", { weekday: "1" }),
     },
     {
+      // The end-of-service code: made and checked by the API only.
+      name: "coiffeur makes an end-of-service code (completion_codes) directly",
+      expect: "blocked",
+      run: () => insertIncompleteRow(coiffeur.client, "completion_codes", { code: "CHKRLSCHKRLS" }),
+    },
+    {
+      name: "particulier marks their own booking confirmed (appointments.confirmed_by_client_at) directly",
+      expect: "blocked",
+      run: () =>
+        rewriteOwnValue(particulier.client, "appointments", "confirmed_by_client_at", { particulier_id: particulier.userId }),
+    },
+    {
       name: "particulier adds a prestation line (appointment_services) directly",
       expect: "blocked",
       run: () => insertIncompleteRow(particulier.client, "appointment_services", { service_name: "check:rls" }),

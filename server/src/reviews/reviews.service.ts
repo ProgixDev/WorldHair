@@ -29,6 +29,8 @@ export interface ReviewDto {
   status: 'visible' | 'reported' | 'hidden';
   /** The reader already reported it: the app shows « Signalé » instead of the button. */
   reportedByMe: boolean;
+  /** The client confirmed the service on the spot, by scanning the salon's end-of-service code: « avis vérifié ». */
+  verified: boolean;
 }
 
 /** One person's report on a review, for the admins. */
@@ -460,7 +462,10 @@ export class ReviewsService {
   }
 
   private async mapAll(rows: ReviewRow[], reportedByMe = new Set<string>()): Promise<ReviewDto[]> {
-    const names = await this.authorNamesFor([...new Set(authorsOf(rows))]);
+    const [names, verified] = await Promise.all([
+      this.authorNamesFor([...new Set(authorsOf(rows))]),
+      this.verifiedAppointments(rows.map((row) => row.appointment_id)),
+    ]);
     return rows
       .slice()
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -469,11 +474,30 @@ export class ReviewsService {
           row,
           row.particulier_id ? (names.get(row.particulier_id) ?? 'Client') : FORMER_CLIENT,
           reportedByMe.has(row.id),
+          verified.has(row.appointment_id),
         ),
       );
   }
 
-  private map(row: ReviewRow, authorName: string, reportedByMe = false): ReviewDto {
+  /** Which of these appointments the client confirmed with the end-of-service code. */
+  private async verifiedAppointments(appointmentIds: string[]): Promise<Set<string>> {
+    const verified = new Set<string>();
+    for (const slice of slices([...new Set(appointmentIds)])) {
+      const { data, error } = await this.supabase.client
+        .from('appointments')
+        .select('id, confirmed_by_client_at')
+        .in('id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as { id: string; confirmed_by_client_at: string | null }[]) {
+        if (row.confirmed_by_client_at) verified.add(row.id);
+      }
+    }
+    return verified;
+  }
+
+  private map(row: ReviewRow, authorName: string, reportedByMe = false, verified = false): ReviewDto {
     return {
       id: row.id,
       appointmentId: row.appointment_id,
@@ -486,6 +510,7 @@ export class ReviewsService {
       createdAt: row.created_at,
       status: row.status as ReviewDto['status'],
       reportedByMe,
+      verified,
     };
   }
 }

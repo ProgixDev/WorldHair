@@ -142,6 +142,8 @@ export async function seedSalonReviews(
         starts_at: startsAt.toISOString(),
         status: "confirmed",
         attendance: "attended",
+        // Two reviews in three come from a client who scanned the salon's end-of-service code (« avis vérifié »).
+        confirmed_by_client_at: (seed + i) % 3 === 0 ? null : new Date(startsAt.getTime() + 3_600_000).toISOString(),
         created_at: bookedAt,
       })
       .select("id, particulier_id")

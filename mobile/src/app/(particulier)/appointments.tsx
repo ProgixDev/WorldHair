@@ -16,6 +16,7 @@ import {
   BookingError,
   cancelAppointment,
   canStillChange,
+  isConfirmedOnSite,
   isUpcoming,
   listAppointments,
   listUserReviews,
@@ -358,6 +359,13 @@ function TimelineItem({
             >
               {salon.addressLine + ", " + salon.city}
             </Text>
+          ) : null}
+
+          {isConfirmedOnSite(appointment) ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+              <MaterialCommunityIcons name="check-circle-outline" size={14} color={theme.success} />
+              <Text style={[typography.caption, { color: theme.success }]}>Confirmé sur place</Text>
+            </View>
           ) : null}
         </View>
 

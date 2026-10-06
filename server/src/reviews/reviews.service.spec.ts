@@ -61,6 +61,27 @@ describe('ReviewsService', () => {
       );
     });
 
+    it("marks a review « vérifié » when the client confirmed the service on the spot (end-of-service code)", async () => {
+      const plain = seedDoneAppointment();
+      const scanned = supabase.seedAppointment({
+        particulierId: 'particulier-2',
+        coiffeurId: COIFFEUR_ID,
+        startsAt: PAST,
+        status: 'confirmed',
+        confirmedByClientAt: PAST,
+      });
+      supabase.addUser('p2-token', { id: 'particulier-2', email: 'p2@example.com', email_confirmed_at: null }, 'particulier', { firstName: 'Awa', lastName: 'Sy' });
+      await service.create(PARTICULIER_ID, { appointmentId: plain, rating: 4 });
+      await service.create('particulier-2', { appointmentId: scanned, rating: 5 });
+
+      const reviews = await service.listForSalon(COIFFEUR_ID);
+
+      expect(reviews.map((review) => [review.authorName, review.verified]).sort()).toEqual([
+        ['Awa S.', true],
+        ['Camille D.', false],
+      ]);
+    });
+
     it('rejects a review for an appointment that is not done yet', async () => {
       const appointmentId = supabase.seedAppointment({
         particulierId: PARTICULIER_ID,

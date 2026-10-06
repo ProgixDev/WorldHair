@@ -525,6 +525,10 @@ create table public.appointments (
   -- Set by the coiffeur once an accepted appointment has started ("marquer
   -- comme honoré"); null until then. No review after a no-show.
   attendance text check (attendance in ('attended', 'no_show')),
+  -- The client scanned the salon's end-of-service code (TODO.md): they
+  -- confirmed the service was done. Proof for « avis vérifié » and disputes;
+  -- the salon is paid the same whether or not they scan.
+  confirmed_by_client_at timestamptz,
   -- The salon's cancellation notice when the client booked: changing the
   -- setting later never moves an existing booking's deadline. Null on
   -- bookings made before it was kept (the salon's current notice applies).
@@ -594,6 +598,20 @@ alter table public.appointments
   add constraint appointments_no_overlap
   exclude using gist (staff_id with =, public.appointment_time_range (starts_at, duration_min) with &&)
   where (status in ('awaiting_payment', 'pending', 'confirmed'));
+
+-- The end-of-service code (TODO.md): the salon shows a QR code holding one,
+-- the client scans it. Short-lived (a few minutes), one live code per
+-- booking — showing a new one replaces the last. API only: RLS on, no policy.
+create table public.completion_codes (
+  code text primary key,
+  appointment_id uuid not null references public.appointments (id) on delete cascade,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create index completion_codes_appointment_id_idx on public.completion_codes (appointment_id);
+
+alter table public.completion_codes enable row level security;
 
 -- The prestations of a booking, in order — several can be booked back to
 -- back as one appointment, whose own service_name/price/duration_min hold

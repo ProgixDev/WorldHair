@@ -72,6 +72,8 @@ export interface AdminAppointmentDetail extends AdminAppointmentSummary {
   payment: (AdminAppointmentPayment & { paymentIntentId: string | null }) | null;
   /** Who of the salon's team does it (TODO.md Phase 3); `null` when unknown or gone. */
   staffName: string | null;
+  /** The client scanned the end-of-service code: they confirmed it was done. */
+  confirmedByClientAt: string | null;
 }
 
 /** A row of admin_appointments() (schema.sql). */
@@ -241,6 +243,7 @@ export class AdminAppointmentsService {
       payment: payment ? { ...toPayment(payment), paymentIntentId: payment.payment_intent_id } : null,
       createdAt: row.created_at,
       staffName,
+      confirmedByClientAt: row.confirmed_by_client_at ?? null,
     };
   }
 

@@ -88,6 +88,8 @@ export default function ProAccount() {
         : theme.primary.main;
   const date = keyDate(subscription);
   const hasPlan = subscription.state !== "none" && subscription.state !== "expired" && !subscription.offered;
+  // An offered subscription (demo salon, launch partner) has a formula too, but no billing period.
+  const hasFormula = subscription.state !== "none" && subscription.state !== "expired";
 
   const refresh = async () => {
     setRefreshing(true);
@@ -177,11 +179,15 @@ export default function ProAccount() {
           label="Fiche visible par les clients"
           value={subscription.listed ? "Oui" : "Non"}
         />
-        {hasPlan ? (
+        {hasFormula ? (
           <RowShell
             icon="calendar-sync-outline"
             label="Formule"
-            value={tierLabel(subscription.tier) + " · " + (subscription.plan === "yearly" ? "Annuelle" : "Mensuelle")}
+            value={
+              tierLabel(subscription.tier) +
+              (hasPlan ? " · " + (subscription.plan === "yearly" ? "Annuelle" : "Mensuelle") : " · offerte") +
+              (subscription.teamLimit > 1 ? " · jusqu'à " + subscription.teamLimit + " personnes" : "")
+            }
           />
         ) : null}
         {date ? (

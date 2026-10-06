@@ -42,6 +42,8 @@ export interface Review {
   comment: string;
   /** Coiffeur's public answer, when there is one. */
   reply?: string;
+  /** The client confirmed on the spot with the salon's « code de fin »: « Avis vérifié ». */
+  verified?: boolean;
   /** The reader already reported it: « Signalé » instead of the button. */
   reportedByMe?: boolean;
   /** The salon's own list only: `hidden` once WorldHair's moderation took it down. */
