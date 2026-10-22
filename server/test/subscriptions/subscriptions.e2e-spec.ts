@@ -141,12 +141,12 @@ describe('subscriptions (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ trialDays: 14 })
         .expect(200)
-        .expect({ trialDays: 14, commissionPercent: 10 });
+        .expect({ trialDays: 14, commissionPercent: 8 });
       await request(server)
         .get('/admin/settings')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200)
-        .expect({ trialDays: 14, commissionPercent: 10 });
+        .expect({ trialDays: 14, commissionPercent: 8 });
     });
 
     it('refuses an impossible trial, and non-admins', async () => {

@@ -284,7 +284,7 @@ interface PlatformSettingsRow {
 
 /** Same defaults as schema.sql's platform_settings row. */
 function defaultPlatformSettings(): PlatformSettingsRow {
-  return { id: true, trial_days: 30, commission_percent: 10, updated_at: new Date().toISOString() };
+  return { id: true, trial_days: 30, commission_percent: 8, updated_at: new Date().toISOString() };
 }
 
 interface PayoutAccountRow {

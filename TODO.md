@@ -374,7 +374,7 @@ demo salon, which takes bookings without its own Stripe account (its money
 waits with WorldHair, and would be paid out if it ever set up payouts); a
 salon is paid 24 h after the appointment ends; a request the salon never
 answers is cancelled and refunded at its start time; the commission starts
-at 10 %. Not yet run against a real Stripe account: it needs the keys and
+at 8 %. Not yet run against a real Stripe account: it needs the keys and
 Connect switched on — see TESTING.md, "Stripe".
 
 Reviewed the same day (migration `phase5_payment_hardening`), fixed: a
@@ -451,7 +451,7 @@ Stripe's native SDK (migration `phase5_web_checkout`).
 - [x] **Commission**: rate in `platform_settings`, editable in
       `/admin/parametres`, copied onto each payment. Stripe's card fees are
       taken from WorldHair's side, so the rate should cover them.
-      Done; starts at 10 %.
+      Done; starts at 8 % (client, 2026-10-22; was 10 %).
 - [x] **Coiffeur payments view**: amount paid, commission, transfer and refund
       per appointment in the pro area. Dashboard revenue counts paid bookings.
       Done: the Paiements screen lists each paid booking; the booking's sheet

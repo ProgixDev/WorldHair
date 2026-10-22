@@ -1236,7 +1236,7 @@ create table public.platform_settings (
   trial_days integer not null default 30 check (trial_days between 0 and 365),
   -- WorldHair's share of each prestation paid in the app, in percent
   -- (TODO.md Phase 5); Stripe's card fees come out of it.
-  commission_percent numeric(5, 2) not null default 10 check (commission_percent between 0 and 100),
+  commission_percent numeric(5, 2) not null default 8 check (commission_percent between 0 and 100),
   updated_at timestamptz not null default now()
 );
 

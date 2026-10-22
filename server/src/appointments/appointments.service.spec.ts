@@ -387,7 +387,7 @@ describe('AppointmentsService', () => {
       await expect(service.refundByCoiffeur('another-coiffeur', booked.id)).rejects.toThrow(ForbiddenException);
 
       const [forSalon] = await service.listForCoiffeur(COIFFEUR_ID);
-      expect(forSalon.payment).toMatchObject({ amount: 40, refundedAmount: 15, commissionAmount: 2.5, payoutAmount: 22.5, paidOutAt: null });
+      expect(forSalon.payment).toMatchObject({ amount: 40, refundedAmount: 15, commissionAmount: 2, payoutAmount: 23, paidOutAt: null });
     });
   });
 

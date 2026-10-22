@@ -14,7 +14,7 @@ interface PlatformSettingsRow {
 }
 
 /** Same as schema.sql's column defaults, for a database where the row is missing. */
-const DEFAULTS: PlatformSettings = { trialDays: 30, commissionPercent: 10 };
+const DEFAULTS: PlatformSettings = { trialDays: 30, commissionPercent: 8 };
 
 function mapRow(row: PlatformSettingsRow): PlatformSettings {
   // numeric columns come back as strings from PostgREST.

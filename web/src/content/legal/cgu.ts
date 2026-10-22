@@ -77,7 +77,7 @@ export const CGU: LegalDocument = {
       blocks: [
         "Les prix des Prestations sont fixés librement par chaque Coiffeur et affichés en euros, toutes taxes comprises. L'utilisation du Service est gratuite pour les Clients : aucun frais de réservation n'est ajouté au prix.",
         "Le Client paie le prix total de sa Réservation par carte bancaire, sur la page de paiement sécurisée de Stripe, prestataire de services de paiement agréé. Les données de carte sont traitées par Stripe ; WorldHair n'y a pas accès.",
-        "Commission. Pour chaque Prestation payée sur le Service, WorldHair perçoit une commission sur le montant conservé par le Client, après remboursements éventuels, prélevée sur la somme reversée au Coiffeur. Son taux est de 10 % à la date des présentes CGU et peut évoluer ; le taux applicable à une Prestation est celui en vigueur le jour où le Client la paie. Le Client ne paie aucune commission.",
+        "Commission. Pour chaque Prestation payée sur le Service, WorldHair perçoit une commission sur le montant conservé par le Client, après remboursements éventuels, prélevée sur la somme reversée au Coiffeur. Son taux est de 8 % à la date des présentes CGU et peut évoluer ; le taux applicable à une Prestation est celui en vigueur le jour où le Client la paie. Le Client ne paie aucune commission.",
         "Versement. La part du Coiffeur lui est versée sur son compte Stripe 24 heures environ après la fin du rendez-vous, puis sur son compte bancaire selon le calendrier de Stripe.",
       ],
     },

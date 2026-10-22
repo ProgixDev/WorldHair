@@ -11,12 +11,12 @@ describe('PlatformSettingsService', () => {
     settings = new PlatformSettingsService(supabase as unknown as SupabaseService);
   });
 
-  it('starts with a 30-day trial and a 10 % commission', async () => {
-    await expect(settings.get()).resolves.toEqual({ trialDays: 30, commissionPercent: 10 });
+  it('starts with a 30-day trial and an 8 % commission', async () => {
+    await expect(settings.get()).resolves.toEqual({ trialDays: 30, commissionPercent: 8 });
   });
 
   it('keeps what the admin sets, one field at a time', async () => {
-    await expect(settings.update({ trialDays: 14 })).resolves.toEqual({ trialDays: 14, commissionPercent: 10 });
+    await expect(settings.update({ trialDays: 14 })).resolves.toEqual({ trialDays: 14, commissionPercent: 8 });
     await expect(settings.update({ commissionPercent: 12.5 })).resolves.toEqual({ trialDays: 14, commissionPercent: 12.5 });
     await expect(settings.get()).resolves.toEqual({ trialDays: 14, commissionPercent: 12.5 });
   });
