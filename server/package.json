@@ -18,6 +18,7 @@
     "seed:demo": "bun scripts/seed-demo-accounts.ts",
     "seed:catalogue": "bun scripts/seed-catalogue-salons.ts",
     "seed:admin": "bun scripts/seed-admin-account.ts",
+    "seed:ads": "bun scripts/seed-ad-banners.ts",
     "check:rls": "bun scripts/check-rls-lockdown.ts",
     "stripe:setup": "bun scripts/stripe-setup.ts"
   },
