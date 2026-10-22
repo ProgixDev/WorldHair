@@ -5,25 +5,25 @@ const PRESTATIONS = [
   {
     name: "Coupe & brushing",
     rating: 5,
-    image: "/images/HighlightsSectionCoupeBrushing.png",
+    image: "/images/HighlightsSectionCoupeBrushing.webp",
     description: "Coupe personnalisée et brushing fini par un coiffeur près de chez vous.",
   },
   {
     name: "Coloration",
     rating: 5,
-    image: "/images/HighlightsSectionColoration.png",
+    image: "/images/HighlightsSectionColoration.webp",
     description: "Balayage, coloration ou patine, adaptés à votre nature de cheveux.",
   },
   {
     name: "Soin capillaire",
     rating: 4,
-    image: "/images/HighlightsSectionSoinCapillaire.png",
+    image: "/images/HighlightsSectionSoinCapillaire.webp",
     description: "Soins réparateurs et hydratants pour des cheveux en meilleure santé.",
   },
   {
     name: "Coupe barbier",
     rating: 5,
-    image: "/images/worldhair-barber-cut.png",
+    image: "/images/worldhair-barber-cut.webp",
     description: "Coupe, dégradé et taille de barbe par un barbier expérimenté.",
   },
 ] as const;
@@ -33,14 +33,14 @@ const PRESTATIONS = [
  *  The array is duplicated at render time so the marquee can loop seamlessly
  *  at the halfway mark. */
 const GALLERY = [
-  { alt: "Coiffure en locks", image: "/images/worldhair-locs.png" },
-  { alt: "Tresses africaines", image: "/images/worldhair-african-braids.png" },
-  { alt: "Cheveux européens lisses", image: "/images/worldhair-european-straight-hair.png" },
-  { alt: "Cheveux crépus", image: "/images/worldhair-kinky-coily-hair.png" },
-  { alt: "Cheveux indo-pakistanais épais et raides", image: "/images/worldhair-indo-pakistani-thick-straight-hair.png" },
-  { alt: "Dégradé homme (edge-up)", image: "/images/worldhair-mens-edge-up.png" },
-  { alt: "Brushing femme", image: "/images/worldhair-womens-blow-dry.png" },
-  { alt: "Coupe homme afro", image: "/images/worldhair-mens-afro-cut.png" },
+  { alt: "Coiffure en locks", image: "/images/worldhair-locs.webp" },
+  { alt: "Tresses africaines", image: "/images/worldhair-african-braids.webp" },
+  { alt: "Cheveux européens lisses", image: "/images/worldhair-european-straight-hair.webp" },
+  { alt: "Cheveux crépus", image: "/images/worldhair-kinky-coily-hair.webp" },
+  { alt: "Cheveux indo-pakistanais épais et raides", image: "/images/worldhair-indo-pakistani-thick-straight-hair.webp" },
+  { alt: "Dégradé homme (edge-up)", image: "/images/worldhair-mens-edge-up.webp" },
+  { alt: "Brushing femme", image: "/images/worldhair-womens-blow-dry.webp" },
+  { alt: "Coupe homme afro", image: "/images/worldhair-mens-afro-cut.webp" },
 ] as const;
 
 export function HighlightsSection() {

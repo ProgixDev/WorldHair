@@ -3,19 +3,19 @@ import Image from "next/image";
 const STEPS = [
   {
     number: "01",
-    image: "/images/RitualSectionRecherche.png",
+    image: "/images/RitualSectionRecherche.webp",
     tag: "Recherche",
     title: "Trouvez votre coiffeur",
   },
   {
     number: "02",
-    image: "/images/RitualSectionReservation.png",
+    image: "/images/RitualSectionReservation.webp",
     tag: "Réservation",
     title: "Réservez en ligne",
   },
   {
     number: "03",
-    image: "/images/worldhair-ritual-step-3-booking-phone-v2.png",
+    image: "/images/worldhair-ritual-step-3-booking-phone-v2.webp",
     tag: "Style",
     title: "Profitez de votre style",
   },

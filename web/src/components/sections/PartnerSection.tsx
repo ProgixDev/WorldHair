@@ -14,7 +14,7 @@ export function PartnerSection() {
       className="relative isolate mt-10 flex items-center overflow-hidden text-white sm:mt-24 sm:min-h-[38rem] lg:min-h-[46rem]"
     >
       <Image
-        src="/images/worldhair-partner-travertine-background.png"
+        src="/images/worldhair-partner-travertine-background.webp"
         alt=""
         fill
         sizes="100vw"

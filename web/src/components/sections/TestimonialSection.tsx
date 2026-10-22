@@ -22,7 +22,7 @@ export function TestimonialSection() {
 
       <div className="mx-auto flex max-w-[1680px] justify-center px-4 pt-8 sm:px-6 sm:pt-12">
         <Image
-          src="/images/TestimonialSectionMainPicture.png"
+          src="/images/TestimonialSectionMainPicture.webp"
           alt="Icônes de témoignage cinq étoiles"
           width={1536}
           height={1024}

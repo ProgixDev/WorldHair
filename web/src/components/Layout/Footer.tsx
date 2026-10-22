@@ -38,7 +38,7 @@ export function Footer() {
           above — same overlap layering as HeroSection's product shot. */}
       <div className="relative z-10 mx-auto -mt-8 flex max-w-4xl justify-center sm:-mt-24">
         <Image
-          src="/images/FooterStylingTools.png"
+          src="/images/FooterStylingTools.webp"
           alt="Outils de coiffure : ciseaux, brosse et peigne"
           width={1536}
           height={1024}

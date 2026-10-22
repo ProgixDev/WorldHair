@@ -27,7 +27,7 @@ export function SpotlightSection() {
       <div className="mx-auto grid max-w-[1680px] sm:grid-cols-2 sm:min-h-[38rem] lg:min-h-[46rem]">
         <div className="relative aspect-4/3 sm:aspect-auto">
           <Image
-            src="/images/SpotlightSectionSalonInterior.png"
+            src="/images/SpotlightSectionSalonInterior.webp"
             alt=""
             fill
             sizes="(min-width: 640px) 50vw, 100vw"

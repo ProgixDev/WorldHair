@@ -18,7 +18,7 @@ export function HeroSection() {
       className="relative isolate flex min-h-screen flex-col overflow-hidden bg-[#020405] text-white sm:block"
     >
       <Image
-        src="/images/HeroSectionBackground.png"
+        src="/images/HeroSectionBackground.webp"
         alt=""
         fill
         priority
@@ -67,7 +67,7 @@ export function HeroSection() {
         <article className="absolute right-5 bottom-9 hidden w-48 overflow-hidden rounded-2xl border-4 border-white shadow-2xl shadow-black/45 sm:right-8 sm:block sm:w-52 lg:right-12 lg:bottom-10">
           <div className="relative aspect-3/4">
             <Image
-              src="/images/HeroSectionSmallPicture.png"
+              src="/images/HeroSectionSmallPicture.webp"
               alt=""
               fill
               sizes="208px"
@@ -93,7 +93,7 @@ export function HeroSection() {
         className="pointer-events-none static mt-auto flex justify-center sm:absolute sm:inset-x-0 sm:bottom-0"
       >
         <Image
-          src="/images/HeroSectionMainPicture.png"
+          src="/images/HeroSectionMainPicture.webp"
           alt=""
           width={1448}
           height={1086}
