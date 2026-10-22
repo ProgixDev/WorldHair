@@ -56,6 +56,17 @@ describe('AdSlotsService', () => {
     expect(cleared.linkUrl).toBeNull();
   });
 
+  it('update() lets a slot go live with an image alone: no headline, no link', async () => {
+    const slot = await service.update('search_results', {
+      active: true,
+      headline: '',
+      imageUrl: 'https://cdn.example.com/banner.png',
+      linkUrl: '',
+    });
+
+    expect(slot).toMatchObject({ active: true, headline: '', linkUrl: null });
+  });
+
   it('update() only changes the fields it was given', async () => {
     await service.update('home_banner', { headline: 'Titre A' });
     const updated = await service.update('home_banner', { active: true });

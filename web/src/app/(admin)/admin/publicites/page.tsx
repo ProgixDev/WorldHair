@@ -153,7 +153,7 @@ export default function AdminPublicitesPage() {
                             [slot.id]: { ...draft, headline: event.target.value },
                           }))
                         }
-                        placeholder="Titre affiché"
+                        placeholder="Titre affiché (facultatif)"
                         className="min-w-[160px] flex-1 rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
                       />
                       <input
@@ -165,7 +165,7 @@ export default function AdminPublicitesPage() {
                             [slot.id]: { ...draft, linkUrl: event.target.value },
                           }))
                         }
-                        placeholder="Lien (https://…)"
+                        placeholder="Lien (facultatif : sans lien, la pub n'est pas cliquable)"
                         className="min-w-[200px] flex-1 rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
                       />
 

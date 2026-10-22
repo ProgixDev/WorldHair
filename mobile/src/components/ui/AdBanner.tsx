@@ -9,18 +9,21 @@ import type { AdSlot } from "../../services/ads";
 
 /**
  * Admin-managed ad banner (issue #5): the uploaded photo once a real one
- * exists, an icon panel until then. Tapping opens `linkUrl` when set.
+ * exists, an icon panel until then. Tapping opens `linkUrl` when set, and does
+ * nothing otherwise. The headline is optional too: without one the banner is
+ * the image alone, with a small "Publicité" tag over its corner.
  */
 export function AdBanner({ slot }: { slot: AdSlot }) {
   const { theme } = useTheme();
   const openable = Boolean(slot.linkUrl);
+  const headline = slot.headline.trim();
 
   return (
     <Pressable
       onPress={openable ? () => void Linking.openURL(slot.linkUrl!) : undefined}
       disabled={!openable}
       accessibilityRole={openable ? "link" : undefined}
-      accessibilityLabel={"Publicité — " + slot.headline}
+      accessibilityLabel={headline ? "Publicité — " + headline : "Publicité"}
       style={({ pressed }) => ({
         borderRadius: radius.xl,
         overflow: "hidden",
@@ -53,19 +56,39 @@ export function AdBanner({ slot }: { slot: AdSlot }) {
             />
           </View>
         )}
+
+        {headline ? null : (
+          <View
+            style={{
+              position: "absolute",
+              top: spacing.xs,
+              left: spacing.xs,
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 2,
+              borderRadius: radius.full,
+              backgroundColor: "rgba(0,0,0,0.55)",
+            }}
+          >
+            <Text style={[typography.overline, { color: "#ffffff" }]}>
+              PUBLICITÉ
+            </Text>
+          </View>
+        )}
       </View>
 
-      <View style={{ padding: spacing.md, gap: 2 }}>
-        <Text style={[typography.overline, { color: theme.foreground.gray }]}>
-          PUBLICITÉ
-        </Text>
-        <Text
-          style={[typography.bodySmall, { color: theme.foreground.white }]}
-          numberOfLines={2}
-        >
-          {slot.headline}
-        </Text>
-      </View>
+      {headline ? (
+        <View style={{ padding: spacing.md, gap: 2 }}>
+          <Text style={[typography.overline, { color: theme.foreground.gray }]}>
+            PUBLICITÉ
+          </Text>
+          <Text
+            style={[typography.bodySmall, { color: theme.foreground.white }]}
+            numberOfLines={2}
+          >
+            {headline}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }

@@ -171,44 +171,23 @@ export function OnboardingSlide({
   return (
     <View style={{ width, flex: 1, backgroundColor: palette.surface }}>
       <View style={{ height: onboardingArtHeight + insets.top }}>
-        {slide.artFit === "contain" && slide.art ? (
-          <View
-            style={{
-              flex: 1,
-              paddingTop: insets.top + spacing.lg,
-              paddingHorizontal: gutter,
-              paddingBottom: spacing.md,
-            }}
-          >
-            <Image
-              source={slide.art}
-              style={{ flex: 1 }}
-              contentFit="contain"
-              transition={200}
-              accessible={false}
-            />
-          </View>
-        ) : (
-          <>
-            <ArtOrFallback
-              art={slide.art}
-              iconFallback={slide.iconFallback}
-              palette={palette}
-              style={StyleSheet.absoluteFill}
-            />
-            <LinearGradient
-              colors={[fade, palette.surface]}
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: Math.round(onboardingArtHeight * 0.4),
-              }}
-              pointerEvents="none"
-            />
-          </>
-        )}
+        <ArtOrFallback
+          art={slide.art}
+          iconFallback={slide.iconFallback}
+          palette={palette}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={[fade, palette.surface]}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: Math.round(onboardingArtHeight * 0.4),
+          }}
+          pointerEvents="none"
+        />
       </View>
 
       <View

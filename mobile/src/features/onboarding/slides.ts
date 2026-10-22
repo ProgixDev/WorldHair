@@ -24,10 +24,7 @@ export interface OnboardingSlideData {
   /** Art covers the whole page instead of a top panel. */
   fullBleed: boolean;
   /** Dark surface: the status bar icons go light. */
-  darkSurface?: boolean;
-  /** "contain" shows the photo whole on the surface, padded (a logo card); default crops to fill and fades. */
-  artFit?: "cover" | "contain";
-  wordmark?: { title: string; tagline: string };
+  darkSurface?: boolean;  wordmark?: { title: string; tagline: string };
   heading: string;
   body: string;
   cta: {
@@ -109,17 +106,16 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     // and swaps it in here once it resolves.
     art: null,
     iconFallback: "spray-bottle",
-    // Dark like the three before it. The photo is a partner's card or logo:
-    // shown whole on the surface, never cropped or faded.
+    // Dark like the three before it. The admin uploads a full-screen portrait
+    // (partner's logo up top, empty navy below for the copy), same as 2 and 3.
     palette: {
       surface: "#050c1d",
       onSurface: "#f6f1ea",
       muted: "#a9bccd",
       rule: "#d8b48a",
     },
-    fullBleed: false,
+    fullBleed: true,
     darkSurface: true,
-    artFit: "contain",
     heading: "Des produits de qualité",
     body: "Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.",
     cta: { label: "Découvrir WorldHair" },

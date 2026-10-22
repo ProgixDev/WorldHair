@@ -175,18 +175,20 @@ export function BottomSheet({
                 />
               </View>
 
-              <Text
-                style={[
-                  typography.h2,
-                  {
-                    color: theme.foreground.white,
-                    paddingHorizontal: spacing.xl,
-                    paddingBottom: spacing.md,
-                  },
-                ]}
-              >
-                {title}
-              </Text>
+              {title ? (
+                <Text
+                  style={[
+                    typography.h2,
+                    {
+                      color: theme.foreground.white,
+                      paddingHorizontal: spacing.xl,
+                      paddingBottom: spacing.md,
+                    },
+                  ]}
+                >
+                  {title}
+                </Text>
+              ) : null}
             </View>
           </GestureDetector>
 

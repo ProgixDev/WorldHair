@@ -95,7 +95,7 @@ export default function AdminContenuPage() {
                   <div className="group relative size-16 shrink-0 overflow-hidden rounded-xl bg-[#1e2e45]">
                     {content.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element -- external Storage URL, not a local asset
-                      <img src={content.imageUrl} alt="" className="size-full object-contain" />
+                      <img src={content.imageUrl} alt="" className="size-full object-cover object-top" />
                     ) : (
                       <p className="grid size-full place-items-center text-center text-[9px] text-[#5b7186]">
                         Aucune image
@@ -122,8 +122,8 @@ export default function AdminContenuPage() {
                     </label>
                   </div>
                   <p className="text-xs text-[#5b7186]">
-                    Visible en haut de la 4e slide, en entier (jamais rognée). Un logo ou une carte sur
-                    fond transparent ou uni rend le mieux.
+                    Plein écran derrière la 4e slide. Format portrait (9:19,5), logo en haut, bas du
+                    visuel libre pour le texte : comme les slides 2 et 3.
                   </p>
                 </div>
 
@@ -171,24 +171,28 @@ export default function AdminContenuPage() {
                     aria-hidden
                   />
 
-                  {/* Same as the phone: the photo whole, padded under the status bar, no crop and no fade. */}
-                  <div className="relative flex-[0_0_52%]">
-                    {content.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- external Storage URL, not a local asset
-                      <img
-                        src={content.imageUrl}
-                        alt=""
-                        className="absolute inset-0 size-full object-contain px-4 pt-9 pb-2"
-                      />
-                    ) : (
-                      <div
-                        className="absolute inset-0"
-                        style={{ backgroundColor: `${SLIDE_PALETTE.rule}1a` }}
-                      />
-                    )}
-                  </div>
+                  {/* Same as the phone: the photo fills the whole screen, anchored at the top, and fades into the surface from halfway down. */}
+                  {content.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- external Storage URL, not a local asset
+                    <img
+                      src={content.imageUrl}
+                      alt=""
+                      className="absolute inset-0 size-full object-cover object-top"
+                    />
+                  ) : (
+                    <div
+                      className="absolute inset-0"
+                      style={{ backgroundColor: `${SLIDE_PALETTE.rule}1a` }}
+                    />
+                  )}
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background: `linear-gradient(to bottom, ${SLIDE_PALETTE.surface}00 50%, ${SLIDE_PALETTE.surface}cc 62%, ${SLIDE_PALETTE.surface} 80%)`,
+                    }}
+                  />
 
-                  <div className="flex flex-1 flex-col justify-end gap-2.5 px-4 pt-3 pb-4">
+                  <div className="relative flex flex-1 flex-col justify-end gap-2.5 px-4 pt-3 pb-4">
                     <div className="flex flex-col gap-2">
                       <span
                         className="h-0.5 w-11 rounded-full"
