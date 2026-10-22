@@ -40,6 +40,16 @@ describe('ContentService', () => {
     });
   });
 
+  it('starts with the default button label and lets the admin change it', async () => {
+    await expect(service.get('onboarding_products_slide')).resolves.toMatchObject({
+      buttonLabel: 'Découvrir WorldHair',
+    });
+
+    const updated = await service.update('onboarding_products_slide', { buttonLabel: 'Continuer' });
+
+    expect(updated.buttonLabel).toBe('Continuer');
+  });
+
   it('update() with an empty imageUrl clears it', async () => {
     await service.update('onboarding_products_slide', {
       imageUrl: 'https://cdn.example.com/slide.png',

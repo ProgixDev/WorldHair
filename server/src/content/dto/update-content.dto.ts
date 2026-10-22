@@ -15,4 +15,10 @@ export class UpdateAppContentDto {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  /** Empty string falls back to the app's default label. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  buttonLabel?: string;
 }

@@ -14,11 +14,12 @@ const CONTENT_KEY = "onboarding_products_slide";
 
 /** Real values from mobile/src/features/onboarding/slides.ts's "products" slide — this preview must match what actually renders on the phone, not an invented look. */
 const SLIDE_PALETTE = {
-  surface: "#f7f4f1",
-  onSurface: "#0c2340",
-  muted: "#5b7186",
-  rule: "#b9855a",
+  surface: "#050c1d",
+  onSurface: "#f6f1ea",
+  muted: "#a9bccd",
+  rule: "#d8b48a",
 };
+const SLIDE_CTA_BACKGROUND = "#38b6ff";
 const SLIDE_CTA_LABEL = "Découvrir WorldHair";
 const SLIDE_INDEX = 3;
 const SLIDE_COUNT = 4;
@@ -27,6 +28,7 @@ export default function AdminContenuPage() {
   const [content, setContent] = useState<AppContent | null>(null);
   const [heading, setHeading] = useState("");
   const [body, setBody] = useState("");
+  const [buttonLabel, setButtonLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -38,6 +40,7 @@ export default function AdminContenuPage() {
         setContent(data);
         setHeading(data.heading);
         setBody(data.body);
+        setButtonLabel(data.buttonLabel);
         setError(null);
       })
       .catch(() => setError("Impossible de charger ce contenu."))
@@ -51,7 +54,7 @@ export default function AdminContenuPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updated = await updateAppContent(CONTENT_KEY, { heading, body });
+      const updated = await updateAppContent(CONTENT_KEY, { heading, body, buttonLabel });
       setContent(updated);
     } finally {
       setSaving(false);
@@ -84,7 +87,7 @@ export default function AdminContenuPage() {
                 <div>
                   <p className="text-sm font-medium text-[#f2f6fb]">4e slide onboarding</p>
                   <p className="text-xs text-[#5b7186]">
-                    &laquo;&nbsp;Des produits de qualité&nbsp;&raquo;
+                    Dernière slide, avant la connexion.
                   </p>
                 </div>
 
@@ -92,7 +95,7 @@ export default function AdminContenuPage() {
                   <div className="group relative size-16 shrink-0 overflow-hidden rounded-xl bg-[#1e2e45]">
                     {content.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element -- external Storage URL, not a local asset
-                      <img src={content.imageUrl} alt="" className="size-full object-cover" />
+                      <img src={content.imageUrl} alt="" className="size-full object-contain" />
                     ) : (
                       <p className="grid size-full place-items-center text-center text-[9px] text-[#5b7186]">
                         Aucune image
@@ -119,7 +122,8 @@ export default function AdminContenuPage() {
                     </label>
                   </div>
                   <p className="text-xs text-[#5b7186]">
-                    Visible en haut de la 4e slide de l&apos;onboarding mobile.
+                    Visible en haut de la 4e slide, en entier (jamais rognée). Un logo ou une carte sur
+                    fond transparent ou uni rend le mieux.
                   </p>
                 </div>
 
@@ -135,6 +139,14 @@ export default function AdminContenuPage() {
                   onChange={(event) => setBody(event.target.value)}
                   placeholder="Texte descriptif"
                   className="min-h-56 flex-1 resize-none rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
+                />
+                <input
+                  type="text"
+                  value={buttonLabel}
+                  maxLength={40}
+                  onChange={(event) => setButtonLabel(event.target.value)}
+                  placeholder={`Texte du bouton (par défaut : ${SLIDE_CTA_LABEL})`}
+                  className="rounded-xl bg-[#080f1a] p-3 text-sm text-[#f2f6fb] placeholder:text-[#5b7186] focus:outline-2 focus:outline-[#2a93d5]"
                 />
 
                 <button
@@ -159,13 +171,14 @@ export default function AdminContenuPage() {
                     aria-hidden
                   />
 
-                  <div className="relative flex-[0_0_58%]">
+                  {/* Same as the phone: the photo whole, padded under the status bar, no crop and no fade. */}
+                  <div className="relative flex-[0_0_52%]">
                     {content.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element -- external Storage URL, not a local asset
                       <img
                         src={content.imageUrl}
                         alt=""
-                        className="absolute inset-0 size-full object-cover"
+                        className="absolute inset-0 size-full object-contain px-4 pt-9 pb-2"
                       />
                     ) : (
                       <div
@@ -173,12 +186,6 @@ export default function AdminContenuPage() {
                         style={{ backgroundColor: `${SLIDE_PALETTE.rule}1a` }}
                       />
                     )}
-                    <div
-                      className="absolute right-0 bottom-0 left-0 h-[40%]"
-                      style={{
-                        background: `linear-gradient(to bottom, transparent, ${SLIDE_PALETTE.surface})`,
-                      }}
-                    />
                   </div>
 
                   <div className="flex flex-1 flex-col justify-end gap-2.5 px-4 pt-3 pb-4">
@@ -200,9 +207,9 @@ export default function AdminContenuPage() {
 
                     <p
                       className="rounded-full py-2 text-center text-xs font-medium tracking-wide"
-                      style={{ backgroundColor: "#38b6ff", color: SLIDE_PALETTE.onSurface }}
+                      style={{ backgroundColor: SLIDE_CTA_BACKGROUND, color: "#0c2340" }}
                     >
-                      {SLIDE_CTA_LABEL}
+                      {buttonLabel.trim() || SLIDE_CTA_LABEL}
                     </p>
 
                     <div className="flex items-center justify-between">
@@ -214,7 +221,7 @@ export default function AdminContenuPage() {
                             style={{
                               width: dotIndex === SLIDE_INDEX ? 16 : 4,
                               backgroundColor:
-                                dotIndex === SLIDE_INDEX ? "#38b6ff" : SLIDE_PALETTE.muted,
+                                dotIndex === SLIDE_INDEX ? SLIDE_CTA_BACKGROUND : SLIDE_PALETTE.muted,
                               opacity: dotIndex === SLIDE_INDEX ? 1 : 0.5,
                             }}
                           />

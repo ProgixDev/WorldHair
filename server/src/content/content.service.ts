@@ -6,6 +6,7 @@ export interface AppContent {
   heading: string;
   body: string;
   imageUrl: string | null;
+  buttonLabel: string;
   updatedAt: string;
 }
 
@@ -13,6 +14,7 @@ export interface UpdateAppContentInput {
   heading?: string;
   body?: string;
   imageUrl?: string;
+  buttonLabel?: string;
 }
 
 interface AppContentRow {
@@ -20,6 +22,7 @@ interface AppContentRow {
   heading: string;
   body: string;
   image_url: string | null;
+  button_label: string;
   updated_at: string;
 }
 
@@ -29,6 +32,7 @@ function mapRow(row: AppContentRow): AppContent {
     heading: row.heading,
     body: row.body,
     imageUrl: row.image_url,
+    buttonLabel: row.button_label,
     updatedAt: row.updated_at,
   };
 }
@@ -63,6 +67,7 @@ export class ContentService {
     if (patch.heading !== undefined) row.heading = patch.heading;
     if (patch.body !== undefined) row.body = patch.body;
     if (patch.imageUrl !== undefined) row.image_url = patch.imageUrl || null;
+    if (patch.buttonLabel !== undefined) row.button_label = patch.buttonLabel;
 
     const { data, error } = await this.supabase.client
       .from('app_content')

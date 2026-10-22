@@ -1132,6 +1132,8 @@ create table public.app_content (
   heading text not null default '',
   body text not null default '',
   image_url text,
+  -- Text of the slide's button; empty means the app's own default.
+  button_label text not null default '',
   updated_at timestamptz not null default now()
 );
 
@@ -1146,8 +1148,8 @@ create trigger set_app_content_updated_at
 before update on public.app_content for each row
 execute procedure public.set_updated_at ();
 
-insert into public.app_content (key, heading, body) values
-  ('onboarding_products_slide', 'Des produits de qualité', 'Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.');
+insert into public.app_content (key, heading, body, button_label) values
+  ('onboarding_products_slide', 'Des produits de qualité', 'Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.', 'Découvrir WorldHair');
 
 -- Shared public bucket for both ad-slot and content images — admin-only
 -- writes. In practice the admin web app uploads through the server

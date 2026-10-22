@@ -230,6 +230,7 @@ export interface AppContent {
   heading: string;
   body: string;
   imageUrl: string | null;
+  buttonLabel: string;
   updatedAt: string;
 }
 
@@ -237,6 +238,7 @@ export interface UpdateAppContentInput {
   heading?: string;
   body?: string;
   imageUrl?: string;
+  buttonLabel?: string;
 }
 
 export async function getAppContent(key: string): Promise<AppContent> {

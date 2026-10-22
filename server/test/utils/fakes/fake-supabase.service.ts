@@ -360,6 +360,7 @@ interface AppContentRow {
   heading: string;
   body: string;
   image_url: string | null;
+  button_label: string;
   updated_at: string;
 }
 
@@ -383,6 +384,7 @@ function defaultAppContent(): [string, AppContentRow][] {
         heading: 'Des produits de qualité',
         body: 'Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.',
         image_url: null,
+        button_label: 'Découvrir WorldHair',
         updated_at: now,
       },
     ],

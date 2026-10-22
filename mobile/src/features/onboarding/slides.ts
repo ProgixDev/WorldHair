@@ -21,8 +21,12 @@ export interface OnboardingSlideData {
   /** Shown instead of the photo panel while `art` is null. */
   iconFallback?: keyof typeof MaterialCommunityIcons.glyphMap;
   palette: SlidePalette;
-  /** Art covers the whole page (slide 1) instead of a top panel. */
+  /** Art covers the whole page instead of a top panel. */
   fullBleed: boolean;
+  /** Dark surface: the status bar icons go light. */
+  darkSurface?: boolean;
+  /** "contain" shows the photo whole on the surface, padded (a logo card); default crops to fill and fades. */
+  artFit?: "cover" | "contain";
   wordmark?: { title: string; tagline: string };
   heading: string;
   body: string;
@@ -55,6 +59,7 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
       rule: "#d8b48a",
     },
     fullBleed: true,
+    darkSurface: true,
     wordmark: { title: "WorldHair", tagline: "LA BEAUTÉ, PARTOUT." },
     heading: "Votre prochain look commence ici.",
     body: "Les meilleurs coiffeurs, choisis pour vous.",
@@ -62,28 +67,32 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
   },
   {
     id: "style",
+    // Full-screen night art (faces up top, empty navy below for the copy).
     art: require("../../../assets/images/OnBoarding/OnBoarding2.png"),
     palette: {
-      surface: "#f2e6d9",
-      onSurface: "#14202e",
-      muted: "#6d6155",
-      rule: "#b9855a",
+      surface: "#000510",
+      onSurface: "#f6f1ea",
+      muted: "#a9bccd",
+      rule: "#d8b48a",
     },
-    fullBleed: false,
+    fullBleed: true,
+    darkSurface: true,
     heading: "Une coiffure qui vous ressemble.",
     body: "Explorez les styles, les talents et les idées qui vous inspirent.",
     cta: { label: "Trouver mon style" },
   },
   {
     id: "location",
+    // Full-screen night art (salon front up top, empty navy below for the copy).
     art: require("../../../assets/images/OnBoarding/OnBoarding3.png"),
     palette: {
-      surface: "#f7f4f1",
-      onSurface: "#0c2340",
-      muted: "#5b7186",
-      rule: "#b9855a",
+      surface: "#050c1d",
+      onSurface: "#f6f1ea",
+      muted: "#a9bccd",
+      rule: "#d8b48a",
     },
-    fullBleed: false,
+    fullBleed: true,
+    darkSurface: true,
     heading: "Le bon salon, au bon moment.",
     body: "Réservez en quelques instants, près de chez vous.",
     cta: {
@@ -100,13 +109,17 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     // and swaps it in here once it resolves.
     art: null,
     iconFallback: "spray-bottle",
+    // Dark like the three before it. The photo is a partner's card or logo:
+    // shown whole on the surface, never cropped or faded.
     palette: {
-      surface: "#f7f4f1",
-      onSurface: "#0c2340",
-      muted: "#5b7186",
-      rule: "#b9855a",
+      surface: "#050c1d",
+      onSurface: "#f6f1ea",
+      muted: "#a9bccd",
+      rule: "#d8b48a",
     },
     fullBleed: false,
+    darkSurface: true,
+    artFit: "contain",
     heading: "Des produits de qualité",
     body: "Nos coiffeurs travaillent avec des marques professionnelles, choisies pour prendre soin de chaque type de cheveux.",
     cta: { label: "Découvrir WorldHair" },

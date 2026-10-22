@@ -61,6 +61,10 @@ export default function Onboarding() {
                 heading: content.heading,
                 body: content.body,
                 art: content.imageUri ? { uri: content.imageUri } : null,
+                cta: {
+                  ...slide.cta,
+                  label: content.buttonLabel.trim() || slide.cta.label,
+                },
               }
             : slide,
         ),
@@ -141,7 +145,7 @@ export default function Onboarding() {
 
   return (
     <View style={{ flex: 1 }}>
-      <StatusBar style={index === 0 ? "light" : "dark"} />
+      <StatusBar style={slides[index]?.darkSurface ? "light" : "dark"} />
       <FlatList
         ref={listRef}
         data={slides}

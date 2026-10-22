@@ -5,6 +5,7 @@ export class AppContentDto {
   heading!: string;
   body!: string;
   imageUrl!: string | null;
+  buttonLabel!: string;
   updatedAt!: string;
 }
 

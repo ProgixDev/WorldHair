@@ -137,7 +137,7 @@ export function OnboardingSlide({
         />
         <LinearGradient
           colors={[fade, palette.surface + "cc", palette.surface]}
-          locations={[0, 0.45, 0.78]}
+          locations={[0.5, 0.62, 0.8]}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
@@ -171,23 +171,44 @@ export function OnboardingSlide({
   return (
     <View style={{ width, flex: 1, backgroundColor: palette.surface }}>
       <View style={{ height: onboardingArtHeight + insets.top }}>
-        <ArtOrFallback
-          art={slide.art}
-          iconFallback={slide.iconFallback}
-          palette={palette}
-          style={StyleSheet.absoluteFill}
-        />
-        <LinearGradient
-          colors={[fade, palette.surface]}
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: Math.round(onboardingArtHeight * 0.4),
-          }}
-          pointerEvents="none"
-        />
+        {slide.artFit === "contain" && slide.art ? (
+          <View
+            style={{
+              flex: 1,
+              paddingTop: insets.top + spacing.lg,
+              paddingHorizontal: gutter,
+              paddingBottom: spacing.md,
+            }}
+          >
+            <Image
+              source={slide.art}
+              style={{ flex: 1 }}
+              contentFit="contain"
+              transition={200}
+              accessible={false}
+            />
+          </View>
+        ) : (
+          <>
+            <ArtOrFallback
+              art={slide.art}
+              iconFallback={slide.iconFallback}
+              palette={palette}
+              style={StyleSheet.absoluteFill}
+            />
+            <LinearGradient
+              colors={[fade, palette.surface]}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: Math.round(onboardingArtHeight * 0.4),
+              }}
+              pointerEvents="none"
+            />
+          </>
+        )}
       </View>
 
       <View
