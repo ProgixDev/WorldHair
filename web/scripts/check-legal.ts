@@ -9,8 +9,9 @@ import { missingFields } from "../src/components/legal/inline";
 import { CGU } from "../src/content/legal/cgu";
 import { PRIVACY_POLICY } from "../src/content/legal/confidentialite";
 import { LEGAL_NOTICE } from "../src/content/legal/mentions-legales";
+import { ACCOUNT_DELETION } from "../src/content/legal/suppression-compte";
 
-const missing = missingFields([CGU, PRIVACY_POLICY, LEGAL_NOTICE]);
+const missing = missingFields([CGU, PRIVACY_POLICY, LEGAL_NOTICE, ACCOUNT_DELETION]);
 if (missing.length > 0) {
   console.error(`The legal pages still wait for ${missing.length} field(s) in src/content/legal/company.ts:`);
   for (const field of missing) console.error(`  - ${field}`);

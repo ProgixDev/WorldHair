@@ -17,7 +17,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.worldhair",
+      "bundleIdentifier": "com.progix.worldhair",
+      "buildNumber": "1",
       "infoPlist": {
         "UIStatusBarHidden": true,
         "UIViewControllerBasedStatusBarAppearance": false
@@ -37,7 +38,8 @@
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
         }
       },
-      "package": "com.anonymous.worldhair"
+      "package": "com.progix.worldhair",
+      "versionCode": 1
     },
     "web": {
       "output": "static",

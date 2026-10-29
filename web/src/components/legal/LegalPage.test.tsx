@@ -24,6 +24,14 @@ describe("LegalPage", () => {
     expect(legal).not.toHaveTextContent("Conditions générales d'utilisation");
   });
 
+  it("gives a section its anchor, for a link straight to it (Google Play's « Delete data URL »)", () => {
+    const { container } = render(
+      <LegalPage document={{ title: "Supprimer votre compte", sections: [{ id: "donnees", title: "5. Une partie de vos données", blocks: [] }] }} path="/suppression-compte" />,
+    );
+
+    expect(container.querySelector("#donnees")).toHaveTextContent("5. Une partie de vos données");
+  });
+
   it("marks a field still to fill in, so none is missed before launch", () => {
     const { container } = render(<LegalPage document={DOCUMENT} path="/cgu" />);
 

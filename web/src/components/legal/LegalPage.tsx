@@ -6,6 +6,7 @@ const LEGAL_LINKS = [
   { href: "/cgu", label: "Conditions générales d'utilisation" },
   { href: "/confidentialite", label: "Politique de confidentialité" },
   { href: "/mentions-legales", label: "Mentions légales" },
+  { href: "/suppression-compte", label: "Supprimer votre compte" },
 ];
 
 function Inline({ text }: { text: string }) {
@@ -55,7 +56,7 @@ export function LegalPage({ document, path }: { document: LegalDocument; path: s
           )}
 
           {document.sections.map((section) => (
-            <section key={section.title} className="flex flex-col gap-3">
+            <section key={section.title} id={section.id} className="flex scroll-mt-6 flex-col gap-3">
               <h2 className="text-lg font-medium sm:text-xl">{section.title}</h2>
               {section.blocks.map((block, index) =>
                 typeof block === "string" ? (

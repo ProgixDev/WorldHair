@@ -6,6 +6,8 @@
 export type LegalBlock = string | string[];
 
 export interface LegalSection {
+  /** Anchor for a link straight to this section: `/page#id`. */
+  id?: string;
   title: string;
   blocks: LegalBlock[];
 }

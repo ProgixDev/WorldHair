@@ -85,7 +85,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         [
           "Exporter mes données : une copie de vos données, au format JSON ;",
           "Modifier mon profil (et, pour les coiffeurs, la fiche du salon) : pour les corriger ;",
-          "Supprimer mon compte : pour les effacer.",
+          "Supprimer mon compte : pour les effacer (voir [comment supprimer votre compte](/suppression-compte)).",
         ],
         `Vous pouvez aussi nous écrire à ${COMPANY.email} : nous répondons dans un délai d'un mois. Vous pouvez retirer à tout moment l'autorisation de localisation ou de notifications dans les réglages de votre téléphone. Si vous estimez que vos droits ne sont pas respectés, vous pouvez adresser une réclamation à la CNIL (www.cnil.fr).`,
       ],
