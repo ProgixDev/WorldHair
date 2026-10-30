@@ -91,6 +91,16 @@
       "./plugins/withTransparentStatusBar",
       "./plugins/withReleaseSigning",
       "./plugins/withDebugSigning"
-    ]
+    ],
+    "extra": {
+      "googleMapsConfigured": false,
+      "router": {
+        "root": "./src/app"
+      },
+      "eas": {
+        "projectId": "7b0a922e-79f8-4c53-9fb2-4ee08198eb75"
+      }
+    },
+    "owner": "andreworldhair"
   }
 }
