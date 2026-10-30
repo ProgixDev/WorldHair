@@ -5,17 +5,17 @@
  */
 export const COMPANY = {
   /** Dénomination sociale. */
-  name: "[Dénomination sociale à compléter]",
+  name: "World Haire Corporation",
   /** Forme juridique : SAS, SARL, EI… */
-  legalForm: "[Forme juridique à compléter]",
-  capital: "[Capital social à compléter]",
-  address: "[Adresse du siège social à compléter]",
+  legalForm: "société par actions simplifiée unipersonnelle (SASU)",
+  capital: "500 €",
+  address: "173 rue de Courcelles, 75017 Paris",
   /** Ville du greffe et numéro : « RCS Paris 123 456 789 », ou le numéro SIREN d'une entreprise individuelle. */
-  registration: "[RCS ou SIREN à compléter]",
+  registration: "RCS Paris 109 349 779",
   vatNumber: "[Numéro de TVA intracommunautaire à compléter]",
-  publicationDirector: "[Directeur de la publication à compléter]",
-  email: "[E-mail de contact à compléter]",
-  phone: "[Téléphone à compléter]",
+  publicationDirector: "André Neola, président",
+  email: "worldhairapp@hotmail.com",
+  phone: "06 16 87 67 09",
   /** Médiateur de la consommation (obligatoire en France pour les litiges avec des particuliers) : nom, site web. */
   mediator: "[Médiateur de la consommation à compléter]",
 };

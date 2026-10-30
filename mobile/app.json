@@ -68,7 +68,8 @@
         "expo-image-picker",
         {
           "photosPermission": "WorldHair accède à vos photos pour votre photo de profil et vos justificatifs.",
-          "cameraPermission": "WorldHair utilise l'appareil photo pour photographier vos justificatifs."
+          "cameraPermission": "WorldHair utilise l'appareil photo pour photographier vos justificatifs.",
+          "microphonePermission": false
         }
       ],
       [

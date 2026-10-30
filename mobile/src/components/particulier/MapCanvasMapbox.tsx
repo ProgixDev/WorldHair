@@ -23,7 +23,13 @@ import type { MapCanvasProps } from "./MapCanvasTypes";
 
 // The public token is meant to ship inside the app; the secret download token
 // stays a build-time secret in app.config.js.
-if (MAPBOX_TOKEN) Mapbox.setAccessToken(MAPBOX_TOKEN);
+// The SDK also reports location and usage to Mapbox by default: off, since the
+// privacy policy promises no audience measurement and Play's Data safety form
+// declares none.
+if (MAPBOX_TOKEN) {
+  Mapbox.setAccessToken(MAPBOX_TOKEN);
+  Mapbox.setTelemetryEnabled(false);
+}
 
 export function MapCanvasMapbox({
   salons,
