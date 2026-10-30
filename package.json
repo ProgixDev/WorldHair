@@ -10,6 +10,8 @@
     "web": "cd web && bun run dev",
     "rebuild": "cd mobile && npx expo prebuild --platform android --clean",
     "apk": "cd mobile && npx expo prebuild --platform android && cd android && .\\gradlew.bat assembleRelease",
-    "aab": "cd mobile && npx expo prebuild --platform android && cd android && .\\gradlew.bat bundleRelease"
+    "aab": "cd mobile && npx expo prebuild --platform android && cd android && .\\gradlew.bat bundleRelease",
+    "ipa": "cd mobile && eas build --platform ios --profile production",
+    "ipa:submit": "cd mobile && eas submit --platform ios --profile production --latest"
   }
 }

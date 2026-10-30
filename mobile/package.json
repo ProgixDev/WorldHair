@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "jest --runInBand",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "eas:env": "bun scripts/push-eas-env.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

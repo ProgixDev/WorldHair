@@ -1,0 +1,52 @@
+# What EAS uploads for an iOS build (Android builds locally, see package.json
+# "aab"). EAS reads this file from the git root and, because it exists,
+# ignores every .gitignore — so mobile's own ignores are repeated below.
+
+# Only the mobile app: server/, web/, docs/ and root files stay home.
+/*
+!/mobile
+
+# Installed on EAS from bun.lock.
+node_modules/
+
+# Native folders: EAS runs `expo prebuild` for iOS itself.
+/mobile/android/
+/mobile/ios/
+/mobile/.kotlin/
+
+# Secrets. The build reads its variables from EAS (`eas env`), not .env.
+/mobile/.env
+/mobile/.env.*
+/mobile/keystores/
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# Not part of the app bundle.
+/mobile/test/
+/mobile/scripts/
+/mobile/README.md
+/mobile/jest.config.js
+/mobile/eslint.config.js
+/mobile/.prettierrc.json
+*.test.ts
+*.test.tsx
+coverage/
+
+# Generated and local files.
+/mobile/.expo/
+/mobile/dist/
+/mobile/web-build/
+/mobile/expo-env.d.ts
+/mobile/.vscode/
+*.tsbuildinfo
+*.orig.*
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
