@@ -31,6 +31,8 @@ export const ROUTES = {
   /** A salon's staff member: their own agenda, read-only, and their account. */
   staffAgenda: "/staff",
   staffAccount: "/staff/account",
+  /** « Utilisateurs bloqués », from Mes données (App Store guideline 1.2). */
+  blockedUsers: "/blocked-users",
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];

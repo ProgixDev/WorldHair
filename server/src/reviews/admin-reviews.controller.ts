@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ModerateReviewDto } from './dto/moderate-review.dto';
-import { ModeratedReviewDto, ReviewsService } from './reviews.service';
+import { ModeratedReviewDto, ReviewsService, UserBlockDto } from './reviews.service';
 
 /**
  * "Signalement / modération avis (admin)" — the web admin's « Avis » page:
@@ -21,6 +21,12 @@ export class AdminReviewsController {
   @Get('hidden')
   listHidden(): Promise<ModeratedReviewDto[]> {
     return this.reviews.listHidden();
+  }
+
+  /** Who blocked whom (« Bloquer cet utilisateur » in the app). */
+  @Get('blocks')
+  listBlocks(): Promise<UserBlockDto[]> {
+    return this.reviews.listBlocks();
   }
 
   @Patch(':id/moderate')

@@ -32,6 +32,8 @@ export interface DataExport {
   bookings: ParticulierAppointment[];
   reviewsWritten: Row[];
   reportsFiled: Row[];
+  /** The people this account blocked (« Bloquer cet utilisateur »), as their reviews sign. */
+  blocked: { name: string; blockedAt: string }[];
   /** What WorldHair sent this account (pushes), and the phones they went to — never their push tokens. */
   notifications: Row[];
   devices: Row[];
@@ -71,12 +73,13 @@ export class DataExportService {
   ) {}
 
   async export(user: AuthenticatedUser, now = new Date()): Promise<DataExport> {
-    const [profile, preferences, favorites, reviewsWritten, reportsFiled, bookings, notifications, devices] = await Promise.all([
+    const [profile, preferences, favorites, reviewsWritten, reportsFiled, blocked, bookings, notifications, devices] = await Promise.all([
       this.one('profiles', 'id', user.id),
       this.one('notification_preferences', 'user_id', user.id),
       this.all('favorites', 'particulier_id', user.id, ['created_at', 'coiffeur_id']),
       this.all('reviews', 'particulier_id', user.id, ['created_at', 'id']),
       this.all('review_reports', 'reporter_id', user.id, ['created_at', 'review_id']),
+      this.all('user_blocks', 'blocker_id', user.id, ['created_at', 'blocked_id']),
       this.appointments.listForParticulier(user.id),
       this.all('notifications_log', 'user_id', user.id, ['created_at', 'id']),
       this.all('push_tokens', 'user_id', user.id, ['created_at', 'id']),
@@ -85,6 +88,7 @@ export class DataExportService {
       ...favorites.map((row) => row.coiffeur_id as string),
       ...reviewsWritten.map((row) => row.coiffeur_id as string),
     ]);
+    const blockedNames = await this.personNames(blocked.map((row) => row.blocked_id as string));
 
     const data: DataExport = {
       about: "Les données que WorldHair détient sur votre compte, au format JSON (RGPD, droit d'accès).",
@@ -102,6 +106,7 @@ export class DataExportService {
         ...camel(row, ['particulier_id', 'report_reason', 'reported_at']),
       })),
       reportsFiled: reportsFiled.map((row) => camel(row, ['reporter_id'])),
+      blocked: blocked.map((row) => ({ name: blockedNames.get(row.blocked_id as string) ?? '', blockedAt: row.created_at as string })),
       notifications: notifications.map((row) => camel(row, ['id', 'user_id', 'dedupe_key'])),
       devices: devices.map((row) => camel(row, ['id', 'user_id', 'token'])),
     };
@@ -173,6 +178,21 @@ export class DataExportService {
       for (const key of order) query = query.order(key);
       return query.range(from, to);
     });
+  }
+
+  /** As reviews sign: « Camille D. ». */
+  private async personNames(ids: string[]): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    for (const slice of slices([...new Set(ids)])) {
+      const { data, error } = await this.supabase.client.from('profiles').select('id, first_name, last_name').in('id', slice);
+      if (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      for (const row of data as { id: string; first_name: string; last_name: string }[]) {
+        names.set(row.id, [row.first_name, row.last_name ? row.last_name.charAt(0).toUpperCase() + '.' : ''].filter(Boolean).join(' '));
+      }
+    }
+    return names;
   }
 
   private async salonNames(ids: string[]): Promise<Map<string, string>> {

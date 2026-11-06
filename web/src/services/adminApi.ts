@@ -120,6 +120,23 @@ export async function listHiddenReviews(): Promise<ModeratedReview[]> {
   return data;
 }
 
+/** Mirrors server/src/reviews/reviews.service.ts's UserBlockDto: someone blocked a review's author in the app. */
+export interface UserBlock {
+  blockerId: string;
+  /** A client's full name; a salon by its name. */
+  blockerName: string;
+  blockerRole: ReviewReport["reporterRole"];
+  blockedId: string;
+  blockedName: string;
+  createdAt: string;
+}
+
+/** Who blocked whom, the latest first. */
+export async function listUserBlocks(): Promise<UserBlock[]> {
+  const { data } = await apiClient.get<UserBlock[]>("/admin/reviews/blocks");
+  return data;
+}
+
 export async function moderateReview(
   id: string,
   decision: "hide" | "restore",

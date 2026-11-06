@@ -135,6 +135,10 @@ function RootLayoutWithTheme() {
             options={{ animation: "slide_from_bottom" }}
           />
           <Stack.Screen name="pro" options={{ animation: "fade" }} />
+          <Stack.Screen
+            name="blocked-users"
+            options={{ animation: "slide_from_right" }}
+          />
         </Stack>
         {/* New terms to accept (TODO.md Phase 8): over every screen, until accepted. */}
         <TermsGate />

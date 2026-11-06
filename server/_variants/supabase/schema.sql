@@ -982,6 +982,22 @@ create index review_reports_reporter_id_idx on public.review_reports (reporter_i
 
 alter table public.review_reports enable row level security;
 
+-- « Bloquer cet utilisateur » (App Store guideline 1.2): the blocker no
+-- longer sees anything the person they blocked writes — today, their
+-- reviews. Only the blocker's view changes: the reviews stay for everyone
+-- else, and the admins see who blocked whom next to the reports. API only.
+create table public.user_blocks (
+  blocker_id uuid not null references public.profiles (id) on delete cascade,
+  blocked_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  check (blocker_id <> blocked_id)
+);
+
+create index user_blocks_blocked_id_idx on public.user_blocks (blocked_id);
+
+alter table public.user_blocks enable row level security;
+
 -- "Favoris" (TODO.md Phase 6): the salons a client keeps a heart on. API only.
 create table public.favorites (
   particulier_id uuid not null references public.profiles (id) on delete cascade,

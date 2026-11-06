@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportReviewSheet } from "../../components/ReportReviewSheet";
+import { ReviewMenu } from "../../components/ReviewMenu";
 import { HeartButton } from "../../components/particulier/HeartButton";
 import { MapCanvas } from "../../components/particulier/MapCanvas";
 import { HomeServiceTag, NextSlotLine } from "../../components/particulier/SalonAvailability";
@@ -94,6 +95,13 @@ export default function SalonDetail() {
     return () => {
       cancelled = true;
     };
+  }, [id]);
+
+  /** After blocking someone: the page as it was, without their reviews — no loading in between. */
+  const reloadSalon = useCallback(() => {
+    void fetchSalonById(String(id)).then((found) => {
+      if (found) setSalon(found);
+    });
   }, [id]);
 
   const reviews = useMemo<Review[]>(() => {
@@ -546,17 +554,20 @@ export default function SalonDetail() {
                     >
                       {timeAgo(review.date)}
                     </Text>
-                    {myReviewIds.has(review.id) ? null : review.reportedByMe || reportedHere.has(review.id) ? (
-                      <Text style={[typography.caption, { color: theme.foreground.gray }]}>· Signalé</Text>
-                    ) : (
-                      <Pressable
-                        onPress={() => setReporting(review.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel="Signaler cet avis"
-                        hitSlop={10}
-                      >
-                        <MaterialCommunityIcons name="flag-outline" size={16} color={theme.foreground.gray} />
-                      </Pressable>
+                    {myReviewIds.has(review.id) ? null : (
+                      <>
+                        {review.reportedByMe || reportedHere.has(review.id) ? (
+                          <Text style={[typography.caption, { color: theme.foreground.gray }]}>· Signalé</Text>
+                        ) : null}
+                        <ReviewMenu
+                          reviewId={review.id}
+                          authorName={review.author}
+                          canReport={!review.reportedByMe && !reportedHere.has(review.id)}
+                          onReport={() => setReporting(review.id)}
+                          onBlocked={reloadSalon}
+                          size={16}
+                        />
+                      </>
                     )}
                   </View>
 

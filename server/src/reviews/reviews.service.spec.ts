@@ -348,4 +348,62 @@ describe('ReviewsService', () => {
       expect((await service.listForSalon(COIFFEUR_ID)).map((r) => r.id)).toEqual([review.id]);
     });
   });
+
+  describe('block (« Bloquer cet utilisateur », App Store guideline 1.2)', () => {
+    it("hides the author's reviews from the one who blocked them only, until they unblock", async () => {
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1, comment: 'Nul.' });
+
+      await service.blockAuthor(review.id, CLIENT);
+
+      await expect(service.listForSalon(COIFFEUR_ID, CLIENT.id)).resolves.toEqual([]);
+      expect((await service.listForSalon(COIFFEUR_ID, 'a-third-client')).map((r) => r.id)).toEqual([review.id]);
+      expect((await service.listForSalon(COIFFEUR_ID)).map((r) => r.id)).toEqual([review.id]);
+      await expect(service.listBlocked(CLIENT.id)).resolves.toMatchObject([{ userId: PARTICULIER_ID, name: 'Camille D.' }]);
+
+      await service.unblock(CLIENT.id, PARTICULIER_ID);
+      expect((await service.listForSalon(COIFFEUR_ID, CLIENT.id)).map((r) => r.id)).toEqual([review.id]);
+      await expect(service.listBlocked(CLIENT.id)).resolves.toEqual([]);
+    });
+
+    it("lets a salon block the authors of its own salon's reviews: they leave its « Avis »", async () => {
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
+
+      await expect(service.blockAuthor(review.id, { id: 'coiffeur-2', role: 'coiffeur' })).rejects.toThrow(ForbiddenException);
+      await service.blockAuthor(review.id, SALON);
+
+      await expect(service.listForCoiffeurOwner(COIFFEUR_ID)).resolves.toEqual([]);
+      // Clients still read it: a salon can't hide a review from them by blocking.
+      expect((await service.listForSalon(COIFFEUR_ID, CLIENT.id)).map((r) => r.id)).toEqual([review.id]);
+    });
+
+    it('refuses blocking yourself, and an author whose account is gone; blocking twice is blocking', async () => {
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 2 });
+
+      await expect(service.blockAuthor(review.id, { id: PARTICULIER_ID, role: 'particulier' })).rejects.toThrow(BadRequestException);
+      await service.blockAuthor(review.id, CLIENT);
+      await service.blockAuthor(review.id, CLIENT);
+      await expect(service.listBlocked(CLIENT.id)).resolves.toHaveLength(1);
+
+      await supabase.client.auth.admin.deleteUser(PARTICULIER_ID);
+      // Their blocks went with the account (on delete cascade).
+      await expect(service.listBlocked(CLIENT.id)).resolves.toEqual([]);
+      await expect(service.blockAuthor(review.id, CLIENT)).rejects.toThrow(BadRequestException);
+    });
+
+    it('shows the admins who blocked whom, the latest first — a salon by its name', async () => {
+      supabase.seedValidatedSalon({ profileId: COIFFEUR_ID, firstName: 'Sofia', lastName: 'Benali', salonName: 'Studio Élégance' });
+      supabase.addUser('reader-token', { id: 'another-client', email: 'a@example.com', email_confirmed_at: null }, 'particulier', {
+        firstName: 'Awa',
+        lastName: 'Diallo',
+      });
+      const review = await service.create(PARTICULIER_ID, { appointmentId: seedDoneAppointment(), rating: 1 });
+      await service.blockAuthor(review.id, CLIENT);
+      await service.blockAuthor(review.id, SALON);
+
+      await expect(service.listBlocks()).resolves.toMatchObject([
+        { blockerId: COIFFEUR_ID, blockerName: 'Studio Élégance', blockerRole: 'coiffeur', blockedId: PARTICULIER_ID, blockedName: 'Camille Durand' },
+        { blockerId: 'another-client', blockerName: 'Awa Diallo', blockerRole: 'particulier', blockedId: PARTICULIER_ID, blockedName: 'Camille Durand' },
+      ]);
+    });
+  });
 });

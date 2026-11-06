@@ -165,6 +165,15 @@ export function MyDataGroups({ variant = "rows" }: { variant?: "rows" | "links" 
           value="Une copie de vos données, au format JSON"
           onPress={() => void handleExport()}
         />
+        {/* Staff never read reviews: nobody for them to block. */}
+        {role === "staff" ? null : (
+          <Row
+            icon="account-cancel-outline"
+            label="Utilisateurs bloqués"
+            value="Ceux dont vous ne voyez plus les avis"
+            onPress={() => router.push(ROUTES.blockedUsers as never)}
+          />
+        )}
         <Row icon="account-remove-outline" label="Supprimer mon compte" tone="danger" onPress={openSheet} isLast />
       </Group>
 

@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportReviewSheet } from "../../components/ReportReviewSheet";
+import { ReviewMenu } from "../../components/ReviewMenu";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { VerifiedReviewMark } from "../../components/ui/VerifiedReviewMark";
@@ -38,7 +39,7 @@ export default function ProReviews() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { gutter } = useResponsive();
-  const { reviews, saveReply, deleteReply } = usePro();
+  const { reviews, saveReply, deleteReply, refresh } = usePro();
 
   const [filter, setFilter] = useState<Filter>("all");
   const [answering, setAnswering] = useState<Review | null>(null);
@@ -269,17 +270,19 @@ export default function ProReviews() {
                     </View>
                     {review.status === "hidden" ? (
                       <Text style={[typography.caption, { color: theme.foreground.gray }]}>Masqué par WorldHair</Text>
-                    ) : review.reportedByMe || reportedHere.has(review.id) ? (
-                      <Text style={[typography.caption, { color: theme.foreground.gray }]}>Signalé</Text>
                     ) : (
-                      <Pressable
-                        onPress={() => setReporting(review.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel="Signaler cet avis"
-                        hitSlop={10}
-                      >
-                        <MaterialCommunityIcons name="flag-outline" size={18} color={theme.foreground.gray} />
-                      </Pressable>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                        {review.reportedByMe || reportedHere.has(review.id) ? (
+                          <Text style={[typography.caption, { color: theme.foreground.gray }]}>Signalé</Text>
+                        ) : null}
+                        <ReviewMenu
+                          reviewId={review.id}
+                          authorName={review.author}
+                          canReport={!review.reportedByMe && !reportedHere.has(review.id)}
+                          onReport={() => setReporting(review.id)}
+                          onBlocked={() => void refresh()}
+                        />
+                      </View>
                     )}
                   </View>
 

@@ -37,7 +37,7 @@ export const ACCOUNT_DELETION: LegalDocument = {
       blocks: [
         [
           "Votre compte : adresse e-mail, mot de passe, prénom, nom et photo de profil.",
-          "Vos favoris, vos préférences de rappel et l'identifiant de notification de votre téléphone.",
+          "Vos favoris, la liste des utilisateurs que vous avez bloqués, vos préférences de rappel et l'identifiant de notification de votre téléphone.",
           "Les messages que vous avez laissés aux salons.",
           "Si vous êtes coiffeur : la fiche de votre salon, ses photos, vos prestations et horaires, et vos justificatifs (pièce d'identité, diplôme, Kbis, justificatif du local). Votre abonnement prend fin, sans remboursement de la période en cours.",
         ],
@@ -63,7 +63,7 @@ export const ACCOUNT_DELETION: LegalDocument = {
         "Dans l'application, vous pouvez à tout moment :",
         [
           "retirer votre photo de profil, et modifier vos prénom et nom (onglet Profil ou Compte) ;",
-          "retirer un salon de vos favoris ;",
+          "retirer un salon de vos favoris, et débloquer un utilisateur (Mes données › Utilisateurs bloqués) ;",
           "désactiver les rappels de rendez-vous dans votre profil, et les notifications et la localisation dans les réglages de votre téléphone ;",
           "si vous êtes coiffeur, supprimer les photos de votre salon et de vos réalisations, et modifier vos prestations et vos horaires (onglet Mon salon).",
         ],

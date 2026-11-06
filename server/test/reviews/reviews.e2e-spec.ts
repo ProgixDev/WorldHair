@@ -152,6 +152,45 @@ describe('reviews (e2e)', () => {
     await request(server).get('/admin/reviews/hidden').set('Authorization', `Bearer ${coiffeurToken}`).expect(403);
   });
 
+  it("blocks a review's author for the caller only, lists them, and unblocks", async () => {
+    const appointmentId = seedDoneAppointment();
+    const created = await request(server)
+      .post('/reviews')
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .send({ appointmentId, rating: 1, comment: 'Décevant.' })
+      .expect(201);
+
+    await request(server).post(`/reviews/${created.body.id}/block`).set('Authorization', `Bearer ${particulierToken}`).expect(400);
+    await request(server).post(`/reviews/${created.body.id}/block`).set('Authorization', `Bearer ${coiffeurToken}`).expect(201);
+    await request(server)
+      .get('/reviews/salon/mine')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .expect(200)
+      .expect((res) => expect(res.body).toEqual([]));
+    await request(server)
+      .get(`/reviews/salon/${coiffeur.id}`)
+      .set('Authorization', `Bearer ${particulierToken}`)
+      .expect(200)
+      .expect((res) => expect(res.body).toHaveLength(1));
+
+    const blocked = await request(server).get('/reviews/blocked').set('Authorization', `Bearer ${coiffeurToken}`).expect(200);
+    expect(blocked.body).toMatchObject([{ userId: particulier.id, name: 'Camille D.' }]);
+    await request(server)
+      .get('/admin/reviews/blocks')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((res) => expect(res.body).toMatchObject([{ blockerId: coiffeur.id, blockedId: particulier.id }]));
+    await request(server).get('/admin/reviews/blocks').set('Authorization', `Bearer ${coiffeurToken}`).expect(403);
+
+    await request(server).delete('/reviews/blocked/not-a-uuid').set('Authorization', `Bearer ${coiffeurToken}`).expect(400);
+    await request(server).delete(`/reviews/blocked/${particulier.id}`).set('Authorization', `Bearer ${coiffeurToken}`).expect(200);
+    await request(server)
+      .get('/reviews/salon/mine')
+      .set('Authorization', `Bearer ${coiffeurToken}`)
+      .expect(200)
+      .expect((res) => expect(res.body).toHaveLength(1));
+  });
+
   it('rejects a malformed rating', async () => {
     const appointmentId = seedDoneAppointment();
     await request(server)

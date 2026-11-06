@@ -56,6 +56,25 @@ export interface ModeratedReviewDto extends ReviewDto {
   reportedAt: string | null;
 }
 
+/** Someone the reader blocked, for « Utilisateurs bloqués ». */
+export interface BlockedUserDto {
+  userId: string;
+  /** As their reviews sign: « Camille D. ». */
+  name: string;
+  blockedAt: string;
+}
+
+/** Who blocked whom, for the admins — next to the reports. */
+export interface UserBlockDto {
+  blockerId: string;
+  /** A client's full name; a salon by its name. */
+  blockerName: string;
+  blockerRole: Role;
+  blockedId: string;
+  blockedName: string;
+  createdAt: string;
+}
+
 export interface CreateReviewInput {
   appointmentId: string;
   rating: number;
@@ -88,6 +107,15 @@ function authorsOf(rows: ReviewRow[]): string[] {
   return rows.flatMap((row) => (row.particulier_id ? [row.particulier_id] : []));
 }
 
+function latestFirst(rows: UserBlockRow[]): UserBlockRow[] {
+  return rows.slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+/** Written by someone the reader blocked. */
+function isBlocked(row: ReviewRow, blocked: Set<string>): boolean {
+  return row.particulier_id !== null && blocked.has(row.particulier_id);
+}
+
 interface ProfileNameRow {
   id: string;
   first_name: string;
@@ -100,6 +128,12 @@ interface ReviewReportRow {
   reporter_id: string;
   reason: ReportReason;
   details: string | null;
+  created_at: string;
+}
+
+interface UserBlockRow {
+  blocker_id: string;
+  blocked_id: string;
   created_at: string;
 }
 
@@ -170,7 +204,8 @@ export class ReviewsService {
    * actually removes something from public view.
    */
   async listForSalon(coiffeurId: string, viewerId?: string): Promise<ReviewDto[]> {
-    const rows = (await this.select({ coiffeurId })).filter((row) => row.status !== 'hidden');
+    const blocked = await this.blockedBy(viewerId);
+    const rows = (await this.select({ coiffeurId })).filter((row) => row.status !== 'hidden' && !isBlocked(row, blocked));
     return this.mapAll(rows, await this.reportedBy(viewerId, rows));
   }
 
@@ -181,7 +216,8 @@ export class ReviewsService {
 
   /** The coiffeur's own reviews to manage/reply to — every status, not just visible. */
   async listForCoiffeurOwner(coiffeurId: string): Promise<ReviewDto[]> {
-    const rows = await this.select({ coiffeurId });
+    const blocked = await this.blockedBy(coiffeurId);
+    const rows = (await this.select({ coiffeurId })).filter((row) => !isBlocked(row, blocked));
     return this.mapAll(rows, await this.reportedBy(coiffeurId, rows));
   }
 
@@ -245,7 +281,91 @@ export class ReviewsService {
     }
   }
 
+  /**
+   * « Bloquer cet utilisateur » (App Store guideline 1.2): the blocker no
+   * longer sees any review by this review's author, anywhere. The same
+   * people may block as may report; blocking twice is blocking.
+   */
+  async blockAuthor(reviewId: string, blocker: { id: string; role: Role }): Promise<void> {
+    const row = await this.reviewOrThrow(reviewId);
+    if (row.particulier_id === blocker.id) {
+      throw new BadRequestException("You can't block yourself");
+    }
+    if (blocker.role === 'coiffeur' && row.coiffeur_id !== blocker.id) {
+      throw new ForbiddenException("A salon can only block the authors of its own salon's reviews");
+    }
+    if (!row.particulier_id) {
+      throw new BadRequestException('This author no longer has an account');
+    }
+    const { error } = await this.supabase.client
+      .from('user_blocks')
+      .insert({ blocker_id: blocker.id, blocked_id: row.particulier_id });
+    if (error && error.code !== '23505') {
+      throw new InternalServerErrorException(error.message);
+    }
+  }
+
+  /** « Utilisateurs bloqués »: the people this person blocked, the latest first. */
+  async listBlocked(blockerId: string): Promise<BlockedUserDto[]> {
+    const rows = await allPages<UserBlockRow>((from, to) =>
+      this.supabase.client
+        .from('user_blocks')
+        .select()
+        .eq('blocker_id', blockerId)
+        .order('created_at', { ascending: false })
+        .order('blocked_id')
+        .range(from, to),
+    );
+    const names = await this.authorNamesFor(rows.map((row) => row.blocked_id));
+    return latestFirst(rows).map((row) => ({ userId: row.blocked_id, name: names.get(row.blocked_id) ?? 'Client', blockedAt: row.created_at }));
+  }
+
+  /** Their reviews show again; unblocking someone not blocked changes nothing. */
+  async unblock(blockerId: string, blockedId: string): Promise<void> {
+    const { error } = await this.supabase.client
+      .from('user_blocks')
+      .delete()
+      .eq('blocker_id', blockerId)
+      .eq('blocked_id', blockedId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+  }
+
   // ─── Admin — "Signalement / modération avis" ─────────────────────────────
+
+  /** Every block, the latest first: who keeps being blocked is worth a look. */
+  async listBlocks(): Promise<UserBlockDto[]> {
+    const rows = await allPages<UserBlockRow>((from, to) =>
+      this.supabase.client
+        .from('user_blocks')
+        .select()
+        .order('created_at', { ascending: false })
+        .order('blocker_id')
+        .order('blocked_id')
+        .range(from, to),
+    );
+    const people = await this.profilesFor([...new Set(rows.flatMap((row) => [row.blocker_id, row.blocked_id]))]);
+    const salons = await this.salonNamesFor(
+      [...new Set(rows.map((row) => row.blocker_id))].filter((id) => people.get(id)?.role === 'coiffeur'),
+    );
+    const nameOf = (id: string) => {
+      const person = people.get(id);
+      return `${person?.first_name ?? ''} ${person?.last_name ?? ''}`.trim();
+    };
+    return latestFirst(rows).map((row) => {
+      const role = people.get(row.blocker_id)?.role ?? 'particulier';
+      return {
+        blockerId: row.blocker_id,
+        blockerName: (role === 'coiffeur' ? salons.get(row.blocker_id) : undefined) || nameOf(row.blocker_id) || (role === 'coiffeur' ? 'Salon' : 'Client'),
+        blockerRole: role,
+        blockedId: row.blocked_id,
+        blockedName: nameOf(row.blocked_id) || 'Client',
+        createdAt: row.created_at,
+      };
+    });
+  }
+
 
   /** The queue: reviews reported and not decided on yet. */
   async listReported(): Promise<ModeratedReviewDto[]> {
@@ -441,6 +561,16 @@ export class ReviewsService {
   private formatAuthorName(firstName: string, lastName: string): string {
     const lastInitial = lastName ? lastName.charAt(0).toUpperCase() + '.' : '';
     return [firstName, lastInitial].filter(Boolean).join(' ').trim() || 'Client';
+  }
+
+  /** The authors `viewerId` blocked: their reviews don't show to them. */
+  private async blockedBy(viewerId: string | undefined): Promise<Set<string>> {
+    if (!viewerId) return new Set();
+    const { data, error } = await this.supabase.client.from('user_blocks').select('blocked_id').eq('blocker_id', viewerId);
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+    return new Set((data as { blocked_id: string }[]).map((row) => row.blocked_id));
   }
 
   /** Which of `rows` `viewerId` already reported. */

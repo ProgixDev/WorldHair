@@ -5,7 +5,7 @@ import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { ReplyReviewDto } from './dto/reply-review.dto';
 import { ReportReviewDto } from './dto/report-review.dto';
-import { ReviewDto, ReviewsService } from './reviews.service';
+import { BlockedUserDto, ReviewDto, ReviewsService } from './reviews.service';
 
 /**
  * "Avis" (TODO.md). No class-level `@Roles()`: particulier, coiffeur and
@@ -24,6 +24,17 @@ export class ReviewsController {
   @Get('me')
   listMine(@CurrentUser() current: AuthenticatedUser): Promise<ReviewDto[]> {
     return this.reviews.listMine(current.id);
+  }
+
+  /** « Utilisateurs bloqués ». */
+  @Get('blocked')
+  listBlocked(@CurrentUser() current: AuthenticatedUser): Promise<BlockedUserDto[]> {
+    return this.reviews.listBlocked(current.id);
+  }
+
+  @Delete('blocked/:userId')
+  unblock(@CurrentUser() current: AuthenticatedUser, @Param('userId', ParseUUIDPipe) userId: string): Promise<void> {
+    return this.reviews.unblock(current.id, userId);
   }
 
   // Declared before 'salon/:coiffeurId' so it isn't swallowed by the param route.
@@ -65,5 +76,11 @@ export class ReviewsController {
     @Body() dto: ReportReviewDto,
   ): Promise<void> {
     return this.reviews.report(id, { id: current.id, role: current.role }, dto);
+  }
+
+  /** « Bloquer cet utilisateur »: the review's author, for the caller only. */
+  @Post(':id/block')
+  block(@CurrentUser() current: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.reviews.blockAuthor(id, { id: current.id, role: current.role });
   }
 }

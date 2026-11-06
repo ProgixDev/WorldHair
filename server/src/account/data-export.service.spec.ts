@@ -93,6 +93,18 @@ describe('DataExportService', () => {
     expect(JSON.parse(JSON.stringify(data))).toEqual(data);
   });
 
+  it('includes the people the client blocked, as their reviews sign', async () => {
+    supabase.addUser('lea-token', { id: 'lea', email: 'lea@example.com', email_confirmed_at: null }, 'particulier', {
+      firstName: 'Léa',
+      lastName: 'Martin',
+    });
+    supabase.seedBlock(CAMILLE, 'lea');
+
+    const data = await exports.export(user(CAMILLE, 'camille@example.com', 'particulier'));
+
+    expect(data.blocked).toEqual([{ name: 'Léa M.', blockedAt: expect.any(String) }]);
+  });
+
   it('includes the notifications sent and the devices registered — never their push tokens', async () => {
     supabase.seedNotification({ userId: CAMILLE, type: 'appointment_confirmed', title: 'Rendez-vous confirmé', body: 'À mercredi.' });
     supabase.seedPushToken({ userId: CAMILLE, token: 'ExponentPushToken[secret]', platform: 'ios' });

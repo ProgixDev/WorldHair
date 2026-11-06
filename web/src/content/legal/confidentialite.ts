@@ -25,7 +25,7 @@ export const PRIVACY_POLICY: LegalDocument = {
           "Compte : adresse e-mail, mot de passe (conservé chiffré par notre prestataire d'authentification, jamais en clair), prénom, nom, photo de profil si vous en ajoutez une, date et version des conditions acceptées.",
           "Rendez-vous : salon, prestations, date et heure, statut, message laissé au salon, annulations et leur motif.",
           "Paiements : montants, remboursements, versements et références de paiement Stripe. Les données de votre carte sont collectées et traitées par Stripe ; WorldHair n'y a pas accès.",
-          "Avis et signalements que vous publiez, salons mis en favoris, préférences de rappel, et l'identifiant de notification de votre téléphone.",
+          "Avis et signalements que vous publiez, utilisateurs que vous bloquez, salons mis en favoris, préférences de rappel, et l'identifiant de notification de votre téléphone.",
           "Localisation : si vous l'autorisez, la position de votre téléphone sert à afficher les salons autour de vous. Elle est transmise à notre serveur au moment de la recherche et n'est pas enregistrée dans votre compte. Vous pouvez la refuser et choisir une ville à la place.",
         ],
         "Si vous êtes coiffeur, également :",

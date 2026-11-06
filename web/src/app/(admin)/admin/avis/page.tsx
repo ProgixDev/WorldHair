@@ -4,28 +4,44 @@ import { AdminTopBar } from "@/components/admin/AdminTopBar";
 import { Pagination, pageCount, pageSlice } from "@/components/admin/Pagination";
 import { reportReasonLabel, reporterRoleLabel } from "@/lib/reviews";
 import { cn } from "@/lib/utils";
-import { type ModeratedReview, listHiddenReviews, listReportedReviews, moderateReview } from "@/services/adminApi";
-import { Flag, Star } from "lucide-react";
+import {
+  type ModeratedReview,
+  type UserBlock,
+  listHiddenReviews,
+  listReportedReviews,
+  listUserBlocks,
+  moderateReview,
+} from "@/services/adminApi";
+import { Ban, Flag, Star } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-type Tab = "reported" | "hidden";
+type Tab = "reported" | "hidden" | "blocks";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "reported", label: "Signalés" },
   { value: "hidden", label: "Masqués" },
+  { value: "blocks", label: "Blocages" },
 ];
+
+const LOAD_ERRORS: Record<Tab, string> = {
+  reported: "Impossible de charger les avis signalés.",
+  hidden: "Impossible de charger les avis masqués.",
+  blocks: "Impossible de charger les blocages.",
+};
 
 const reportedOn = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" });
 
 /**
  * « Avis » (TODO.md Phases 6-7): the reviews clients or salons reported, with
  * who reported each and why, to hide or keep — and the hidden ones, to put
- * one back.
+ * one back. « Blocages »: who blocked whom in the app (App Store guideline
+ * 1.2) — someone blocked again and again is worth a look at their reviews.
  */
 export default function AdminAvisPage() {
   const [tab, setTab] = useState<Tab>("reported");
   const [reviews, setReviews] = useState<ModeratedReview[]>([]);
+  const [blocks, setBlocks] = useState<UserBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -39,14 +55,19 @@ export default function AdminAvisPage() {
   // AdminAuthGuard). An answer for a tab left meanwhile is dropped.
   useEffect(() => {
     let current = true;
-    (tab === "reported" ? listReportedReviews() : listHiddenReviews())
-      .then((data) => {
-        if (!current) return;
-        setReviews(data);
-        setError(null);
+    (tab === "blocks"
+      ? listUserBlocks().then((data) => {
+          if (current) setBlocks(data);
+        })
+      : (tab === "reported" ? listReportedReviews() : listHiddenReviews()).then((data) => {
+          if (current) setReviews(data);
+        })
+    )
+      .then(() => {
+        if (current) setError(null);
       })
       .catch(() => {
-        if (current) setError(tab === "reported" ? "Impossible de charger les avis signalés." : "Impossible de charger les avis masqués.");
+        if (current) setError(LOAD_ERRORS[tab]);
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -62,6 +83,7 @@ export default function AdminAvisPage() {
     setError(null);
     setActionError(null);
     setReviews([]);
+    setBlocks([]);
     setPage(1);
     setTab(next);
   };
@@ -80,7 +102,7 @@ export default function AdminAvisPage() {
   };
 
   // The last review of the last page decided: its page is gone, show the one before.
-  const shownPage = Math.min(page, pageCount(reviews.length));
+  const shownPage = Math.min(page, pageCount(tab === "blocks" ? blocks.length : reviews.length));
 
   return (
     <>
@@ -109,20 +131,25 @@ export default function AdminAvisPage() {
           <p className="mt-4 text-xs text-[#93a6bc]">
             {tab === "reported"
               ? "Un avis signalé reste visible publiquement tant qu'il n'est pas masqué ici — le signalement seul ne le retire pas."
-              : "Masqués, ces avis ne comptent plus dans la note du salon. Remis en ligne, ils comptent de nouveau."}
+              : tab === "hidden"
+                ? "Masqués, ces avis ne comptent plus dans la note du salon. Remis en ligne, ils comptent de nouveau."
+                : "Bloquer l'auteur d'un avis le masque pour celui qui bloque seulement : pour les autres, ses avis restent en ligne."}
           </p>
 
           <div className="mt-6 flex flex-col gap-3">
             {actionError && <p className="text-sm text-[#ff7a70]">{actionError}</p>}
             {loading && <p className="py-8 text-center text-sm text-[#93a6bc]">Chargement…</p>}
             {error && <p className="py-8 text-center text-sm text-[#ff7a70]">{error}</p>}
-            {!loading && !error && reviews.length === 0 && (
+            {tab === "blocks" && !loading && !error && <Blocks blocks={blocks} page={shownPage} />}
+
+            {tab !== "blocks" && !loading && !error && reviews.length === 0 && (
               <p className="py-8 text-center text-sm text-[#93a6bc]">
                 {tab === "reported" ? "Aucun avis signalé pour le moment." : "Aucun avis masqué."}
               </p>
             )}
 
-            {!loading &&
+            {tab !== "blocks" &&
+              !loading &&
               !error &&
               pageSlice(reviews, shownPage).map((review) => (
                 <div key={review.id} className="rounded-2xl bg-[#111c2e] p-4">
@@ -199,11 +226,40 @@ export default function AdminAvisPage() {
                 </div>
               ))}
 
-            {!loading && !error && <Pagination page={shownPage} total={reviews.length} onPageChange={setPage} />}
+            {!loading && !error && (
+              <Pagination page={shownPage} total={tab === "blocks" ? blocks.length : reviews.length} onPageChange={setPage} />
+            )}
           </div>
         </div>
       </div>
     </>
+  );
+}
+
+/** « Blocages »: who blocked whom, the latest first. */
+function Blocks({ blocks, page }: { blocks: UserBlock[]; page: number }) {
+  if (blocks.length === 0) {
+    return <p className="py-8 text-center text-sm text-[#93a6bc]">Personne n&apos;a bloqué personne pour le moment.</p>;
+  }
+  return (
+    <ul className="flex flex-col gap-3">
+      {pageSlice(blocks, page).map((block) => (
+        <li
+          key={`${block.blockerId}:${block.blockedId}`}
+          className="flex flex-wrap items-center gap-2 rounded-2xl bg-[#111c2e] p-4 text-sm text-[#93a6bc]"
+        >
+          <Ban className="size-4 shrink-0 text-[#ff7a70]" aria-hidden="true" />
+          <Link href={`/admin/comptes/${block.blockerId}`} className="font-medium text-[#f2f6fb] hover:text-[#2a93d5]">
+            {block.blockerName}
+          </Link>
+          <span>({reporterRoleLabel(block.blockerRole)}) a bloqué</span>
+          <Link href={`/admin/comptes/${block.blockedId}`} className="font-medium text-[#f2f6fb] hover:text-[#2a93d5]">
+            {block.blockedName}
+          </Link>
+          <span className="ml-auto text-xs">{reportedOn.format(new Date(block.createdAt))}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

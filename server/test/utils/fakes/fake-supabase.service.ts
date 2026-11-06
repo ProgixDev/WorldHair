@@ -338,6 +338,12 @@ interface FavoriteRow {
   created_at: string;
 }
 
+interface UserBlockRow {
+  blocker_id: string;
+  blocked_id: string;
+  created_at: string;
+}
+
 /** Mirrors search_salons()'s subscription join: Stripe's live statuses (period not over by 3+ days), or an offered one until its end date. */
 function isListedSubscription(row: SubscriptionRow | undefined): boolean {
   if (!row || !['trialing', 'active', 'past_due'].includes(row.status)) return false;
@@ -650,11 +656,13 @@ export class FakeSupabaseService {
   private readonly payoutAccounts = new Map<string, PayoutAccountRow>();
   private readonly payments = new Map<string, PaymentRow>();
   private readonly favorites = new Map<string, FavoriteRow>();
+  private readonly userBlocks = new Map<string, UserBlockRow>();
   private readonly reviewReports: ReviewReportRow[] = [];
   /** Storage objects by bucket: their paths. */
   private readonly storageObjects = new Map<string, Set<string>>();
   private nextStorageListFails = false;
   private lastFavoriteAt = 0;
+  private lastBlockAt = 0;
   private lastReportAt = 0;
 
   readonly client = {
@@ -827,6 +835,17 @@ export class FakeSupabaseService {
       if (table === 'review_reports') {
         return this.reviewReportsTable();
       }
+      if (table === 'user_blocks') {
+        // Each block a moment after the last, so « latest first » is stable.
+        return this.simpleTable(
+          this.userBlocks,
+          (row) => `${row.blocker_id}:${row.blocked_id}`,
+          (row) => {
+            this.lastBlockAt = Math.max(Date.now(), this.lastBlockAt + 1);
+            return { created_at: new Date(this.lastBlockAt).toISOString(), ...row } as UserBlockRow;
+          },
+        );
+      }
       throw new Error(`FakeSupabaseService: unsupported table "${table}"`);
     },
     rpc: async (fn: string, params: Record<string, unknown> = {}) => {
@@ -937,6 +956,7 @@ export class FakeSupabaseService {
     this.payoutAccounts.clear();
     this.payments.clear();
     this.favorites.clear();
+    this.userBlocks.clear();
     this.reviewReports.length = 0;
     this.storageObjects.clear();
   }
@@ -1062,6 +1082,9 @@ export class FakeSupabaseService {
     for (const [key, row] of this.favorites) {
       if (row.particulier_id === id || row.coiffeur_id === id) this.favorites.delete(key);
     }
+    for (const [key, row] of this.userBlocks) {
+      if (row.blocker_id === id || row.blocked_id === id) this.userBlocks.delete(key);
+    }
     for (const [key, row] of this.coiffeurApplications) {
       if (row.profile_id === id) this.coiffeurApplications.delete(key);
     }
@@ -1152,6 +1175,11 @@ export class FakeSupabaseService {
   /** Test convenience: a heart on a salon, as the app's would have left it. */
   seedFavorite(particulierId: string, coiffeurId: string): void {
     this.favorites.set(`${particulierId}:${coiffeurId}`, { particulier_id: particulierId, coiffeur_id: coiffeurId, created_at: new Date().toISOString() });
+  }
+
+  /** Test convenience: `blockerId` blocked `blockedId` (« Bloquer cet utilisateur »). */
+  seedBlock(blockerId: string, blockedId: string): void {
+    this.userBlocks.set(`${blockerId}:${blockedId}`, { blocker_id: blockerId, blocked_id: blockedId, created_at: new Date().toISOString() });
   }
 
   /** Test convenience: a client's favorites, for assertions. */
