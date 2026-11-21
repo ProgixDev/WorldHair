@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "worldhair",
+    "name": "WorldHair",
     "slug": "worldhair",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "worldhair",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.progix.worldhair",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -42,7 +42,7 @@
         }
       },
       "package": "com.progix.worldhair",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "output": "static",
